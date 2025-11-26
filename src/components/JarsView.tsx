@@ -1,297 +1,396 @@
 // src/components/JarsView.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { fetchTotals } from "../api";
-import type { TotalsResponse } from "../types";
+import { TotalsResponse } from "../types";
 
-const JAR_ORDER: Array<keyof TotalsResponse["jars"]> = [
-  "NEC",
-  "FFA",
-  "LTSS",
-  "PLAY",
-  "EDUC",
-  "GIFT",
-];
+type JarKey = "NEC" | "FFA" | "LTSS" | "PLAY" | "EDUC" | "GIFT";
 
-const JAR_LABELS: Record<keyof TotalsResponse["jars"], string> = {
-  NEC: "Nécessités",
-  FFA: "Liberté financière",
-  LTSS: "Épargne long terme",
-  PLAY: "Fun / Play",
-  EDUC: "Éducation",
-  GIFT: "Don / Gift",
+const JAR_META: Record<
+  JarKey,
+  { label: string; short: string; color: string }
+> = {
+  NEC: {
+    label: "Nécessités",
+    short: "NEC",
+    color: "#2563eb",
+  },
+  FFA: {
+    label: "Liberté financière",
+    short: "FFA",
+    color: "#16a34a",
+  },
+  LTSS: {
+    label: "Épargne long terme",
+    short: "LTSS",
+    color: "#7c3aed",
+  },
+  PLAY: {
+    label: "Fun / Play",
+    short: "PLAY",
+    color: "#f97316",
+  },
+  EDUC: {
+    label: "Éducation",
+    short: "EDUC",
+    color: "#e11d48",
+  },
+  GIFT: {
+    label: "Don / Gift",
+    short: "GIFT",
+    color: "#0ea5e9",
+  },
 };
 
-const JAR_COLORS: Record<keyof TotalsResponse["jars"], string> = {
-  NEC: "#3b82f6",  // bleu
-  FFA: "#22c55e",  // vert
-  LTSS: "#a855f7", // violet
-  PLAY: "#fb923c", // orange
-  EDUC: "#ec4899", // rose
-  GIFT: "#06b6d4", // turquoise
-};
+const DONUT_RADIUS = 58;
+const DONUT_CIRC = 2 * Math.PI * DONUT_RADIUS;
 
-function formatAmount(value: number | null | undefined): string {
-  if (value == null || isNaN(value)) return "0,00 €";
-  return new Intl.NumberFormat("fr-FR", {
+function formatMoney(v: number | undefined | null) {
+  if (v == null || isNaN(v)) return "0,00 €";
+  return v.toLocaleString("fr-FR", {
     style: "currency",
     currency: "EUR",
-    minimumFractionDigits: 2,
-  }).format(value);
+    maximumFractionDigits: 2,
+  });
 }
 
-function formatPercent(value: number | null | undefined): string {
-  if (value == null || isNaN(value)) return "—";
-  return `${(value * 100).toFixed(0)} %`;
+function formatPct(v: number | undefined | null) {
+  if (v == null || isNaN(v)) return "0,0 %";
+  return `${v.toFixed(1)} %`;
 }
 
-type State =
-  | { status: "idle" | "loading" }
-  | { status: "ready"; data: TotalsResponse }
-  | { status: "error"; message: string };
-
-const JarsView: React.FC = () => {
-  const [state, setState] = useState<State>({ status: "idle" });
+export default function JarsView() {
+  const [data, setData] = useState<TotalsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [animate, setAnimate] = useState(false);
 
   const load = async () => {
     try {
-      setState({ status: "loading" });
-      const data = await fetchTotals();
-      setState({ status: "ready", data });
+      setLoading(true);
+      setError(null);
+      setAnimate(false);
+      const res = await fetchTotals();
+      setData(res);
+      // on déclenche l’animation juste après le rendu
+      setTimeout(() => setAnimate(true), 40);
     } catch (e: any) {
       console.error(e);
-      setState({
-        status: "error",
-        message: e?.message || "Erreur inconnue",
-      });
+      setError(e.message || "Erreur inconnue");
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (state.status === "idle") {
-      void load();
-    }
-  }, [state.status]);
+    load();
+  }, []);
 
-  const isLoading = state.status === "loading" || state.status === "idle";
+  const totalRevenues = data?.totalRevenues ?? 0;
 
-  const totalRevenues =
-    state.status === "ready" ? state.data.totalRevenues || 0 : 0;
+  const jarList = useMemo(() => {
+    if (!data || !data.jars) return [];
+    return (Object.keys(JAR_META) as JarKey[])
+      .map((key) => {
+        const raw = data.jars?.[key];
+        if (!raw) return null;
+        return {
+          key,
+          ...JAR_META[key],
+          revenues: raw.revenues ?? 0,
+          spendings: raw.spendings ?? 0,
+          net: raw.net ?? 0,
+        };
+      })
+      .filter(Boolean) as Array<
+      {
+        key: JarKey;
+        label: string;
+        short: string;
+        color: string;
+        revenues: number;
+        spendings: number;
+        net: number;
+      }
+    >;
+  }, [data]);
+
+  const maxNetAbs = useMemo(() => {
+    if (!jarList.length) return 0;
+    return Math.max(...jarList.map((j) => Math.abs(j.net)));
+  }, [jarList]);
+
+  // Données pour le donut (répartition par jarre)
+  const donutSegments = useMemo(() => {
+    if (!jarList.length || totalRevenues <= 0) return [];
+    let acc = 0;
+    return jarList.map((jar) => {
+      const value = Math.max(0, jar.revenues);
+      const part = value / totalRevenues;
+      const length = part * DONUT_CIRC;
+      const seg = {
+        key: jar.key,
+        color: jar.color,
+        length,
+        offset: DONUT_CIRC - acc,
+      };
+      acc += length;
+      return seg;
+    });
+  }, [jarList, totalRevenues]);
+
+  // Barres : pour l’instant “par jarre” (alloc / dépensé),
+  // qu’on branchera plus tard sur de vraies données mensuelles.
+  const barData = useMemo(() => {
+    if (!jarList.length) return [];
+    const maxAllocated = Math.max(...jarList.map((j) => j.revenues || 0)) || 1;
+    return jarList.map((j) => ({
+      key: j.key,
+      label: j.label,
+      color: j.color,
+      allocated: j.revenues,
+      spent: j.spendings,
+      allocatedPct: (j.revenues / maxAllocated) * 100,
+      spentPct: (j.spendings / maxAllocated) * 100,
+    }));
+  }, [jarList]);
 
   return (
-    <div className="card jars-card">
-      <div className="jars-header">
-        <h2 className="card-title">Jarres</h2>
+    <main className="container jars-page">
+      <div className="page-header">
+        <h2>Jarres</h2>
         <button
           type="button"
-          className="btn-secondary"
+          className="secondary small"
           onClick={load}
-          disabled={isLoading}
+          disabled={loading}
         >
-          {isLoading ? "Chargement..." : "Rafraîchir"}
+          {loading ? "Rafraîchissement…" : "Rafraîchir"}
         </button>
       </div>
 
-      {state.status === "error" && (
-        <p className="error-text">Erreur : {state.message}</p>
+      {error && (
+        <p className="error-text" style={{ marginBottom: "1rem" }}>
+          {error}
+        </p>
       )}
 
-      {/* SECTION: DONUT + TOTAL */}
-      <div className="jars-top">
-        <div className="jars-total">
-          <p className="jars-total-label">Total des revenus suivis :</p>
-          <p className="jars-total-value">{formatAmount(totalRevenues)}</p>
+      {/* Bloc principal : total + donut + légende */}
+      <section className="glass-card jars-hero">
+        <div className="jars-hero-header">
+          <p className="jars-hero-label">Total des revenus suivis :</p>
+          <p className="jars-hero-total">
+            {totalRevenues > 0 ? formatMoney(totalRevenues) : "0,00 €"}
+          </p>
         </div>
 
-        {state.status === "ready" && totalRevenues > 0 && (
-          <JarDonut
-            totalRevenues={totalRevenues}
-            jars={state.data.jars}
-          />
-        )}
-      </div>
+        <div className="jars-hero-body">
+          <div className="donut-wrapper">
+            <svg
+              className="donut-svg"
+              viewBox="0 0 200 200"
+              role="img"
+              aria-label="Répartition des revenus par jarre"
+            >
+              {/* cercle de fond */}
+              <circle
+                className="donut-bg"
+                cx="100"
+                cy="100"
+                r={DONUT_RADIUS}
+              />
 
-      {/* LISTE DES JARRES */}
-      {state.status === "ready" && totalRevenues > 0 ? (
-        <div className="jars-grid">
-          {JAR_ORDER.map((key) => {
-            const jar = state.data.jars[key];
-            if (!jar) return null;
+              {/* segments */}
+              {donutSegments.map((seg) => (
+                <circle
+                  key={seg.key}
+                  className={`donut-segment ${
+                    animate ? "donut-segment-animate" : ""
+                  }`}
+                  cx="100"
+                  cy="100"
+                  r={DONUT_RADIUS}
+                  stroke={seg.color}
+                  strokeDasharray={`${seg.length} ${DONUT_CIRC}`}
+                  strokeDashoffset={
+                    animate ? seg.offset - seg.length : DONUT_CIRC
+                  }
+                />
+              ))}
 
-            const color = JAR_COLORS[key];
-            const rev = jar.revenues || 0;
-            const spent = jar.spendings || 0;
-            const net = jar.net || 0;
-            const targetPct = state.data.split?.[key] ?? jar.revPct ?? 0;
-            const usedPct = rev > 0 ? Math.min(Math.max(net / rev, -1), 1) : 0;
-
-            // couleur de barre en fonction du solde
-            let barClass = "jar-progress-bar-positive";
-            if (net < 0) {
-              barClass = "jar-progress-bar-negative";
-            } else if (Math.abs(net) < rev * 0.05) {
-              barClass = "jar-progress-bar-warning";
-            }
-
-            return (
-              <article
-                key={key}
-                className="jar-card"
-                style={{ ["--jar-color" as any]: color }}
+              {/* centre : libellé + total */}
+              <text
+                x="100"
+                y="94"
+                textAnchor="middle"
+                className="donut-center-label"
               >
-                <header className="jar-card-header">
-                  <div>
-                    <h3 className="jar-card-title">{JAR_LABELS[key]}</h3>
-                    <p className="jar-card-sub">
-                      {key} · {formatPercent(jar.revPct)}
-                    </p>
-                  </div>
-                  <span className="jar-pill">
-                    {formatPercent(targetPct)} du revenu
-                  </span>
-                </header>
+                Total
+              </text>
+              <text
+                x="100"
+                y="118"
+                textAnchor="middle"
+                className="donut-center-value"
+              >
+                {totalRevenues > 0 ? formatMoney(totalRevenues) : "0,00 €"}
+              </text>
+            </svg>
+          </div>
 
-                <dl className="jar-metrics">
-                  <div className="jar-metric">
-                    <dt>Alloué (revenus)</dt>
-                    <dd>{formatAmount(rev)}</dd>
-                  </div>
-                  <div className="jar-metric">
-                    <dt>Dépensé</dt>
-                    <dd>{formatAmount(spent)}</dd>
-                  </div>
-                  <div className="jar-metric">
-                    <dt>Solde</dt>
-                    <dd className={net < 0 ? "amount-negative" : ""}>
-                      {formatAmount(net)}
-                    </dd>
-                  </div>
-                </dl>
-
-                <div className="jar-progress">
-                  <div className="jar-progress-top">
-                    <span>Solde vs alloué</span>
-                    <span className="jar-progress-legend">
-                      {rev > 0 ? `${(usedPct * 100).toFixed(0)} %` : "—"}
+          <ul className="donut-legend">
+            {(Object.keys(JAR_META) as JarKey[]).map((key) => {
+              const meta = JAR_META[key];
+              const jar = jarList.find((j) => j.key === key);
+              const part =
+                totalRevenues > 0 && jar
+                  ? (jar.revenues / totalRevenues) * 100
+                  : data?.split?.[key]
+                  ? data.split[key] * 100
+                  : 0;
+              return (
+                <li key={key} className="donut-legend-item">
+                  <span
+                    className="donut-legend-dot"
+                    style={{ backgroundColor: meta.color }}
+                  />
+                  <div className="donut-legend-text">
+                    <span className="donut-legend-label">{meta.label}</span>
+                    <span className="donut-legend-pct">
+                      {formatPct(part)} du revenu
                     </span>
                   </div>
-                  <div className="jar-progress-track">
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </section>
+
+      {/* Graphique barres (alloc / dépensé) */}
+      {barData.length > 0 && (
+        <section className="glass-card jars-bars">
+          <header className="jars-bars-header">
+            <h3>Vue synthétique par jarre</h3>
+            <p>Montants cumulés alloués vs dépensés.</p>
+          </header>
+
+          <div className="jars-bars-grid">
+            {barData.map((row) => (
+              <div key={row.key} className="jars-bar-row">
+                <div className="jars-bar-label">{row.label}</div>
+                <div className="jars-bar-tracks">
+                  <div className="jars-bar-track">
                     <div
-                      className={`jar-progress-bar ${barClass}`}
+                      className="jars-bar-fill jars-bar-fill-allocated"
                       style={{
-                        ["--jar-progress" as any]: `${
-                          Math.max(0, Math.min(1, usedPct)) * 100
-                        }%`,
+                        width: `${Math.min(row.allocatedPct, 100)}%`,
+                        backgroundColor: row.color,
+                      }}
+                    />
+                  </div>
+                  <div className="jars-bar-track jars-bar-track-spent">
+                    <div
+                      className="jars-bar-fill jars-bar-fill-spent"
+                      style={{
+                        width: `${Math.min(row.spentPct, 100)}%`,
                       }}
                     />
                   </div>
                 </div>
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        !isLoading &&
-        state.status !== "error" && (
-          <p className="empty-text">
-            Aucune donnée de jarres pour le moment.
+                <div className="jars-bar-values">
+                  <span>{formatMoney(row.allocated)}</span>
+                  <span>Dépensé : {formatMoney(row.spent)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="jars-bars-hint">
+            On pourra ensuite brancher ce bloc sur une vraie vue mensuelle à
+            partir de l’historique.
           </p>
-        )
+        </section>
       )}
-    </div>
-  );
-};
 
-export default JarsView;
+      {/* Cartes détaillées jarre par jarre */}
+      <section className="jars-grid">
+        {jarList.map((jar) => {
+          const { key, label, short, color, revenues, spendings, net } = jar;
+          let pct = 0;
+          if (totalRevenues > 0) {
+            pct = (revenues / totalRevenues) * 100;
+          } else if (data?.split && data.split[key] != null) {
+            pct = data.split[key] * 100;
+          }
 
-/* ---------- Donut SVG ---------- */
-
-type JarDonutProps = {
-  totalRevenues: number;
-  jars: TotalsResponse["jars"];
-};
-
-const JarDonut: React.FC<JarDonutProps> = ({ totalRevenues, jars }) => {
-  const radius = 42;
-  const circumference = 2 * Math.PI * radius;
-
-  const segments = JAR_ORDER.map((key) => {
-    const jar = jars[key];
-    if (!jar) return null;
-    const value = Math.max(jar.revenues || 0, 0);
-    const fraction =
-      totalRevenues > 0 ? Math.max(0, Math.min(1, value / totalRevenues)) : 0;
-    return {
-      key,
-      color: JAR_COLORS[key],
-      fraction,
-    };
-  }).filter(Boolean) as Array<{
-    key: keyof TotalsResponse["jars"];
-    color: string;
-    fraction: number;
-  }>;
-
-  let cumulative = 0;
-
-  return (
-    <div className="jar-donut-wrapper">
-      <svg
-        viewBox="0 0 120 120"
-        className="jar-donut"
-        aria-hidden="true"
-        role="img"
-      >
-        <circle
-          className="jar-donut-track"
-          cx="60"
-          cy="60"
-          r={radius}
-          fill="transparent"
-        />
-        {segments.map((seg) => {
-          const dash = seg.fraction * circumference;
-          const dashArray = `${dash} ${circumference - dash}`;
-          const offset = -cumulative * circumference;
-          cumulative += seg.fraction;
+          const progress =
+            maxNetAbs > 0 ? Math.max(0, (Math.abs(net) / maxNetAbs) * 100) : 0;
 
           return (
-            <circle
-              key={seg.key}
-              className="jar-donut-segment"
-              cx="60"
-              cy="60"
-              r={radius}
-              fill="transparent"
-              stroke={seg.color}
-              strokeWidth={10}
-              strokeDasharray={dashArray}
-              strokeDashoffset={offset}
-              strokeLinecap="round"
-            />
+            <article
+              key={key}
+              className="jar-card glass-card"
+              style={{
+                borderTopColor: color,
+              }}
+            >
+              <header className="jar-card-header">
+                <div>
+                  <h3 className="jar-name">{label}</h3>
+                  <p className="jar-key">{short}</p>
+                </div>
+                <div className="jar-pct">
+                  {formatPct(pct)}{" "}
+                  <span className="jar-pct-label">du revenu</span>
+                </div>
+              </header>
+
+              <dl className="jar-stats">
+                <div>
+                  <dt>Alloué (revenus)</dt>
+                  <dd>{formatMoney(revenues)}</dd>
+                </div>
+                <div>
+                  <dt>Dépensé</dt>
+                  <dd>{formatMoney(spendings)}</dd>
+                </div>
+                <div>
+                  <dt>Solde</dt>
+                  <dd className={net < 0 ? "neg" : ""}>
+                    {formatMoney(net)}
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="jar-progress-row">
+                <span>Solde vs alloué</span>
+                <span className="jar-progress-pct">
+                  {revenues > 0
+                    ? `${Math.round((net / revenues) * 100)} %`
+                    : "—"}
+                </span>
+              </div>
+
+              <div className="jar-bar-wrapper">
+                <div className="jar-bar-bg" />
+                <div
+                  className={`jar-bar-fill ${net < 0 ? "neg" : ""}`}
+                  style={{
+                    width: `${Math.min(progress, 100)}%`,
+                    backgroundColor: color,
+                  }}
+                />
+              </div>
+            </article>
           );
         })}
-      </svg>
 
-      <div className="jar-donut-center">
-        <span className="jar-donut-center-label">Total</span>
-        <span className="jar-donut-center-value">
-          {formatAmount(totalRevenues)}
-        </span>
-      </div>
-
-      <ul className="jar-donut-legend">
-        {segments.map((seg) => (
-          <li key={seg.key} className="jar-donut-legend-item">
-            <span
-              className="jar-donut-legend-dot"
-              style={{ backgroundColor: seg.color }}
-            />
-            <span className="jar-donut-legend-label">
-              {JAR_LABELS[seg.key]}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
+        {!loading && !error && jarList.length === 0 && (
+          <p style={{ marginTop: "1rem", color: "#777" }}>
+            Aucune donnée de jarres pour le moment.
+          </p>
+        )}
+      </section>
+    </main>
   );
-};
+}
