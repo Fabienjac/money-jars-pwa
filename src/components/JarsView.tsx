@@ -1,4 +1,4 @@
-// src/components/JarsView.tsx
+// src/components/JarsView.tsx - VERSION OPTIMISÉE iOS
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchTotals } from "../api";
 import { TotalsResponse } from "../types";
@@ -12,32 +12,32 @@ const JAR_META: Record<
   NEC: {
     label: "Nécessités",
     short: "NEC",
-    color: "#2563eb",
+    color: "#007AFF",
   },
   FFA: {
     label: "Liberté financière",
     short: "FFA",
-    color: "#16a34a",
+    color: "#34C759",
   },
   LTSS: {
     label: "Épargne long terme",
     short: "LTSS",
-    color: "#7c3aed",
+    color: "#AF52DE",
   },
   PLAY: {
     label: "Fun / Play",
     short: "PLAY",
-    color: "#f97316",
+    color: "#FF9500",
   },
   EDUC: {
     label: "Éducation",
     short: "EDUC",
-    color: "#e11d48",
+    color: "#FF2D55",
   },
   GIFT: {
     label: "Don / Gift",
     short: "GIFT",
-    color: "#0ea5e9",
+    color: "#5AC8FA",
   },
 };
 
@@ -71,8 +71,7 @@ export default function JarsView() {
       setAnimate(false);
       const res = await fetchTotals();
       setData(res);
-      // on déclenche l’animation juste après le rendu
-      setTimeout(() => setAnimate(true), 40);
+      setTimeout(() => setAnimate(true), 100);
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Erreur inconnue");
@@ -101,8 +100,7 @@ export default function JarsView() {
           net: raw.net ?? 0,
         };
       })
-      .filter(Boolean) as Array<
-      {
+      .filter(Boolean) as Array<{
         key: JarKey;
         label: string;
         short: string;
@@ -110,8 +108,7 @@ export default function JarsView() {
         revenues: number;
         spendings: number;
         net: number;
-      }
-    >;
+      }>;
   }, [data]);
 
   const maxNetAbs = useMemo(() => {
@@ -119,7 +116,6 @@ export default function JarsView() {
     return Math.max(...jarList.map((j) => Math.abs(j.net)));
   }, [jarList]);
 
-  // Données pour le donut (répartition par jarre)
   const donutSegments = useMemo(() => {
     if (!jarList.length || totalRevenues <= 0) return [];
     let acc = 0;
@@ -138,8 +134,6 @@ export default function JarsView() {
     });
   }, [jarList, totalRevenues]);
 
-  // Barres : pour l’instant “par jarre” (alloc / dépensé),
-  // qu’on branchera plus tard sur de vraies données mensuelles.
   const barData = useMemo(() => {
     if (!jarList.length) return [];
     const maxAllocated = Math.max(...jarList.map((j) => j.revenues || 0)) || 1;
@@ -155,31 +149,27 @@ export default function JarsView() {
   }, [jarList]);
 
   return (
-    <main className="container jars-page">
+    <main className="jars-page">
       <div className="page-header">
         <h2>Jarres</h2>
         <button
           type="button"
-          className="secondary small"
+          className="secondary"
           onClick={load}
           disabled={loading}
         >
-          {loading ? "Rafraîchissement…" : "Rafraîchir"}
+          {loading ? "⟳" : "Rafraîchir"}
         </button>
       </div>
 
-      {error && (
-        <p className="error-text" style={{ marginBottom: "1rem" }}>
-          {error}
-        </p>
-      )}
+      {error && <p className="error-text">{error}</p>}
 
-      {/* Bloc principal : total + donut + légende */}
+      {/* Hero : Total + Donut */}
       <section className="glass-card jars-hero">
         <div className="jars-hero-header">
-          <p className="jars-hero-label">Total des revenus suivis :</p>
+          <p className="jars-hero-label">Total des revenus suivis</p>
           <p className="jars-hero-total">
-            {totalRevenues > 0 ? formatMoney(totalRevenues) : "0,00 €"}
+            {formatMoney(totalRevenues)}
           </p>
         </div>
 
@@ -191,7 +181,7 @@ export default function JarsView() {
               role="img"
               aria-label="Répartition des revenus par jarre"
             >
-              {/* cercle de fond */}
+              {/* Cercle de fond */}
               <circle
                 className="donut-bg"
                 cx="100"
@@ -199,25 +189,21 @@ export default function JarsView() {
                 r={DONUT_RADIUS}
               />
 
-              {/* segments */}
+              {/* Segments colorés */}
               {donutSegments.map((seg) => (
                 <circle
                   key={seg.key}
-                  className={`donut-segment ${
-                    animate ? "donut-segment-animate" : ""
-                  }`}
+                  className={`donut-segment ${animate ? "donut-segment-animate" : ""}`}
                   cx="100"
                   cy="100"
                   r={DONUT_RADIUS}
                   stroke={seg.color}
                   strokeDasharray={`${seg.length} ${DONUT_CIRC}`}
-                  strokeDashoffset={
-                    animate ? seg.offset - seg.length : DONUT_CIRC
-                  }
+                  strokeDashoffset={animate ? seg.offset - seg.length : DONUT_CIRC}
                 />
               ))}
 
-              {/* centre : libellé + total */}
+              {/* Texte central */}
               <text
                 x="100"
                 y="94"
@@ -266,12 +252,12 @@ export default function JarsView() {
         </div>
       </section>
 
-      {/* Graphique barres (alloc / dépensé) */}
+      {/* Graphique barres */}
       {barData.length > 0 && (
         <section className="glass-card jars-bars">
           <header className="jars-bars-header">
             <h3>Vue synthétique par jarre</h3>
-            <p>Montants cumulés alloués vs dépensés.</p>
+            <p>Montants cumulés alloués vs dépensés</p>
           </header>
 
           <div className="jars-bars-grid">
@@ -306,13 +292,12 @@ export default function JarsView() {
           </div>
 
           <p className="jars-bars-hint">
-            On pourra ensuite brancher ce bloc sur une vraie vue mensuelle à
-            partir de l’historique.
+            Vue mensuelle détaillée à venir
           </p>
         </section>
       )}
 
-      {/* Cartes détaillées jarre par jarre */}
+      {/* Cartes détaillées */}
       <section className="jars-grid">
         {jarList.map((jar) => {
           const { key, label, short, color, revenues, spendings, net } = jar;
@@ -329,7 +314,7 @@ export default function JarsView() {
           return (
             <article
               key={key}
-              className="jar-card glass-card"
+              className="jar-card"
               style={{
                 borderTopColor: color,
               }}
@@ -340,14 +325,14 @@ export default function JarsView() {
                   <p className="jar-key">{short}</p>
                 </div>
                 <div className="jar-pct">
-                  {formatPct(pct)}{" "}
+                  {formatPct(pct)}
                   <span className="jar-pct-label">du revenu</span>
                 </div>
               </header>
 
               <dl className="jar-stats">
                 <div>
-                  <dt>Alloué (revenus)</dt>
+                  <dt>Alloué</dt>
                   <dd>{formatMoney(revenues)}</dd>
                 </div>
                 <div>
@@ -372,7 +357,6 @@ export default function JarsView() {
               </div>
 
               <div className="jar-bar-wrapper">
-                <div className="jar-bar-bg" />
                 <div
                   className={`jar-bar-fill ${net < 0 ? "neg" : ""}`}
                   style={{
@@ -386,7 +370,7 @@ export default function JarsView() {
         })}
 
         {!loading && !error && jarList.length === 0 && (
-          <p style={{ marginTop: "1rem", color: "#777" }}>
+          <p style={{ marginTop: "1rem", color: "var(--text-muted)" }}>
             Aucune donnée de jarres pour le moment.
           </p>
         )}

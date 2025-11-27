@@ -1,792 +1,876 @@
+/* ========================================
+   MONEY JARS - CSS OPTIMISÉ iOS SAFARI
+   ======================================== */
+
 :root {
-  --bg-body: #f3f4f6;
+  /* Couleurs mode clair */
+  --bg-body: #f5f5f7;
   --bg-card: #ffffff;
-  --bg-card-soft: #f9fafb;
-  --text-main: #020617;
-  --text-muted: #6b7280;
-  --text-soft: #9ca3af;
-  --text-strong: #020617;
-  --accent: #0f172a;
-  --accent-soft: #e5e7eb;
-  --accent-strong: #0f172a;
-  --border-subtle: #e5e7eb;
-  --shadow-soft: 0 20px 40px rgba(15, 23, 42, 0.12);
-
-  --jar-nec: #2563eb;
-  --jar-ffa: #22c55e;
-  --jar-ltss: #a855f7;
-  --jar-play: #f97316;
-  --jar-educ: #ec4899;
-  --jar-gift: #06b6d4;
-
-  --danger: #ef4444;
-  --danger-soft: rgba(248, 113, 113, 0.1);
+  --text-main: #1d1d1f;
+  --text-muted: #6e6e73;
+  --text-light: #86868b;
+  
+  /* Couleurs des jarres */
+  --jar-nec: #007AFF;
+  --jar-ffa: #34C759;
+  --jar-ltss: #AF52DE;
+  --jar-play: #FF9500;
+  --jar-educ: #FF2D55;
+  --jar-gift: #5AC8FA;
+  
+  /* Bordures et ombres */
+  --border-color: rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
-[data-theme="dark"] {
-  --bg-body: #020617;
-  --bg-card: #020617;
-  --bg-card-soft: #020617;
-  --text-main: #e5e7eb;
-  --text-muted: #9ca3af;
-  --text-soft: #6b7280;
-  --text-strong: #f9fafb;
-  --accent: #f9fafb;
-  --accent-soft: #111827;
-  --accent-strong: #f9fafb;
-  --border-subtle: rgba(148, 163, 184, 0.35);
-  --shadow-soft: 0 24px 60px rgba(15, 23, 42, 0.7);
+.dark {
+  --bg-body: #000000;
+  --bg-card: #1c1c1e;
+  --text-main: #f5f5f7;
+  --text-muted: #98989d;
+  --text-light: #636366;
+  --border-color: rgba(255, 255, 255, 0.15);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-/* Reset */
+/* ========================================
+   RESET & BASE
+   ======================================== */
 
-*,
-*::before,
-*::after {
+*, *::before, *::after {
   box-sizing: border-box;
-}
-
-html,
-body,
-#root {
   margin: 0;
   padding: 0;
-  height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Helvetica Neue", sans-serif;
-  background: radial-gradient(circle at top, #e5e7eb 0, #f3f4f6 40%, #e5e7eb 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg-body);
   color: var(--text-main);
+  line-height: 1.5;
+  overflow-x: hidden;
+  /* CRITIQUE pour iOS : éviter le zoom sur les inputs */
+  font-size: 16px;
 }
 
-/* App shell */
+/* ========================================
+   SAFE AREA iOS (notch + barre home)
+   ======================================== */
 
-.app {
+.app-shell {
   min-height: 100vh;
-  background: radial-gradient(circle at 0 0, #e5e7eb 0, #f9fafb 38%, #e5e7eb 100%);
-  color: var(--text-main);
-  padding: 1.25rem;
+  min-height: 100dvh; /* Dynamic viewport height pour iOS */
+  display: flex;
+  flex-direction: column;
+  /* Padding pour safe area */
+  padding-top: max(env(safe-area-inset-top), 12px);
+  padding-bottom: max(env(safe-area-inset-bottom), 12px);
+  padding-left: max(env(safe-area-inset-left), 16px);
+  padding-right: max(env(safe-area-inset-right), 16px);
 }
 
-.app-inner {
-  max-width: 960px;
-  margin: 0 auto;
-}
-
-/* Header */
+/* ========================================
+   HEADER
+   ======================================== */
 
 .app-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 1.5rem;
-  margin-bottom: 1.75rem;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.app-title-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+.app-header-left {
+  flex: 1;
 }
 
 .app-title {
-  font-size: clamp(1.75rem, 3.2vw, 2.1rem);
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: var(--accent-strong);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text-main);
+  margin-bottom: 4px;
 }
 
 .app-subtitle {
-  font-size: 0.95rem;
+  font-size: 14px;
   color: var(--text-muted);
+  line-height: 1.4;
 }
 
-/* Dark mode toggle */
-
+/* Bouton dark mode */
 .theme-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-shrink: 0;
   width: 44px;
   height: 44px;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: radial-gradient(circle at 0 0, #fefce8 0, #f97316 50%, #facc15 100%);
-  color: #fefce8;
-  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.25);
-  cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease;
-}
-
-.theme-toggle:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.3);
-}
-
-/* Tabs */
-
-.tabs {
+  border-radius: 22px;
+  border: none;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  font-size: 20px;
   display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  /* Taille tactile iOS minimum */
+  min-width: 44px;
+  min-height: 44px;
 }
 
-.tab {
-  flex: 0 0 auto;
-  padding: 0.7rem 1.6rem;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: var(--bg-card-soft);
-  color: var(--text-muted);
-  font-size: 0.92rem;
+.theme-toggle:active {
+  transform: scale(0.95);
+}
+
+/* ========================================
+   NAVIGATION TABS
+   ======================================== */
+
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding-bottom: 4px;
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-btn {
+  flex: 1;
+  min-width: max-content;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: none;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 15px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 120ms ease;
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.1);
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-sm);
+  white-space: nowrap;
+  /* Taille tactile iOS */
+  min-height: 44px;
 }
 
-.tab:hover {
-  background: #f1f5f9;
-  color: var(--accent-strong);
+.tab-btn:active {
+  transform: scale(0.97);
 }
 
-.tab.active {
-  background: linear-gradient(135deg, #020617, #111827);
-  color: #f9fafb;
-  border-color: rgba(15, 23, 42, 0.85);
-  box-shadow: 0 16px 45px rgba(15, 23, 42, 0.65);
+.tab-btn.active {
+  background: var(--text-main);
+  color: var(--bg-body);
+  box-shadow: var(--shadow-md);
 }
 
-/* Card layout */
+/* ========================================
+   PAGE CONTAINER
+   ======================================== */
 
-.card {
+.page {
+  flex: 1;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* ========================================
+   CARDS
+   ======================================== */
+
+.card, .history-card {
   background: var(--bg-card);
-  border-radius: 1.5rem;
-  padding: 1.5rem;
-  box-shadow: var(--shadow-soft);
-  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 16px;
 }
 
-/* Forms */
+/* ========================================
+   FORMS
+   ======================================== */
 
-.form-grid {
-  display: grid;
-  gap: 1rem;
-}
-
-@media (min-width: 720px) {
-  .form-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.form-field {
+.form {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 16px;
 }
 
-.form-label {
-  font-size: 0.85rem;
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field > span {
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-muted);
 }
 
-.form-input,
-.form-select {
-  border-radius: 0.9rem;
-  border: 1px solid var(--border-subtle);
-  padding: 0.6rem 0.8rem;
-  font-size: 0.95rem;
-  background: #f9fafb;
+input[type="text"],
+input[type="number"],
+input[type="date"],
+select {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
   color: var(--text-main);
+  /* CRITIQUE : éviter le zoom automatique sur iOS */
+  font-size: 16px;
+  transition: border-color 0.2s ease;
+  /* Taille tactile */
+  min-height: 44px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input:focus,
+select:focus {
   outline: none;
-  transition: border-color 100ms ease, box-shadow 100ms ease, background 100ms ease;
+  border-color: var(--jar-nec);
 }
 
-.form-input:focus,
-.form-select:focus {
-  border-color: rgba(37, 99, 235, 0.8);
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
-  background: #ffffff;
+select {
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%236e6e73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 40px;
 }
 
-.form-row-inline {
-  display: flex;
-  gap: 0.6rem;
-  align-items: center;
-}
+/* ========================================
+   BUTTONS
+   ======================================== */
 
-/* Radio group */
-
-.radio-group {
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1rem;
-}
-
-.radio-option {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.95rem;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.radio-input {
-  width: 16px;
-  height: 16px;
-}
-
-/* Buttons */
-
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.7rem 1.3rem;
-  border-radius: 999px;
+.primary,
+.primary-btn,
+button[type="submit"] {
+  width: 100%;
+  padding: 14px 20px;
+  border-radius: 12px;
   border: none;
-  background: linear-gradient(135deg, #0f172a, #111827);
-  color: #f9fafb;
-  font-size: 0.95rem;
+  background: var(--text-main);
+  color: var(--bg-body);
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.75);
-  transition: transform 100ms ease, box-shadow 100ms ease;
+  transition: all 0.2s ease;
+  /* Taille tactile */
+  min-height: 50px;
 }
 
-.btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.78);
+.primary:active {
+  transform: scale(0.98);
 }
 
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.55rem 1.1rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-card-soft);
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondary,
+.secondary-btn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
   color: var(--text-main);
-  font-size: 0.85rem;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  transition: all 0.2s ease;
+  min-height: 36px;
 }
 
-.btn-secondary:hover {
-  background: #e5e7eb;
+.secondary-btn.small {
+  padding: 6px 12px;
+  font-size: 13px;
+  min-height: 32px;
 }
 
-/* History table */
-
-.table-wrapper {
-  margin-top: 1.5rem;
-  border-radius: 1.25rem;
-  border: 1px solid var(--border-subtle);
-  overflow: hidden;
-  background: var(--bg-card);
-  box-shadow: var(--shadow-soft);
+.secondary:active,
+.secondary-btn:active {
+  transform: scale(0.97);
+  background: var(--border-color);
 }
 
-.table {
+/* ========================================
+   HISTORIQUE
+   ======================================== */
+
+.toggle-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.toggle-row label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 10px;
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.toggle-row label:active {
+  background: var(--border-color);
+}
+
+.toggle-row input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.field-group {
+  margin-bottom: 16px;
+}
+
+.history-filters-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.history-summary {
+  padding: 16px;
+  background: var(--border-color);
+  border-radius: 12px;
+  margin-top: 16px;
+  font-size: 15px;
+  color: var(--text-main);
+}
+
+.history-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-top: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.history-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
+  font-size: 14px;
 }
 
-.table thead {
-  background: #f3f4f6;
-}
-
-.table th,
-.table td {
-  padding: 0.75rem 1rem;
-  text-align: left;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.table th {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-soft);
-}
-
-.table tbody tr:hover {
-  background: #f9fafb;
-}
-
-/* ---------- Jarres ---------- */
-
-.jars-section {
-  margin-top: 1.75rem;
-}
-
-/* Bandeau total + donut */
-
-.jars-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 1.75rem;
-  align-items: stretch;
-  margin-bottom: 2.5rem;
-}
-
-@media (min-width: 900px) {
-  .jars-summary {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-}
-
-.jars-summary-main {
-  flex: 1 1 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.jars-total-label {
-  font-size: 1rem;
-  color: var(--text-muted);
-}
-
-.jars-total-value {
-  font-size: clamp(2.1rem, 4vw, 2.6rem);
-  font-weight: 800;
-  letter-spacing: 0.03em;
-  color: var(--text-strong);
-}
-
-.jars-summary-chart {
-  flex: 1 1 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1.75rem;
-  flex-wrap: wrap;
-}
-
-/* Donut "glass" */
-
-.jars-donut-wrapper {
-  position: relative;
-  width: min(220px, 55vw);
-  aspect-ratio: 1 / 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* donut visible partout, y compris Safari iOS */
-.jars-donut {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 999px;
-  background:
-    conic-gradient(
-      var(--jar-nec) 0deg 126deg,
-      var(--jar-ffa) 126deg 198deg,
-      var(--jar-ltss) 198deg 252deg,
-      var(--jar-play) 252deg 288deg,
-      var(--jar-educ) 288deg 342deg,
-      var(--jar-gift) 342deg 360deg
-    );
-  transform: rotate(-90deg) scale(0.85);
-  opacity: 0;
-  animation: donut-in 900ms ease-out forwards;
-  box-shadow:
-    0 18px 45px rgba(15, 23, 42, 0.25),
-    0 0 0 1px rgba(148, 163, 184, 0.4);
-}
-
-/* fallback si conic-gradient n’est pas supporté */
-@supports not (background: conic-gradient(#000, #fff)) {
-  .jars-donut {
-    background: radial-gradient(circle, var(--jar-nec) 0 52%, #f9fafb 55% 100%);
-  }
-}
-
-.jars-donut::before {
-  content: "";
-  position: absolute;
-  inset: 19%;
-  background: radial-gradient(
-      circle at 30% 0%,
-      rgba(255, 255, 255, 0.4),
-      transparent 55%
-    ),
-    rgba(248, 250, 252, 0.92);
-  border-radius: inherit;
-  box-shadow:
-    inset 0 0 0 1px rgba(148, 163, 184, 0.18),
-    0 12px 35px rgba(15, 23, 42, 0.35);
-}
-
-.jars-donut-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  transform: rotate(90deg);
-  pointer-events: none;
-}
-
-.jars-donut-center-label {
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
-}
-
-.jars-donut-center-value {
-  margin-top: 0.1rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-strong);
-}
-
-.jars-donut-legend {
-  min-width: 170px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  font-size: 0.9rem;
-}
-
-.jars-donut-legend-item {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  color: var(--text-muted);
-}
-
-.jars-donut-dot {
-  width: 0.9rem;
-  height: 0.9rem;
-  border-radius: 999px;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.18);
-}
-
-/* Grid de cartes */
-
-.jars-grid {
-  display: grid;
-  gap: 1.2rem;
-}
-
-@media (min-width: 900px) {
-  .jars-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-/* Cartes glassmorphism */
-
-.jar-card {
-  position: relative;
-  overflow: hidden;
-  border-radius: 1.35rem;
-  padding: 1.3rem 1.5rem 1.2rem;
-  background: linear-gradient(
-      135deg,
-      rgba(15, 23, 42, 0.88),
-      rgba(15, 23, 42, 0.78)
-    );
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  box-shadow:
-    0 22px 55px rgba(15, 23, 42, 0.65),
-    0 0 0 1px rgba(15, 23, 42, 0.35);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  color: #e5e7eb;
-}
-
-.jar-card::before {
-  content: "";
-  position: absolute;
-  inset: -40%;
-  background: radial-gradient(
-      circle at 0% 0%,
-      rgba(59, 130, 246, 0.18),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at 100% 100%,
-      rgba(52, 211, 153, 0.18),
-      transparent 50%
-    );
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-.jar-card-inner {
-  position: relative;
+.history-table thead {
+  background: var(--border-color);
+  position: sticky;
+  top: 0;
   z-index: 1;
 }
 
-/* Header de carte */
-
-.jar-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.7rem;
-}
-
-.jar-title-row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.jar-name {
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-}
-
-.jar-code {
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.2em;
-  color: rgba(148, 163, 184, 0.95);
-}
-
-.jar-percentage-badge {
-  padding: 0.3rem 0.75rem;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  color: #f9fafb;
-  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.6);
+.history-table th,
+.history-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
   white-space: nowrap;
 }
 
-/* Infos sous le titre */
-
-.jar-label-row {
-  font-size: 0.9rem;
-  color: rgba(209, 213, 219, 0.9);
-  margin-bottom: 0.75rem;
+.history-table th {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
 }
 
-/* Stats 3 colonnes bien centrées */
+.history-table tbody tr:last-child td {
+  border-bottom: none;
+}
 
+/* ========================================
+   JARRES VIEW - LAYOUT PRINCIPAL
+   ======================================== */
+
+.jars-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.page-header h2 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--shadow-md);
+}
+
+/* ========================================
+   JARRES - HERO (Total + Donut)
+   ======================================== */
+
+.jars-hero-header {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.jars-hero-label {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.jars-hero-total {
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -1px;
+}
+
+.jars-hero-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+
+/* ========================================
+   DONUT SVG - FIX pour le noir sur iOS
+   ======================================== */
+
+.donut-wrapper {
+  width: 240px;
+  height: 240px;
+  position: relative;
+}
+
+.donut-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.donut-bg {
+  fill: none;
+  stroke: var(--border-color);
+  stroke-width: 32;
+}
+
+.donut-segment {
+  fill: none;
+  stroke-width: 32;
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.donut-segment-animate {
+  /* L'animation est gérée via strokeDashoffset dans le JSX */
+}
+
+.donut-center-label {
+  font-size: 12px;
+  font-weight: 500;
+  fill: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.donut-center-value {
+  font-size: 18px;
+  font-weight: 700;
+  fill: var(--text-main);
+}
+
+/* ========================================
+   DONUT LEGEND
+   ======================================== */
+
+.donut-legend {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.donut-legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.donut-legend-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.donut-legend-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.donut-legend-pct {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ========================================
+   JARRES - BARRES SYNTHÉTIQUES
+   ======================================== */
+
+.jars-bars {
+  margin-top: 20px;
+}
+
+.jars-bars-header {
+  margin-bottom: 20px;
+}
+
+.jars-bars-header h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 4px;
+}
+
+.jars-bars-header p {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.jars-bars-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.jars-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jars-bar-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.jars-bar-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.jars-bar-track {
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.jars-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+.jars-bar-fill-spent {
+  background: var(--text-muted);
+  opacity: 0.6;
+}
+
+.jars-bar-values {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.jars-bars-hint {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--text-light);
+  font-style: italic;
+  text-align: center;
+}
+
+/* ========================================
+   JARRES - CARTES DÉTAILLÉES
+   ======================================== */
+
+.jars-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.jar-card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--shadow-md);
+  /* FIX CRITIQUE : bordure colorée en haut au lieu du gros bloc */
+  border-top: 4px solid var(--jar-nec);
+  position: relative;
+  overflow: hidden;
+}
+
+.jar-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.jar-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 2px;
+}
+
+.jar-key {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+.jar-pct {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+  text-align: right;
+}
+
+.jar-pct-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Stats grid */
 .jar-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 0.8rem;
-  row-gap: 0.25rem;
-  align-items: end;
-  margin-bottom: 0.95rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.jar-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .jar-stats dt {
-  font-size: 0.78rem;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: rgba(148, 163, 184, 0.9);
-  text-align: center;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .jar-stats dd {
-  font-size: 1.02rem;
+  font-size: 16px;
   font-weight: 600;
-  text-align: center;
-  color: #f9fafb;
+  color: var(--text-main);
 }
 
 .jar-stats dd.neg {
-  color: #f97373;
+  color: var(--jar-educ);
 }
 
-/* Barre solde / alloué */
-
-.jar-bar-wrapper {
-  margin-top: 0.15rem;
-  margin-bottom: 0.7rem;
-}
-
-.jar-bar-label-row {
+/* Progress row */
+.jar-progress-row {
   display: flex;
-  align-items: baseline;
   justify-content: space-between;
-  font-size: 0.83rem;
-  color: rgba(209, 213, 219, 0.95);
-  margin-bottom: 0.3rem;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
 }
 
-.jar-bar-bg {
+.jar-progress-row span:first-child {
+  color: var(--text-muted);
+}
+
+.jar-progress-pct {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+/* Progress bar */
+.jar-bar-wrapper {
   position: relative;
-  width: 100%;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.9);
-  box-shadow:
-    inset 0 0 0 1px rgba(15, 23, 42, 0.9),
-    0 8px 18px rgba(15, 23, 42, 0.9);
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
   overflow: hidden;
 }
 
 .jar-bar-fill {
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--jar-color), rgba(34, 197, 94, 0.15));
-  transform-origin: left center;
-  transform: scaleX(0);
-  animation: bar-fill 900ms ease-out forwards;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
 }
 
-.jar-equilibrium {
-  margin-top: 0.45rem;
-  font-size: 0.8rem;
-  color: rgba(148, 163, 184, 0.9);
+.jar-bar-fill.neg {
+  opacity: 0.7;
 }
 
-.jar-equilibrium span {
-  font-weight: 600;
-  color: #e5e7eb;
-}
-
-/* Footer */
-
-.jar-footer-row {
-  margin-top: 0.3rem;
-  font-size: 0.78rem;
-  color: rgba(148, 163, 184, 0.9);
-}
-
-/* Animations */
-
-@keyframes donut-in {
-  from {
-    opacity: 0;
-    transform: rotate(-90deg) scale(0.6);
-  }
-  to {
-    opacity: 1;
-    transform: rotate(-90deg) scale(0.85);
-  }
-}
-
-@keyframes bar-fill {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(var(--jar-fill, 1));
-  }
-}
-
-/* ---------- Messages ---------- */
-
-.message {
-  margin-top: 1rem;
-  font-size: 0.9rem;
-  color: var(--text-muted);
-}
-
-.message.error {
-  color: var(--danger);
-  background: var(--danger-soft);
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
-}
-
-/* Footer */
+/* ========================================
+   FOOTER
+   ======================================== */
 
 .app-footer {
-  margin-top: 2.5rem;
+  margin-top: auto;
+  padding-top: 24px;
   text-align: center;
-  font-size: 0.8rem;
-  color: var(--text-soft);
+  font-size: 12px;
+  color: var(--text-light);
 }
 
-/* ---------- Responsive iPhone / Safari ---------- */
+/* ========================================
+   MESSAGES & ERREURS
+   ======================================== */
 
-@media (max-width: 640px) {
-  .app {
-    padding: 0.8rem;
+.form-message {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  text-align: center;
+  background: var(--border-color);
+  color: var(--text-main);
+}
+
+.error-text {
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  background: rgba(255, 45, 85, 0.1);
+  color: var(--jar-educ);
+  border: 1px solid rgba(255, 45, 85, 0.3);
+}
+
+/* ========================================
+   RESPONSIVE - TABLETTE / DESKTOP
+   ======================================== */
+
+@media (min-width: 768px) {
+  .jars-hero-body {
+    flex-direction: row;
+    justify-content: space-around;
   }
-
-  .app-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
+  
+  .donut-wrapper {
+    width: 280px;
+    height: 280px;
   }
-
-  .tabs {
-    flex-wrap: wrap;
+  
+  .donut-legend {
+    max-width: 300px;
   }
-
-  .jars-summary {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1.25rem;
-  }
-
-  .jars-summary-chart {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .jars-donut-wrapper {
-    width: min(200px, 70vw);
-  }
-
-  .jars-donut {
-    transform: rotate(-90deg) scale(0.9);
-  }
-
-  /* 1 seule colonne pour les jarres */
+  
   .jars-grid {
-    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
   }
+  
+  .app-shell {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
 
-  .jar-card {
-    padding: 1rem 1.1rem 1rem;
-  }
+/* ========================================
+   FIX SPÉCIFIQUES iOS SAFARI
+   ======================================== */
 
-  /* stats plus lisibles sur petit écran */
-  .jar-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    row-gap: 0.6rem;
-  }
+/* Éviter le bounce scroll sur le body */
+body {
+  overscroll-behavior-y: none;
+}
 
-  .jar-stats dt,
-  .jar-stats dd {
-    text-align: left;
-  }
+/* Smooth scroll sur les containers scrollables */
+.tab-bar,
+.history-table-wrapper {
+  -webkit-overflow-scrolling: touch;
+}
 
-  /* Corrige les énormes bandes de couleur sur iPhone :
-     le bloc coloré (1er enfant) devient une fine barre au-dessus de la carte */
-  .jars-grid > div:has(.jar-card) {
-    display: flex;
-    flex-direction: column;
-    gap: 0.45rem;
-    border-radius: 1.5rem;
-  }
+/* Fix pour les inputs en mode sombre iOS */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text-main);
+  -webkit-box-shadow: 0 0 0 1000px var(--bg-card) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
 
-  .jars-grid > div:has(.jar-card) > :first-child {
-    width: 100% !important;
-    height: 6px !important;
-    border-radius: 999px;
-  }
+/* Améliorer le tap highlight */
+button,
+input,
+select,
+a {
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Fix pour le sticky header des tableaux sur iOS */
+.history-table thead {
+  background: var(--bg-card);
+}
+
+.dark .history-table thead {
+  background: var(--bg-card);
 }
