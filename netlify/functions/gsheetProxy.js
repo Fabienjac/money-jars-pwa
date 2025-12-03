@@ -1,6 +1,5 @@
 // netlify/functions/gsheetProxy.js
 
-// Fonction serverless Netlify qui fait proxy vers ton Google Apps Script
 exports.handler = async (event) => {
   try {
     const baseUrl = process.env.GSCRIPT_URL;
@@ -13,27 +12,59 @@ exports.handler = async (event) => {
       };
     }
 
-    // Reconstruire l’URL de destination
-    const url = new URL(baseUrl);
+    let response;
 
-    // Copier les query params reçus (action, q, max, etc.)
-    const incoming = event.queryStringParameters || {};
-    for (const [k, v] of Object.entries(incoming)) {
-      if (v != null) url.searchParams.set(k, v);
+    // === CAS 1 : appels POST (append + search) ===
+    if (event.httpMethod === "POST") {
+      let body = {};
+
+      if (event.body) {
+        try {
+          body = JSON.parse(event.body);
+        } catch (e) {
+          console.error("Invalid JSON body from client:", e);
+          return {
+            statusCode: 400,
+            body: JSON.stringify({ error: "invalid_json_body" }),
+          };
+        }
+      }
+
+      // On force la clé côté serveur (on ne fait pas confiance au front)
+      if (apiKey) {
+        body.key = apiKey;
+      }
+
+      response = await fetch(baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
     }
 
-    // Forcer la clé secrète côté serveur (on ne fait pas confiance au front)
-    if (apiKey) {
-      url.searchParams.set("key", apiKey);
-    }
+    // === CAS 2 : appels GET (totals, ou autres) ===
+    else {
+      const url = new URL(baseUrl);
 
-    // Appel à ton Apps Script (Node 18 sur Netlify → fetch global dispo)
-    const response = await fetch(url.toString(), {
-      method: "GET",
-    });
+      const incoming = event.queryStringParameters || {};
+      for (const [k, v] of Object.entries(incoming)) {
+        if (v != null) url.searchParams.set(k, v);
+      }
+
+      if (apiKey) {
+        url.searchParams.set("key", apiKey);
+      }
+
+      response = await fetch(url.toString(), {
+        method: "GET",
+      });
+    }
 
     const text = await response.text();
-    const contentType = response.headers.get("content-type") || "application/json";
+    const contentType =
+      response.headers.get("content-type") || "application/json";
 
     return {
       statusCode: response.status,
