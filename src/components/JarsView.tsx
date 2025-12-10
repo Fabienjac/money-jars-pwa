@@ -1,4 +1,4 @@
-// src/components/JarsView.tsx - VERSION OPTIMISÉE iOS
+// src/components/JarsView.tsx - VERSION MODERNE GLASSMORPHISM
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchTotals } from "../api";
 import { TotalsResponse } from "../types";
@@ -7,37 +7,43 @@ type JarKey = "NEC" | "FFA" | "LTSS" | "PLAY" | "EDUC" | "GIFT";
 
 const JAR_META: Record<
   JarKey,
-  { label: string; short: string; color: string }
+  { label: string; short: string; color: string; bgColor: string }
 > = {
   NEC: {
     label: "Nécessités",
     short: "NEC",
-    color: "#007AFF",
+    color: "#3b82f6",
+    bgColor: "#dbeafe",
   },
   FFA: {
-    label: "Liberté financière",
+    label: "Liberté Financière",
     short: "FFA",
-    color: "#34C759",
+    color: "#10b981",
+    bgColor: "#d1fae5",
   },
   LTSS: {
-    label: "Épargne long terme",
+    label: "Épargne Long Terme",
     short: "LTSS",
-    color: "#AF52DE",
+    color: "#a855f7",
+    bgColor: "#f3e8ff",
   },
   PLAY: {
     label: "Fun / Play",
     short: "PLAY",
-    color: "#FF9500",
+    color: "#f59e0b",
+    bgColor: "#fef3c7",
   },
   EDUC: {
     label: "Éducation",
     short: "EDUC",
-    color: "#FF2D55",
+    color: "#ec4899",
+    bgColor: "#fce7f3",
   },
   GIFT: {
     label: "Don / Gift",
     short: "GIFT",
-    color: "#5AC8FA",
+    color: "#06b6d4",
+    bgColor: "#cffafe",
   },
 };
 
@@ -105,15 +111,16 @@ export default function JarsView() {
         label: string;
         short: string;
         color: string;
+        bgColor: string;
         revenues: number;
         spendings: number;
         net: number;
       }>;
   }, [data]);
 
-  const maxNetAbs = useMemo(() => {
+  const maxRevenue = useMemo(() => {
     if (!jarList.length) return 0;
-    return Math.max(...jarList.map((j) => Math.abs(j.net)));
+    return Math.max(...jarList.map((j) => j.revenues));
   }, [jarList]);
 
   const donutSegments = useMemo(() => {
@@ -134,24 +141,10 @@ export default function JarsView() {
     });
   }, [jarList, totalRevenues]);
 
-  const barData = useMemo(() => {
-    if (!jarList.length) return [];
-    const maxAllocated = Math.max(...jarList.map((j) => j.revenues || 0)) || 1;
-    return jarList.map((j) => ({
-      key: j.key,
-      label: j.label,
-      color: j.color,
-      allocated: j.revenues,
-      spent: j.spendings,
-      allocatedPct: (j.revenues / maxAllocated) * 100,
-      spentPct: (j.spendings / maxAllocated) * 100,
-    }));
-  }, [jarList]);
-
   return (
     <main className="jars-page">
       <div className="page-header">
-        <h2>Jarres</h2>
+        <h2>Mes Jars</h2>
         <button
           type="button"
           className="secondary"
@@ -164,16 +157,15 @@ export default function JarsView() {
 
       {error && <p className="error-text">{error}</p>}
 
-      {/* Hero : Total + Donut */}
+      {/* Hero Section */}
       <section className="glass-card jars-hero">
         <div className="jars-hero-header">
           <p className="jars-hero-label">Total des revenus suivis</p>
-          <p className="jars-hero-total">
-            {formatMoney(totalRevenues)}
-          </p>
+          <p className="jars-hero-total">{formatMoney(totalRevenues)}</p>
         </div>
 
         <div className="jars-hero-body">
+          {/* Donut Chart */}
           <div className="donut-wrapper">
             <svg
               className="donut-svg"
@@ -181,15 +173,8 @@ export default function JarsView() {
               role="img"
               aria-label="Répartition des revenus par jarre"
             >
-              {/* Cercle de fond */}
-              <circle
-                className="donut-bg"
-                cx="100"
-                cy="100"
-                r={DONUT_RADIUS}
-              />
+              <circle className="donut-bg" cx="100" cy="100" r={DONUT_RADIUS} />
 
-              {/* Segments colorés */}
               {donutSegments.map((seg) => (
                 <circle
                   key={seg.key}
@@ -203,26 +188,16 @@ export default function JarsView() {
                 />
               ))}
 
-              {/* Texte central */}
-              <text
-                x="100"
-                y="94"
-                textAnchor="middle"
-                className="donut-center-label"
-              >
-                Total
+              <text x="100" y="94" textAnchor="middle" className="donut-center-label">
+                TOTAL
               </text>
-              <text
-                x="100"
-                y="118"
-                textAnchor="middle"
-                className="donut-center-value"
-              >
+              <text x="100" y="118" textAnchor="middle" className="donut-center-value">
                 {totalRevenues > 0 ? formatMoney(totalRevenues) : "0,00 €"}
               </text>
             </svg>
           </div>
 
+          {/* Legend */}
           <ul className="donut-legend">
             {(Object.keys(JAR_META) as JarKey[]).map((key) => {
               const meta = JAR_META[key];
@@ -241,9 +216,7 @@ export default function JarsView() {
                   />
                   <div className="donut-legend-text">
                     <span className="donut-legend-label">{meta.label}</span>
-                    <span className="donut-legend-pct">
-                      {formatPct(part)} du revenu
-                    </span>
+                    <span className="donut-legend-pct">{formatPct(part)}</span>
                   </div>
                 </li>
               );
@@ -252,55 +225,11 @@ export default function JarsView() {
         </div>
       </section>
 
-      {/* Graphique barres */}
-      {barData.length > 0 && (
-        <section className="glass-card jars-bars">
-          <header className="jars-bars-header">
-            <h3>Vue synthétique par jarre</h3>
-            <p>Montants cumulés alloués vs dépensés</p>
-          </header>
-
-          <div className="jars-bars-grid">
-            {barData.map((row) => (
-              <div key={row.key} className="jars-bar-row">
-                <div className="jars-bar-label">{row.label}</div>
-                <div className="jars-bar-tracks">
-                  <div className="jars-bar-track">
-                    <div
-                      className="jars-bar-fill jars-bar-fill-allocated"
-                      style={{
-                        width: `${Math.min(row.allocatedPct, 100)}%`,
-                        backgroundColor: row.color,
-                      }}
-                    />
-                  </div>
-                  <div className="jars-bar-track jars-bar-track-spent">
-                    <div
-                      className="jars-bar-fill jars-bar-fill-spent"
-                      style={{
-                        width: `${Math.min(row.spentPct, 100)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="jars-bar-values">
-                  <span>{formatMoney(row.allocated)}</span>
-                  <span>Dépensé : {formatMoney(row.spent)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p className="jars-bars-hint">
-            Vue mensuelle détaillée à venir
-          </p>
-        </section>
-      )}
-
-      {/* Cartes détaillées */}
+      {/* Cartes des Jarres - Style moderne avec couleurs */}
       <section className="jars-grid">
         {jarList.map((jar) => {
-          const { key, label, short, color, revenues, spendings, net } = jar;
+          const { key, label, short, color, bgColor, revenues, spendings, net } = jar;
+          
           let pct = 0;
           if (totalRevenues > 0) {
             pct = (revenues / totalRevenues) * 100;
@@ -308,21 +237,21 @@ export default function JarsView() {
             pct = data.split[key] * 100;
           }
 
-          const progress =
-            maxNetAbs > 0 ? Math.max(0, (Math.abs(net) / maxNetAbs) * 100) : 0;
+          const progress = maxRevenue > 0 ? (revenues / maxRevenue) * 100 : 0;
 
           return (
             <article
               key={key}
               className="jar-card"
               style={{
-                borderTopColor: color,
-              }}
+                "--jar-color": color,
+                "--jar-bg": bgColor,
+              } as React.CSSProperties}
             >
               <header className="jar-card-header">
                 <div>
-                  <h3 className="jar-name">{label}</h3>
                   <p className="jar-key">{short}</p>
+                  <h3 className="jar-name">{label}</h3>
                 </div>
                 <div className="jar-pct">
                   {formatPct(pct)}
@@ -332,7 +261,7 @@ export default function JarsView() {
 
               <dl className="jar-stats">
                 <div>
-                  <dt>Alloué</dt>
+                  <dt>Alloué (revenus)</dt>
                   <dd>{formatMoney(revenues)}</dd>
                 </div>
                 <div>
@@ -340,28 +269,25 @@ export default function JarsView() {
                   <dd>{formatMoney(spendings)}</dd>
                 </div>
                 <div>
-                  <dt>Solde</dt>
-                  <dd className={net < 0 ? "neg" : ""}>
-                    {formatMoney(net)}
-                  </dd>
+                  <dt>Solde disponible</dt>
+                  <dd className={net < 0 ? "neg" : ""}>{formatMoney(net)}</dd>
                 </div>
               </dl>
 
               <div className="jar-progress-row">
-                <span>Solde vs alloué</span>
+                <span>Utilisation</span>
                 <span className="jar-progress-pct">
                   {revenues > 0
-                    ? `${Math.round((net / revenues) * 100)} %`
+                    ? `${Math.round((spendings / revenues) * 100)} %`
                     : "—"}
                 </span>
               </div>
 
               <div className="jar-bar-wrapper">
                 <div
-                  className={`jar-bar-fill ${net < 0 ? "neg" : ""}`}
+                  className={`jar-bar-fill ${spendings > revenues ? "neg" : ""}`}
                   style={{
-                    width: `${Math.min(progress, 100)}%`,
-                    backgroundColor: color,
+                    width: `${Math.min((spendings / revenues) * 100 || 0, 100)}%`,
                   }}
                 />
               </div>
@@ -370,7 +296,13 @@ export default function JarsView() {
         })}
 
         {!loading && !error && jarList.length === 0 && (
-          <p style={{ marginTop: "1rem", color: "var(--text-muted)" }}>
+          <p style={{ 
+            marginTop: "1rem", 
+            color: "var(--text-muted)",
+            gridColumn: "1 / -1",
+            textAlign: "center",
+            padding: "2rem"
+          }}>
             Aucune donnée de jarres pour le moment.
           </p>
         )}
