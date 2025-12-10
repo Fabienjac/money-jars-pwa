@@ -6,126 +6,207 @@ import HistoryView, { HistoryUseEntry } from "./components/HistoryView";
 import JarsView from "./components/JarsView";
 import "./style.css";
 
-type Tab = "spending" | "revenue" | "history" | "jars";
+type Section = "home" | "history" | "settings";
+type EntryMode = "spending" | "revenue";
 
 function App() {
-  const [tab, setTab] = useState<Tab>("spending");
-
-  // Dark mode
+  const [section, setSection] = useState<Section>("home");
   const [darkMode, setDarkMode] = useState(false);
 
-  // Pré-remplissage venant de l'historique
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entryMode, setEntryMode] = useState<EntryMode>("spending");
+
   const [prefillSpending, setPrefillSpending] = useState<any | null>(null);
   const [prefillRevenue, setPrefillRevenue] = useState<any | null>(null);
 
-  // Charger la préférence de thème depuis le localStorage
+  // Thème
   useEffect(() => {
     try {
       const stored = localStorage.getItem("mj-dark-mode");
-      if (stored === "1") {
-        setDarkMode(true);
-      }
-    } catch {
-      // pas grave si le localStorage n'est pas dispo
-    }
+      if (stored === "1") setDarkMode(true);
+    } catch {}
   }, []);
 
-  // Sauvegarder la préférence de thème
   useEffect(() => {
     try {
       localStorage.setItem("mj-dark-mode", darkMode ? "1" : "0");
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [darkMode]);
 
-  // Quand on clique sur "Utiliser" dans l’historique
+  const openEntry = (mode: EntryMode, prefill?: any) => {
+    setEntryMode(mode);
+    if (mode === "spending") {
+      setPrefillSpending(prefill ?? null);
+    } else {
+      setPrefillRevenue(prefill ?? null);
+    }
+    setEntryOpen(true);
+  };
+
+  const closeEntry = () => {
+    setEntryOpen(false);
+  };
+
+  // Quand on clique "Utiliser" depuis l’historique
   const handleUseEntry = (entry: HistoryUseEntry) => {
     if (entry.kind === "spending") {
-      setPrefillSpending(entry.row);
-      setTab("spending");
+      openEntry("spending", entry.row);
     } else {
-      setPrefillRevenue(entry.row);
-      setTab("revenue");
+      openEntry("revenue", entry.row);
     }
   };
 
   return (
     <div className={`app-shell ${darkMode ? "dark" : ""}`}>
-      <header className="app-header">
-        <div className="app-header-left">
-          <h1 className="app-title">Money Jars</h1>
-          <p className="app-subtitle">
-            Journal MMI (Harv Eker) connecté à ton Google Sheet.
-          </p>
-        </div>
+      <div className="app-main">
+        <header className="home-header">
+          <div>
+            <p className="home-kicker">Système des 6 Jars</p>
+            <h1 className="home-title">Mes Finances</h1>
+          </div>
+          <button
+            type="button"
+            className="theme-toggle"
+            onClick={() => setDarkMode((v) => !v)}
+            aria-label={darkMode ? "Passer en mode clair" : "Passer en mode sombre"}
+          >
+            {darkMode ? "☀️" : "🌙"}
+          </button>
+        </header>
 
-        <button
-          type="button"
-          className="theme-toggle"
-          onClick={() => setDarkMode((v) => !v)}
-          aria-label={darkMode ? "Passer en mode clair" : "Passer en mode sombre"}
-        >
-          {darkMode ? "☀️" : "🌙"}
-        </button>
-      </header>
+        <main className="app-content">
+          {section === "home" && <JarsView />}
 
-      {/* Barre d’onglets compacte en 1 ligne */}
-      <nav className="tab-bar">
+          {section === "history" && (
+            <HistoryView onUseEntry={handleUseEntry} />
+          )}
+
+          {section === "settings" && <SettingsView />}
+        </main>
+      </div>
+
+      {/* Bottom navigation */}
+      <nav className="bottom-nav">
         <button
           type="button"
-          className={`tab-btn ${tab === "spending" ? "active" : ""}`}
-          onClick={() => setTab("spending")}
+          className={`bottom-nav-btn ${section === "home" ? "active" : ""}`}
+          onClick={() => setSection("home")}
         >
-          + Dépense
+          <span className="bottom-nav-icon">🏠</span>
+          <span className="bottom-nav-label">Accueil</span>
         </button>
         <button
           type="button"
-          className={`tab-btn ${tab === "revenue" ? "active" : ""}`}
-          onClick={() => setTab("revenue")}
+          className={`bottom-nav-btn ${section === "history" ? "active" : ""}`}
+          onClick={() => setSection("history")}
         >
-          + Revenu
+          <span className="bottom-nav-icon">📊</span>
+          <span className="bottom-nav-label">Rapports</span>
         </button>
         <button
           type="button"
-          className={`tab-btn ${tab === "history" ? "active" : ""}`}
-          onClick={() => setTab("history")}
+          className={`bottom-nav-btn ${section === "settings" ? "active" : ""}`}
+          onClick={() => setSection("settings")}
         >
-          Historique
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${tab === "jars" ? "active" : ""}`}
-          onClick={() => setTab("jars")}
-        >
-          Jarres
+          <span className="bottom-nav-icon">⚙️</span>
+          <span className="bottom-nav-label">Réglages</span>
         </button>
       </nav>
 
-      <section className="page">
-        {tab === "spending" && (
-          <SpendingForm
-            prefill={prefillSpending}
-            onClearPrefill={() => setPrefillSpending(null)}
-          />
-        )}
+      {/* Floating Action Button */}
+      <button
+        type="button"
+        className="fab"
+        onClick={() => openEntry("spending")}
+      >
+        +
+      </button>
 
-        {tab === "revenue" && (
-          <RevenueForm
-            prefill={prefillRevenue}
-            onClearPrefill={() => setPrefillRevenue(null)}
-          />
-        )}
+      {/* Bottom sheet "Nouvelle entrée" */}
+      {entryOpen && (
+        <div className="entry-sheet-backdrop" onClick={closeEntry}>
+          <div
+            className="entry-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="entry-sheet-header">
+              <div className="entry-tabs">
+                <button
+                  type="button"
+                  className={`entry-tab ${
+                    entryMode === "spending" ? "active" : ""
+                  }`}
+                  onClick={() => setEntryMode("spending")}
+                >
+                  Dépense
+                </button>
+                <button
+                  type="button"
+                  className={`entry-tab ${
+                    entryMode === "revenue" ? "active" : ""
+                  }`}
+                  onClick={() => setEntryMode("revenue")}
+                >
+                  Revenu
+                </button>
+              </div>
+              <button
+                type="button"
+                className="entry-close-btn"
+                onClick={closeEntry}
+              >
+                ×
+              </button>
+            </header>
 
-        {tab === "history" && <HistoryView onUseEntry={handleUseEntry} />}
+            <div className="entry-search">
+              <input
+                type="text"
+                placeholder="Rechercher une entrée similaire..."
+              />
+            </div>
 
-        {tab === "jars" && <JarsView />}
-      </section>
-
-      <footer className="app-footer">
-        v0.1 · Données stockées dans ton Google Sheet (Apps Script).
-      </footer>
+            <div className="entry-sheet-body">
+              {entryMode === "spending" ? (
+                <SpendingForm
+                  prefill={prefillSpending}
+                  onClearPrefill={() => setPrefillSpending(null)}
+                />
+              ) : (
+                <RevenueForm
+                  prefill={prefillRevenue}
+                  onClearPrefill={() => setPrefillRevenue(null)}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function SettingsView() {
+  return (
+    <section className="settings-page">
+      <h2>Configuration</h2>
+
+      <div className="settings-card">
+        <h3>Paramètres des Jars</h3>
+        <p>
+          Prochaine étape : affichage et édition des pourcentages et soldes
+          initiaux pour chaque jar (NEC, FFA, LTSS, PLAY, EDUC, GIFT).
+        </p>
+      </div>
+
+      <div className="settings-card">
+        <h3>Règles automatiques</h3>
+        <p>
+          Prochaine étape : création de règles basées sur des mots-clés pour
+          catégoriser automatiquement les dépenses et revenus.
+        </p>
+      </div>
+    </section>
   );
 }
 

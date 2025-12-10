@@ -874,3 +874,252 @@ select,
 a {
   -webkit-tap-highlight-color: rgba(0, 0, 0, 0.05);
 }
+
+
+/* ========================================
+   APP SHELL & HEADER "Mes Finances"
+   ======================================== */
+
+.app-main {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 80px);
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 4px 16px;
+}
+
+.home-kicker {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-light);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.home-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  color: var(--text-main);
+}
+
+.app-content {
+  flex: 1;
+  padding-bottom: 90px; /* pour ne pas être caché par la bottom-nav */
+}
+
+/* ========================================
+   BOTTOM NAVIGATION TYPE APP MOBILE
+   ======================================== */
+
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border-color);
+  z-index: 20;
+}
+
+.dark .bottom-nav {
+  background: rgba(15, 15, 15, 0.96);
+}
+
+.bottom-nav-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.bottom-nav-btn.active {
+  background: rgba(129, 140, 248, 0.12);
+  color: var(--text-main);
+}
+
+.bottom-nav-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.bottom-nav-label {
+  font-weight: 600;
+}
+
+/* ========================================
+   FLOATING ACTION BUTTON "+"
+   ======================================== */
+
+.fab {
+  position: fixed;
+  right: 24px;
+  bottom: 80px;
+  width: 64px;
+  height: 64px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-size: 32px;
+  font-weight: 600;
+  color: #ffffff;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.fab:active {
+  transform: scale(0.96);
+}
+
+/* ========================================
+   ENTRY SHEET (Nouvelle entrée)
+   ======================================== */
+
+.entry-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 40;
+}
+
+.entry-sheet {
+  width: 100%;
+  max-width: 540px;
+  background: var(--bg-card);
+  border-radius: 24px 24px 0 0;
+  padding: 16px 16px 24px;
+  box-shadow: var(--shadow-lg);
+}
+
+.entry-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.entry-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--bg-body);
+}
+
+.entry-tab {
+  border: none;
+  flex: 1;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.entry-tab.active {
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: var(--shadow-sm);
+}
+
+.entry-close-btn {
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.entry-search {
+  margin-bottom: 8px;
+}
+
+.entry-search input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--bg-body);
+}
+
+/* Adapter les formulaires existants à l’intérieur de la sheet */
+
+.entry-sheet-body .page {
+  padding: 0;
+}
+
+.entry-sheet-body h2 {
+  font-size: 18px;
+  margin-bottom: 8px;
+}
+
+.entry-sheet-body .card.form {
+  box-shadow: none;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+}
+
+/* ========================================
+   SETTINGS PAGE (Réglages)
+   ======================================== */
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 90px;
+}
+
+.settings-page h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.settings-card {
+  background: var(--bg-card);
+  border-radius: 18px;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-card h3 {
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.settings-card p {
+  font-size: 14px;
+  color: var(--text-muted);
+}
