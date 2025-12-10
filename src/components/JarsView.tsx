@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fetchTotals } from "../api";
-import { TotalsResponse, JarKey, JarSetting } from "../types";
+import { TotalsResponse, JarKey } from "../types";
 
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: "Nécessités",
@@ -11,10 +11,19 @@ const JAR_LABELS: Record<JarKey, string> = {
   GIFT: "Don / Gift",
 };
 
-const JAR_COLORS: Record<JarKey, string> = {
-  NEC: "#3b82f6",
-  FFA: "#22c55e",
-  LTSS: "#facc15",
+const JAR_COLORS_SOFT: Record<JarKey, string> = {
+  NEC: "rgba(59,130,246,0.08)",
+  FFA: "rgba(34,197,94,0.10)",
+  LTSS: "rgba(250,204,21,0.12)",
+  PLAY: "rgba(249,115,22,0.10)",
+  EDUC: "rgba(168,85,247,0.10)",
+  GIFT: "rgba(6,182,212,0.10)",
+};
+
+const JAR_DOT_COLORS: Record<JarKey, string> = {
+  NEC: "#2563eb",
+  FFA: "#16a34a",
+  LTSS: "#eab308",
   PLAY: "#f97316",
   EDUC: "#a855f7",
   GIFT: "#06b6d4",
@@ -31,20 +40,21 @@ function formatMoney(value: number | null | undefined) {
 }
 
 /**
- * Charge les réglages (pourcentages des jars) depuis l’onglet Réglages.
- * On renvoie un map { NEC: 0.55, FFA: 0.1, ... } ou null si rien.
+ * Charge un éventuel split depuis les réglages (localStorage),
+ * sous la forme [{ key: "NEC", percent: 55 }, ...]
  */
 function loadJarSplitFromSettings(): Record<JarKey, number> | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(JAR_SETTINGS_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as JarSetting[];
+    const parsed = JSON.parse(raw) as any[];
     const map: Partial<Record<JarKey, number>> = {};
     parsed.forEach((j) => {
-      const pct = Number(j.percent);
-      if (!isNaN(pct)) {
-        map[j.key] = pct / 100;
+      const key = j?.key as JarKey | undefined;
+      const pct = Number(j?.percent);
+      if (key && !isNaN(pct)) {
+        map[key] = pct / 100;
       }
     });
     return map as Record<JarKey, number>;
@@ -112,38 +122,31 @@ const JarsView: React.FC = () => {
   const totalBalance = totalRevenues - totalSpendings;
 
   return (
-    <main className="page jars-page">
-      {/* Header style iOS */}
-      <header className="dashboard-header">
-        <div className="dashboard-titles">
-          <p className="dashboard-eyebrow">Système des 6 Jars</p>
-          <h1 className="dashboard-title">Mes Finances</h1>
-        </div>
-        {/* Le bouton thème est déjà dans App, donc ici rien */}
-      </header>
+    <main className="page home-page">
+      {/* On garde le header global de App.tsx, donc ici uniquement le contenu */}
 
-      {/* KPIs globaux */}
-      <section className="glass-card kpi-section">
-        <div className="kpi-grid">
-          <article className="kpi-card kpi-revenue">
-            <p className="kpi-label">Revenus</p>
-            <p className="kpi-value">{formatMoney(totalRevenues)} €</p>
-          </article>
-          <article className="kpi-card kpi-spending">
-            <p className="kpi-label">Dépenses</p>
-            <p className="kpi-value">{formatMoney(totalSpendings)} €</p>
-          </article>
-          <article className="kpi-card kpi-balance">
-            <p className="kpi-label">Balance</p>
-            <p className="kpi-value">{formatMoney(totalBalance)} €</p>
-          </article>
-        </div>
+      {/* 3 cartes KPI comme sur le mock */}
+      <section className="home-kpis">
+        <article className="home-kpi-pill home-kpi-pill--revenues">
+          <p className="home-kpi-label">Revenus</p>
+          <p className="home-kpi-value">{formatMoney(totalRevenues)} €</p>
+        </article>
+
+        <article className="home-kpi-pill home-kpi-pill--spendings">
+          <p className="home-kpi-label">Dépenses</p>
+          <p className="home-kpi-value">{formatMoney(totalSpendings)} €</p>
+        </article>
+
+        <article className="home-kpi-pill home-kpi-pill--balance">
+          <p className="home-kpi-label">Balance</p>
+          <p className="home-kpi-value">{formatMoney(totalBalance)} €</p>
+        </article>
       </section>
 
-      {/* Jars */}
-      <section className="jars-section">
-        <div className="section-header-inline">
-          <h2 className="section-title">Mes Jars</h2>
+      {/* Mes Jars */}
+      <section className="home-section">
+        <div className="home-section-header">
+          <h2 className="home-section-title">Mes Jars</h2>
           <button
             type="button"
             className="chip-button"
@@ -154,7 +157,7 @@ const JarsView: React.FC = () => {
           </button>
         </div>
 
-        <div className="jars-list">
+        <div className="home-jar-grid">
           {(Object.keys(totals.jars) as JarKey[]).map((key) => {
             const jar = totals.jars[key];
             const backendSplit = totals.split?.[key]; // 0–1
@@ -169,39 +172,31 @@ const JarsView: React.FC = () => {
             return (
               <article
                 key={key}
-                className="jar-card ios-card"
-                style={{
-                  boxShadow: `0 0 0 1px rgba(148,163,184,0.2), 0 18px 35px rgba(15,23,42,0.16)`,
-                  borderTop: `4px solid ${JAR_COLORS[key]}`,
-                }}
+                className="home-jar-card"
+                style={{ backgroundColor: JAR_COLORS_SOFT[key] }}
               >
-                <header className="jar-card-header">
-                  <div>
-                    <p className="jar-key">{key}</p>
-                    <h3 className="jar-name">{JAR_LABELS[key]}</h3>
+                <header className="home-jar-header">
+                  <div className="home-jar-title-row">
+                    <span
+                      className="home-jar-dot"
+                      style={{ backgroundColor: JAR_DOT_COLORS[key] }}
+                    />
+                    <span className="home-jar-code">{key}</span>
                   </div>
-                  <div className="jar-percent-chip">
-                    {effectiveSplit * 100 ? (effectiveSplit * 100).toFixed(1) : "0.0"}{" "}
-                    <span>%</span>
+                  <div className="home-jar-percent">
+                    {(effectiveSplit * 100).toFixed(1)}%
                   </div>
                 </header>
 
-                <dl className="jar-stats">
-                  <div className="jar-stat-row">
-                    <dt>Revenus</dt>
-                    <dd>{formatMoney(jar.revenues)} €</dd>
-                  </div>
-                  <div className="jar-stat-row">
-                    <dt>Dépensé</dt>
-                    <dd>{formatMoney(jar.spendings)} €</dd>
-                  </div>
-                  <div className="jar-stat-row">
-                    <dt>Solde</dt>
-                    <dd className={jar.net < 0 ? "neg" : ""}>
-                      {formatMoney(jar.net)} €
-                    </dd>
-                  </div>
-                </dl>
+                <p className="home-jar-name">{JAR_LABELS[key]}</p>
+
+                <p className="home-jar-amount">
+                  {formatMoney(jar.net)} <span>€</span>
+                </p>
+
+                <p className="home-jar-spent">
+                  Dépensé : {formatMoney(jar.spendings)} €
+                </p>
               </article>
             );
           })}

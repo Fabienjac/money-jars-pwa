@@ -185,3 +185,176 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+
+/* ===== Home iOS-style ===== */
+
+.home-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 88px;
+}
+
+/* KPI pills */
+
+.home-kpis {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.home-kpi-pill {
+  border-radius: 22px;
+  padding: 12px 16px;
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
+  background: #f9fafb;
+}
+
+.app-shell.dark .home-kpi-pill {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.home-kpi-pill--revenues {
+  background: linear-gradient(135deg, #dcfce7, #f0fdf4);
+}
+
+.home-kpi-pill--spendings {
+  background: linear-gradient(135deg, #fee2e2, #fef2f2);
+}
+
+.home-kpi-pill--balance {
+  background: linear-gradient(135deg, #ede9fe, #f5f3ff);
+}
+
+.home-kpi-label {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 4px;
+}
+
+.home-kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Sections */
+
+.home-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.home-section-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Jar grid */
+
+.home-jar-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.home-jar-card {
+  border-radius: 20px;
+  padding: 12px 14px;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.10);
+}
+
+.app-shell.dark .home-jar-card {
+  background: rgba(15, 23, 42, 0.9) !important;
+}
+
+.home-jar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.home-jar-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.home-jar-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.home-jar-code {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.home-jar-percent {
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.home-jar-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 6px 0 2px;
+}
+
+.home-jar-amount {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 4px 0 0;
+}
+
+.home-jar-amount span {
+  font-size: 16px;
+}
+
+.home-jar-spent {
+  font-size: 13px;
+  color: #64748b;
+  margin: 4px 0 0;
+}
+
+/* Chip button (rafraîchir) */
+
+.chip-button {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  padding: 5px 12px;
+  background: rgba(248, 250, 252, 0.9);
+  font-size: 12px;
+}
+
+.app-shell.dark .chip-button {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: rgba(55, 65, 81, 0.9);
+}
+
+/* Responsive : grille 2 colonnes pour les jars sur mobile large / tablette */
+
+@media (min-width: 480px) {
+  .home-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .home-jar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
