@@ -1,5 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { appendSpending } from "../api";
+import { JarKey, SpendingRow } from "../types";
+import { loadAutoRules, AutoRule } from "../autoRules";
 
 interface SpendingFormProps {
   prefill?: any | null;
@@ -8,12 +10,16 @@ interface SpendingFormProps {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-const SpendingForm: React.FC<SpendingFormProps> = ({ prefill, onClearPrefill }) => {
+const SpendingForm: React.FC<SpendingFormProps> = ({
+  prefill,
+  onClearPrefill,
+}) => {
   const [date, setDate] = useState<string>(todayISO());
   const [jar, setJar] = useState<string>("NEC");
   const [account, setAccount] = useState<string>("");
   const [amount, setAmount] = useState<string>("");
   const [description, setDescription] = useState<string>("");
+  const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -28,8 +34,39 @@ const SpendingForm: React.FC<SpendingFormProps> = ({ prefill, onClearPrefill }) 
     if (prefill.amount != null) setAmount(String(prefill.amount));
     if (prefill.description) setDescription(prefill.description);
 
+    setAppliedRule(null);
     onClearPrefill?.();
   }, [prefill, onClearPrefill]);
+
+  // === Application automatique des règles sur la description ===
+  const handleDescriptionChange = (value: string) => {
+    setDescription(value);
+
+    const text = value.trim().toLowerCase();
+    if (!text) {
+      setAppliedRule(null);
+      return;
+    }
+
+    const rules = loadAutoRules().filter((r) => r.mode === "spending");
+    const rule = rules.find((r) =>
+      text.includes(r.keyword.toLowerCase())
+    );
+
+    if (!rule) {
+      setAppliedRule(null);
+      return;
+    }
+
+    setAppliedRule(rule);
+
+    if (rule.jar) {
+      setJar(rule.jar as JarKey);
+    }
+    if (rule.account) {
+      setAccount(rule.account);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,17 +82,16 @@ const SpendingForm: React.FC<SpendingFormProps> = ({ prefill, onClearPrefill }) 
       setLoading(true);
       await appendSpending({
         date,
-        jar,
+        jar: jar as JarKey,
         account,
         amount: numAmount,
         description,
       });
       setMessage("Dépense enregistrée ✅");
 
-      // on ne vide pas forcément tout si on vient d’un historique,
-      // à toi de voir – je laisse comme ça pour l’instant
       setAmount("");
       setDescription("");
+      setAppliedRule(null);
     } catch (err: any) {
       console.error(err);
       setMessage(err.message || "Erreur lors de l’enregistrement.");
@@ -115,9 +151,19 @@ const SpendingForm: React.FC<SpendingFormProps> = ({ prefill, onClearPrefill }) 
           <input
             type="text"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => handleDescriptionChange(e.target.value)}
           />
         </label>
+
+        {appliedRule && (
+          <p className="form-hint">
+            Règle appliquée&nbsp;: <strong>{appliedRule.keyword}</strong>
+            {appliedRule.jar && <> → Jar <strong>{appliedRule.jar}</strong></>}
+            {appliedRule.account && (
+              <> · Compte <strong>{appliedRule.account}</strong></>
+            )}
+          </p>
+        )}
 
         {message && <p className="form-message">{message}</p>}
 

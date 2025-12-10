@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { appendRevenue } from "../api";
+import { loadAutoRules, AutoRule } from "../autoRules";
+
 
 interface RevenueFormProps {
   prefill?: any | null;
@@ -8,7 +10,10 @@ interface RevenueFormProps {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) => {
+const RevenueForm: React.FC<RevenueFormProps> = ({
+  prefill,
+  onClearPrefill,
+}) => {
   const [date, setDate] = useState<string>(todayISO());
   const [source, setSource] = useState<string>("");
   const [amountEUR, setAmountEUR] = useState<string>("");
@@ -18,6 +23,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
   const [destination, setDestination] = useState<string>("");
   const [incomeType, setIncomeType] = useState<string>("");
 
+  const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -34,18 +40,52 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
     if (prefill.destination) setDestination(prefill.destination);
     if (prefill.incomeType) setIncomeType(prefill.incomeType);
 
-    // On consomme la préselection une fois appliquée
+    setAppliedRule(null);
     onClearPrefill?.();
   }, [prefill, onClearPrefill]);
+
+  // === Application automatique des règles sur la source ===
+  const handleSourceChange = (value: string) => {
+    setSource(value);
+
+    const text = value.trim().toLowerCase();
+    if (!text) {
+      setAppliedRule(null);
+      return;
+    }
+
+    const rules = loadAutoRules().filter((r) => r.mode === "revenue");
+    const rule = rules.find((r) =>
+      text.includes(r.keyword.toLowerCase())
+    );
+
+    if (!rule) {
+      setAppliedRule(null);
+      return;
+    }
+
+    setAppliedRule(rule);
+
+    if (rule.destination) {
+      setDestination(rule.destination);
+    }
+    if (rule.incomeType) {
+      setIncomeType(rule.incomeType);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
     const numEUR =
-      amountEUR.trim() === "" ? null : parseFloat(amountEUR.replace(",", "."));
+      amountEUR.trim() === ""
+        ? null
+        : parseFloat(amountEUR.replace(",", "."));
     const numUSD =
-      amountUSD.trim() === "" ? null : parseFloat(amountUSD.replace(",", "."));
+      amountUSD.trim() === ""
+        ? null
+        : parseFloat(amountUSD.replace(",", "."));
     const numRate =
       rate.trim() === "" ? null : parseFloat(rate.replace(",", "."));
 
@@ -68,7 +108,6 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
       });
 
       setMessage("Revenu enregistré ✅");
-      // à toi d’adapter si tu veux garder ou non les valeurs
       setSource("");
       setAmountEUR("");
       setAmountUSD("");
@@ -76,6 +115,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
       setRate("");
       setDestination("");
       setIncomeType("");
+      setAppliedRule(null);
     } catch (err: any) {
       console.error(err);
       setMessage(err.message || "Erreur lors de l’enregistrement.");
@@ -103,9 +143,21 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
           <input
             type="text"
             value={source}
-            onChange={(e) => setSource(e.target.value)}
+            onChange={(e) => handleSourceChange(e.target.value)}
           />
         </label>
+
+        {appliedRule && (
+          <p className="form-hint">
+            Règle appliquée&nbsp;: <strong>{appliedRule.keyword}</strong>
+            {appliedRule.destination && (
+              <> → Destination <strong>{appliedRule.destination}</strong></>
+            )}
+            {appliedRule.incomeType && (
+              <> · Type <strong>{appliedRule.incomeType}</strong></>
+            )}
+          </p>
+        )}
 
         <label className="field">
           <span>Montant (€)</span>
