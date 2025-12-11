@@ -577,7 +577,7 @@ body {
 
 .fab {
   position: fixed;
-  bottom: max(env(safe-area-inset-bottom), 80px);
+  bottom: max(env(safe-area-inset-bottom), 90px);
   right: max(env(safe-area-inset-right), 20px);
   width: 56px;
   height: 56px;

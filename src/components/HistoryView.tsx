@@ -1,14 +1,10 @@
-// src/components/HistoryView.tsx
-import React, { useState } from "react";
+// src/components/HistoryView.tsx - VERSION CORRIGÉE
+import React, { useState, useEffect } from "react";
 import { searchSpendings, searchRevenues } from "../api";
-import {
-  SearchSpendingResult,
-  SearchRevenueResult,
-} from "../types";
+import { SearchSpendingResult, SearchRevenueResult } from "../types";
 
 type Mode = "spending" | "revenue";
 
-// Ce type est utilisé par App.tsx pour savoir quoi préremplir
 export type HistoryUseEntry =
   | { kind: "spending"; row: SearchSpendingResult }
   | { kind: "revenue"; row: SearchRevenueResult };
@@ -37,17 +33,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const [spendings, setSpendings] = useState<SearchSpendingResult[]>([]);
   const [revenues, setRevenues] = useState<SearchRevenueResult[]>([]);
 
-  // --- filtres communs ---
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
-
-  // --- filtres revenus ---
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [destinationFilter, setDestinationFilter] = useState<string>("all");
   const [methodFilter, setMethodFilter] = useState<string>("all");
-
-  // --- filtres dépenses ---
   const [jarFilter, setJarFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
+
+  // Charger automatiquement au montage du composant
+  useEffect(() => {
+    handleSearch();
+  }, [mode]); // Recharger quand on change de mode
 
   const handleSearch = async () => {
     setLoading(true);
@@ -78,6 +74,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     setSpendings([]);
     setRevenues([]);
     setError(null);
+    // Les données seront chargées automatiquement par useEffect
   };
 
   const handleUseSpendingRow = (row: SearchSpendingResult) => {
@@ -90,17 +87,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     onUseEntry({ kind: "revenue", row });
   };
 
-  // --------- logique de filtrage et de résumé ---------
-
   const now = new Date();
 
   const matchPeriod = (dateStr: string): boolean => {
     if (periodFilter === "all") return true;
     const d = parseDate(dateStr);
-    if (!d) return true; // on ne filtre pas si la date est invalide
+    if (!d) return true;
 
-    const diffDays =
-      (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+    const diffDays = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
 
     switch (periodFilter) {
       case "30d":
@@ -124,65 +118,34 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const filteredRevenues = revenues.filter((row) => {
     if (!matchPeriod(row.date)) return false;
     if (typeFilter !== "all" && row.incomeType !== typeFilter) return false;
-    if (destinationFilter !== "all" && row.destination !== destinationFilter)
-      return false;
+    if (destinationFilter !== "all" && row.destination !== destinationFilter) return false;
     if (methodFilter !== "all" && row.method !== methodFilter) return false;
     return true;
   });
 
-  const totalSpending = filteredSpendings.reduce(
-    (sum, row) => sum + (row.amount ?? 0),
-    0
-  );
-  const totalRevenueEUR = filteredRevenues.reduce(
-    (sum, row) => sum + (row.amountEUR ?? 0),
-    0
-  );
-  const totalRevenueUSD = filteredRevenues.reduce(
-    (sum, row) => sum + (row.amountUSD ?? 0),
-    0
-  );
+  const totalSpending = filteredSpendings.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+  const totalRevenueEUR = filteredRevenues.reduce((sum, row) => sum + (row.amountEUR ?? 0), 0);
+  const totalRevenueUSD = filteredRevenues.reduce((sum, row) => sum + (row.amountUSD ?? 0), 0);
 
-  // options revenus
+  // Options pour les filtres - TOUJOURS basées sur les données NON filtrées
   const destinationOptions = Array.from(
-    new Set(
-      revenues
-        .map((r) => r.destination)
-        .filter((x): x is string => Boolean(x))
-    )
+    new Set(revenues.map((r) => r.destination).filter((x): x is string => Boolean(x)))
   );
 
   const typeOptions = Array.from(
-    new Set(
-      revenues
-        .map((r) => r.incomeType)
-        .filter((x): x is string => Boolean(x))
-    )
+    new Set(revenues.map((r) => r.incomeType).filter((x): x is string => Boolean(x)))
   );
 
   const methodOptions = Array.from(
-    new Set(
-      revenues
-        .map((r) => r.method)
-        .filter((x): x is string => Boolean(x))
-    )
+    new Set(revenues.map((r) => r.method).filter((x): x is string => Boolean(x)))
   );
 
-  // options dépenses
   const jarOptions = Array.from(
-    new Set(
-      spendings
-        .map((s) => s.jar)
-        .filter((x): x is string => Boolean(x))
-    )
+    new Set(spendings.map((s) => s.jar).filter((x): x is string => Boolean(x)))
   );
 
   const accountOptions = Array.from(
-    new Set(
-      spendings
-        .map((s) => s.account)
-        .filter((x): x is string => Boolean(x))
-    )
+    new Set(spendings.map((s) => s.account).filter((x): x is string => Boolean(x)))
   );
 
   return (
@@ -193,19 +156,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
         {/* Toggle dépenses / revenus */}
         <div className="toggle-row">
           <label>
-            <input
-              type="radio"
-              checked={mode === "spending"}
-              onChange={() => handleModeChange("spending")}
-            />
+            <input type="radio" checked={mode === "spending"} onChange={() => handleModeChange("spending")} />
             Dépenses
           </label>
           <label>
-            <input
-              type="radio"
-              checked={mode === "revenue"}
-              onChange={() => handleModeChange("revenue")}
-            />
+            <input type="radio" checked={mode === "revenue"} onChange={() => handleModeChange("revenue")} />
             Revenus
           </label>
         </div>
@@ -217,29 +172,24 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             placeholder="Recherche…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSearch();
+            }}
           />
         </div>
 
         {/* Filtres avancés */}
         <div className="history-filters-column">
-          {/* Période toujours visible */}
-          <select
-            value={periodFilter}
-            onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
-          >
+          <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}>
             <option value="all">Toute période</option>
             <option value="30d">30 derniers jours</option>
             <option value="90d">90 derniers jours</option>
             <option value="year">12 derniers mois</option>
           </select>
 
-          {/* Filtres spécifiques aux REVENUS */}
           {mode === "revenue" && (
             <>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-              >
+              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
                 <option value="all">Tous les types</option>
                 {typeOptions.map((t) => (
                   <option key={t} value={t}>
@@ -248,10 +198,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                 ))}
               </select>
 
-              <select
-                value={destinationFilter}
-                onChange={(e) => setDestinationFilter(e.target.value)}
-              >
+              <select value={destinationFilter} onChange={(e) => setDestinationFilter(e.target.value)}>
                 <option value="all">Toutes les destinations</option>
                 {destinationOptions.map((d) => (
                   <option key={d} value={d}>
@@ -260,10 +207,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                 ))}
               </select>
 
-              <select
-                value={methodFilter}
-                onChange={(e) => setMethodFilter(e.target.value)}
-              >
+              <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)}>
                 <option value="all">Toutes les méthodes</option>
                 {methodOptions.map((m) => (
                   <option key={m} value={m}>
@@ -274,13 +218,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             </>
           )}
 
-          {/* Filtres spécifiques aux DÉPENSES */}
           {mode === "spending" && (
             <>
-              <select
-                value={jarFilter}
-                onChange={(e) => setJarFilter(e.target.value)}
-              >
+              <select value={jarFilter} onChange={(e) => setJarFilter(e.target.value)}>
                 <option value="all">Toutes les jarres</option>
                 {jarOptions.map((j) => (
                   <option key={j} value={j}>
@@ -289,10 +229,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                 ))}
               </select>
 
-              <select
-                value={accountFilter}
-                onChange={(e) => setAccountFilter(e.target.value)}
-              >
+              <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}>
                 <option value="all">Tous les comptes</option>
                 {accountOptions.map((a) => (
                   <option key={a} value={a}>
@@ -304,32 +241,23 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           )}
         </div>
 
-        <button
-          type="button"
-          className="primary-btn"
-          onClick={handleSearch}
-          disabled={loading}
-        >
+        <button type="button" className="primary-btn" onClick={handleSearch} disabled={loading}>
           {loading ? "Recherche…" : "Rechercher"}
         </button>
 
-        {error && (
-          <p style={{ color: "red", marginTop: "1rem" }}>{error}</p>
-        )}
+        {error && <p style={{ color: "red", marginTop: "1rem" }}>{error}</p>}
 
         {/* Résumé chiffré */}
         {mode === "spending" && filteredSpendings.length > 0 && (
           <p className="history-summary">
-            Total dépensé sur la période filtrée :{" "}
-            <strong>{formatAmount(totalSpending)} €</strong>
+            Total dépensé sur la période filtrée : <strong>{formatAmount(totalSpending)} €</strong>
           </p>
         )}
 
         {mode === "revenue" && filteredRevenues.length > 0 && (
           <p className="history-summary">
-            Total revenus filtrés :{" "}
-            <strong>{formatAmount(totalRevenueEUR)} €</strong>{" "}
-            ({formatAmount(totalRevenueUSD)} $)
+            Total revenus filtrés : <strong>{formatAmount(totalRevenueEUR)} €</strong> (
+            {formatAmount(totalRevenueUSD)} $)
           </p>
         )}
 
@@ -417,14 +345,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           </div>
         )}
 
-        {!loading &&
-          !error &&
-          spendings.length === 0 &&
-          revenues.length === 0 && (
-            <p style={{ marginTop: "1rem", color: "#777" }}>
-              Lance une recherche pour afficher les résultats.
-            </p>
-          )}
+        {loading && (
+          <p style={{ marginTop: "1rem", textAlign: "center", color: "var(--text-muted)" }}>
+            Chargement des données…
+          </p>
+        )}
+
+        {!loading && !error && spendings.length === 0 && revenues.length === 0 && (
+          <p style={{ marginTop: "1rem", color: "#777", textAlign: "center" }}>
+            Aucune donnée trouvée. Essayez d'élargir vos critères de recherche.
+          </p>
+        )}
       </div>
     </main>
   );
