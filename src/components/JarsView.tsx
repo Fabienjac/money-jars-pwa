@@ -1,3 +1,4 @@
+// src/components/JarsView.tsx - VERSION AVEC BARRES DE PROGRESSION
 import React, { useEffect, useState } from "react";
 import { fetchTotals } from "../api";
 import { TotalsResponse, JarKey } from "../types";
@@ -39,10 +40,6 @@ function formatMoney(value: number | null | undefined) {
   });
 }
 
-/**
- * Charge un éventuel split depuis les réglages (localStorage),
- * sous la forme [{ key: "NEC", percent: 55 }, ...]
- */
 function loadJarSplitFromSettings(): Record<JarKey, number> | null {
   if (typeof window === "undefined") return null;
   try {
@@ -67,9 +64,7 @@ const JarsView: React.FC = () => {
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(
-    null
-  );
+  const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(null);
 
   const loadData = async () => {
     try {
@@ -123,9 +118,7 @@ const JarsView: React.FC = () => {
 
   return (
     <main className="page home-page">
-      {/* On garde le header global de App.tsx, donc ici uniquement le contenu */}
-
-      {/* 3 cartes KPI comme sur le mock */}
+      {/* 3 cartes KPI */}
       <section className="home-kpis">
         <article className="home-kpi-pill home-kpi-pill--revenues">
           <p className="home-kpi-label">Revenus</p>
@@ -160,14 +153,19 @@ const JarsView: React.FC = () => {
         <div className="home-jar-grid">
           {(Object.keys(totals.jars) as JarKey[]).map((key) => {
             const jar = totals.jars[key];
-            const backendSplit = totals.split?.[key]; // 0–1
-            const settingsSplit = customSplit?.[key]; // 0–1
+            const backendSplit = totals.split?.[key];
+            const settingsSplit = customSplit?.[key];
             const effectiveSplit =
               settingsSplit != null
                 ? settingsSplit
                 : backendSplit != null
                 ? backendSplit
                 : 0;
+
+            // Calcul de la progression (dépensé / alloué)
+            const allocated = jar.revenues || 0;
+            const spent = jar.spendings || 0;
+            const progressPercent = allocated > 0 ? (spent / allocated) * 100 : 0;
 
             return (
               <article
@@ -194,9 +192,37 @@ const JarsView: React.FC = () => {
                   {formatMoney(jar.net)} <span>€</span>
                 </p>
 
+                {/* Barre de progression */}
+                <div className="jar-progress-wrapper">
+                  <div className="jar-progress-bg">
+                    <div
+                      className="jar-progress-fill"
+                      style={{
+                        width: `${Math.min(progressPercent, 100)}%`,
+                        backgroundColor: JAR_DOT_COLORS[key],
+                      }}
+                    />
+                  </div>
+                </div>
+
                 <p className="home-jar-spent">
                   Dépensé : {formatMoney(jar.spendings)} €
                 </p>
+
+                {/* Icône de tendance */}
+                {jar.net > 0 && (
+                  <div className="jar-trend-icon">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path
+                        d="M2 10L6 6L9 9L14 4M14 4V8M14 4H10"
+                        stroke={JAR_DOT_COLORS[key]}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </div>
+                )}
               </article>
             );
           })}
