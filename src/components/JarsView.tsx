@@ -1,4 +1,4 @@
-// src/components/JarsView.tsx - VERSION AVEC BARRES DE PROGRESSION
+// src/components/JarsView.tsx - VERSION AVEC BARRES DE PROGRESSION VISIBLES
 import React, { useEffect, useState } from "react";
 import { fetchTotals } from "../api";
 import { TotalsResponse, JarKey } from "../types";
@@ -192,8 +192,14 @@ const JarsView: React.FC = () => {
                   {formatMoney(jar.net)} <span>€</span>
                 </p>
 
-                {/* Barre de progression */}
+                {/* Barre de progression VISIBLE */}
                 <div className="jar-progress-wrapper">
+                  <div className="jar-progress-info">
+                    <span className="jar-progress-label">Dépensé</span>
+                    <span className="jar-progress-percent">
+                      {progressPercent.toFixed(0)}%
+                    </span>
+                  </div>
                   <div className="jar-progress-bg">
                     <div
                       className="jar-progress-fill"
