@@ -4,6 +4,7 @@ import SpendingForm from "./components/SpendingForm";
 import RevenueForm from "./components/RevenueForm";
 import HistoryView, { HistoryUseEntry } from "./components/HistoryView";
 import JarsView from "./components/JarsView";
+import SettingsView from "./components/SettingsView";
 import "./style.css";
 
 type Section = "home" | "history" | "settings";
@@ -47,7 +48,7 @@ function App() {
     setEntryOpen(false);
   };
 
-  // Quand on clique "Utiliser" depuis l’historique
+  // Quand on clique "Utiliser" depuis l'historique
   const handleUseEntry = (entry: HistoryUseEntry) => {
     if (entry.kind === "spending") {
       openEntry("spending", entry.row);
@@ -76,11 +77,7 @@ function App() {
 
         <main className="app-content">
           {section === "home" && <JarsView />}
-
-          {section === "history" && (
-            <HistoryView onUseEntry={handleUseEntry} />
-          )}
-
+          {section === "history" && <HistoryView onUseEntry={handleUseEntry} />}
           {section === "settings" && <SettingsView />}
         </main>
       </div>
@@ -183,30 +180,6 @@ function App() {
         </div>
       )}
     </div>
-  );
-}
-
-function SettingsView() {
-  return (
-    <section className="settings-page">
-      <h2>Configuration</h2>
-
-      <div className="settings-card">
-        <h3>Paramètres des Jars</h3>
-        <p>
-          Prochaine étape : affichage et édition des pourcentages et soldes
-          initiaux pour chaque jar (NEC, FFA, LTSS, PLAY, EDUC, GIFT).
-        </p>
-      </div>
-
-      <div className="settings-card">
-        <h3>Règles automatiques</h3>
-        <p>
-          Prochaine étape : création de règles basées sur des mots-clés pour
-          catégoriser automatiquement les dépenses et revenus.
-        </p>
-      </div>
-    </section>
   );
 }
 
