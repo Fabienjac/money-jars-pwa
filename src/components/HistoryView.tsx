@@ -1,4 +1,4 @@
-// src/components/HistoryView.tsx - VERSION CORRIGÉE
+// src/components/HistoryView.tsx - VERSION MISE À JOUR
 import React, { useState, useEffect } from "react";
 import { searchSpendings, searchRevenues } from "../api";
 import { SearchSpendingResult, SearchRevenueResult } from "../types";
@@ -43,7 +43,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   // Charger automatiquement au montage du composant
   useEffect(() => {
     handleSearch();
-  }, [mode]); // Recharger quand on change de mode
+  }, [mode]);
 
   const handleSearch = async () => {
     setLoading(true);
@@ -74,7 +74,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     setSpendings([]);
     setRevenues([]);
     setError(null);
-    // Les données seront chargées automatiquement par useEffect
   };
 
   const handleUseSpendingRow = (row: SearchSpendingResult) => {
@@ -124,10 +123,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   });
 
   const totalSpending = filteredSpendings.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-  const totalRevenueEUR = filteredRevenues.reduce((sum, row) => sum + (row.amountEUR ?? 0), 0);
-  const totalRevenueUSD = filteredRevenues.reduce((sum, row) => sum + (row.amountUSD ?? 0), 0);
+  const totalRevenue = filteredRevenues.reduce((sum, row) => sum + (row.amount ?? 0), 0);
 
-  // Options pour les filtres - TOUJOURS basées sur les données NON filtrées
+  // Options pour les filtres
   const destinationOptions = Array.from(
     new Set(revenues.map((r) => r.destination).filter((x): x is string => Boolean(x)))
   );
@@ -256,8 +254,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
 
         {mode === "revenue" && filteredRevenues.length > 0 && (
           <p className="history-summary">
-            Total revenus filtrés : <strong>{formatAmount(totalRevenueEUR)} €</strong> (
-            {formatAmount(totalRevenueUSD)} $)
+            Total revenus filtrés : <strong>{formatAmount(totalRevenue)}</strong>
           </p>
         )}
 
@@ -308,8 +305,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                 <tr>
                   <th>Date</th>
                   <th>Source</th>
-                  <th>€</th>
-                  <th>$</th>
+                  <th>Montant</th>
+                  <th>Devise</th>
+                  <th>Crypto</th>
                   <th>Méthode</th>
                   <th>Taux</th>
                   <th>Destination</th>
@@ -322,8 +320,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                   <tr key={`${row.date}-${row.source}-${i}`}>
                     <td>{row.date}</td>
                     <td>{row.source}</td>
-                    <td>{formatAmount(row.amountEUR)}</td>
-                    <td>{formatAmount(row.amountUSD)}</td>
+                    <td>{formatAmount(row.amount)}</td>
+                    <td>{row.value}</td>
+                    <td>{formatAmount(row.cryptoQuantity)}</td>
                     <td>{row.method}</td>
                     <td>{formatAmount(row.rate)}</td>
                     <td>{row.destination}</td>

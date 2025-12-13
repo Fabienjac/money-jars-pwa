@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { appendRevenue } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
 
-
 interface RevenueFormProps {
   prefill?: any | null;
   onClearPrefill?: () => void;
@@ -16,10 +15,12 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
 }) => {
   const [date, setDate] = useState<string>(todayISO());
   const [source, setSource] = useState<string>("");
-  const [amountEUR, setAmountEUR] = useState<string>("");
-  const [amountUSD, setAmountUSD] = useState<string>("");
+  const [amount, setAmount] = useState<string>("");
+  const [value, setValue] = useState<string>("USD");
+  const [cryptoQuantity, setCryptoQuantity] = useState<string>("");
   const [method, setMethod] = useState<string>("");
   const [rate, setRate] = useState<string>("");
+  const [cryptoAddress, setCryptoAddress] = useState<string>("");
   const [destination, setDestination] = useState<string>("");
   const [incomeType, setIncomeType] = useState<string>("");
 
@@ -27,16 +28,18 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  // === Pré-remplissage depuis l’historique ===
+  // === Pré-remplissage depuis l'historique ===
   useEffect(() => {
     if (!prefill) return;
 
     if (prefill.date) setDate(prefill.date);
     if (prefill.source) setSource(prefill.source);
-    if (prefill.amountEUR != null) setAmountEUR(String(prefill.amountEUR));
-    if (prefill.amountUSD != null) setAmountUSD(String(prefill.amountUSD));
+    if (prefill.amount != null) setAmount(String(prefill.amount));
+    if (prefill.value) setValue(prefill.value);
+    if (prefill.cryptoQuantity != null) setCryptoQuantity(String(prefill.cryptoQuantity));
     if (prefill.method) setMethod(prefill.method);
     if (prefill.rate != null) setRate(String(prefill.rate));
+    if (prefill.cryptoAddress) setCryptoAddress(prefill.cryptoAddress);
     if (prefill.destination) setDestination(prefill.destination);
     if (prefill.incomeType) setIncomeType(prefill.incomeType);
 
@@ -78,16 +81,9 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     e.preventDefault();
     setMessage(null);
 
-    const numEUR =
-      amountEUR.trim() === ""
-        ? null
-        : parseFloat(amountEUR.replace(",", "."));
-    const numUSD =
-      amountUSD.trim() === ""
-        ? null
-        : parseFloat(amountUSD.replace(",", "."));
-    const numRate =
-      rate.trim() === "" ? null : parseFloat(rate.replace(",", "."));
+    const numAmount = amount.trim() === "" ? null : parseFloat(amount.replace(",", "."));
+    const numCryptoQty = cryptoQuantity.trim() === "" ? null : parseFloat(cryptoQuantity.replace(",", "."));
+    const numRate = rate.trim() === "" ? null : parseFloat(rate.replace(",", "."));
 
     if (!date || !source) {
       setMessage("Merci de saisir au minimum la date et la source.");
@@ -99,26 +95,30 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       await appendRevenue({
         date,
         source,
-        amountEUR: numEUR,
-        amountUSD: numUSD,
+        amount: numAmount,
+        value,
+        cryptoQuantity: numCryptoQty,
         method,
         rate: numRate,
+        cryptoAddress,
         destination,
         incomeType,
       });
 
       setMessage("Revenu enregistré ✅");
       setSource("");
-      setAmountEUR("");
-      setAmountUSD("");
+      setAmount("");
+      setValue("USD");
+      setCryptoQuantity("");
       setMethod("");
       setRate("");
+      setCryptoAddress("");
       setDestination("");
       setIncomeType("");
       setAppliedRule(null);
     } catch (err: any) {
       console.error(err);
-      setMessage(err.message || "Erreur lors de l’enregistrement.");
+      setMessage(err.message || "Erreur lors de l'enregistrement.");
     } finally {
       setLoading(false);
     }
@@ -160,24 +160,32 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         )}
 
         <label className="field">
-          <span>Montant (€)</span>
+          <span>Montant</span>
           <input
             type="number"
             step="0.01"
             inputMode="decimal"
-            value={amountEUR}
-            onChange={(e) => setAmountEUR(e.target.value)}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
           />
         </label>
 
         <label className="field">
-          <span>Montant ($)</span>
+          <span>Valeur (devise)</span>
+          <select value={value} onChange={(e) => setValue(e.target.value)}>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Quantité Crypto</span>
           <input
             type="number"
-            step="0.01"
+            step="0.00000001"
             inputMode="decimal"
-            value={amountUSD}
-            onChange={(e) => setAmountUSD(e.target.value)}
+            value={cryptoQuantity}
+            onChange={(e) => setCryptoQuantity(e.target.value)}
           />
         </label>
 
@@ -202,7 +210,16 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         </label>
 
         <label className="field">
-          <span>Destination</span>
+          <span>Adresse crypto</span>
+          <input
+            type="text"
+            value={cryptoAddress}
+            onChange={(e) => setCryptoAddress(e.target.value)}
+          />
+        </label>
+
+        <label className="field">
+          <span>Compte de destination</span>
           <input
             type="text"
             value={destination}

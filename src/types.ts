@@ -1,59 +1,4 @@
-export type JarKey = 'NEC' | 'FFA' | 'LTSS' | 'PLAY' | 'EDUC' | 'GIFT';
-
-export interface SpendingRow {
-  date: string;
-  jar: JarKey;
-  account: string;
-  amount: number;
-  description: string;
-}
-
-export interface RevenueRow {
-  date: string;
-  source: string;
-  amountEUR?: number;
-  amountUSD?: number;
-  method?: string;
-  rate?: number;
-  destination?: string;
-  incomeType?: string;
-}
-
-export interface JarTotals {
-  revenues: number;
-  spendings: number;
-  net: number;
-  revPct: number;
-}
-
-export interface TotalsResponse {
-  jars: Record<JarKey, JarTotals>;
-  totalRevenues: number;
-  split: Record<JarKey, number>;
-}
-
-export interface SearchSpendingResult {
-  date: string;
-  jar: JarKey;
-  account: string;
-  amount: number;
-  description: string;
-}
-
-export interface SearchRevenueResult {
-  mois: string;
-  date: string;
-  source: string;
-  amountEUR: number;
-  amountUSD: number;
-  method: string;
-  rate: number;
-  destination: string;
-  incomeType: string;
-}
-
 // src/types.ts
-
 export type JarKey = 'NEC' | 'FFA' | 'LTSS' | 'PLAY' | 'EDUC' | 'GIFT';
 
 export interface SpendingRow {
@@ -65,14 +10,16 @@ export interface SpendingRow {
 }
 
 export interface RevenueRow {
-  date: string;
-  source: string;
-  amountEUR?: number;
-  amountUSD?: number;
-  method?: string;
-  rate?: number;
-  destination?: string;
-  incomeType?: string;
+  date: string;              // Colonne A: Date
+  source: string;            // Colonne B: Source
+  amount?: number;           // Colonne C: Montant
+  value?: string;            // Colonne D: Valeur (USD, EUR, etc.)
+  cryptoQuantity?: number;   // Colonne E: Quantité Crypto
+  method?: string;           // Colonne F: Méthode
+  rate?: number;             // Colonne G: Taux USD/EUR
+  cryptoAddress?: string;    // Colonne H: Adresse crypto
+  destination?: string;      // Colonne J: Compte de destination
+  incomeType?: string;       // Colonne K: Type
 }
 
 export interface JarTotals {
@@ -100,12 +47,14 @@ export interface SearchRevenueResult {
   mois: string;
   date: string;
   source: string;
-  amountEUR: number;
-  amountUSD: number;
-  method: string;
-  rate: number;
-  destination: string;
-  incomeType: string;
+  amount: number;            // Montant
+  value: string;             // Valeur (USD, EUR, etc.)
+  cryptoQuantity: number;    // Quantité Crypto
+  method: string;            // Méthode
+  rate: number;              // Taux USD/EUR
+  cryptoAddress: string;     // Adresse crypto
+  destination: string;       // Compte de destination
+  incomeType: string;        // Type
 }
 
 /* ===========================
@@ -130,4 +79,3 @@ export interface AutoRule {
   destination?: string;  // destination (pour revenus)
   incomeType?: string;   // type de revenu si tu veux
 }
-
