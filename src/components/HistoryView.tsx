@@ -1,6 +1,6 @@
-// src/components/HistoryView.tsx - VERSION MISE À JOUR
+// src/components/HistoryView.tsx - VERSION CORRIGÉE AVEC VRAIS TOTAUX
 import React, { useState, useEffect } from "react";
-import { searchSpendings, searchRevenues } from "../api";
+import { searchSpendings, searchRevenues, fetchTotals } from "../api";
 import { SearchSpendingResult, SearchRevenueResult } from "../types";
 
 type Mode = "spending" | "revenue";
@@ -33,12 +33,37 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const [spendings, setSpendings] = useState<SearchSpendingResult[]>([]);
   const [revenues, setRevenues] = useState<SearchRevenueResult[]>([]);
 
+  // NOUVEAUX ÉTATS pour les vrais totaux
+  const [totalRevenuesFromAPI, setTotalRevenuesFromAPI] = useState<number>(0);
+  const [totalSpendingsFromAPI, setTotalSpendingsFromAPI] = useState<number>(0);
+
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [destinationFilter, setDestinationFilter] = useState<string>("all");
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [jarFilter, setJarFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
+
+  // Charger les vrais totaux depuis l'API
+  useEffect(() => {
+    const loadTotals = async () => {
+      try {
+        const totals = await fetchTotals();
+        setTotalRevenuesFromAPI(totals.totalRevenues || 0);
+        
+        // Calculer le total des dépenses
+        const totalSpend = Object.values(totals.jars).reduce(
+          (sum, jar) => sum + (jar.spendings || 0),
+          0
+        );
+        setTotalSpendingsFromAPI(totalSpend);
+      } catch (err) {
+        console.error("Erreur chargement totaux:", err);
+      }
+    };
+    
+    loadTotals();
+  }, []);
 
   // Charger automatiquement au montage du composant
   useEffect(() => {
@@ -122,8 +147,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     return true;
   });
 
-  const totalSpending = filteredSpendings.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-  const totalRevenue = filteredRevenues.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+  // Totaux des lignes FILTRÉES (pour info)
+  const totalSpendingFiltered = filteredSpendings.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+  const totalRevenueFiltered = filteredRevenues.reduce((sum, row) => sum + (row.amount ?? 0), 0);
 
   // Options pour les filtres
   const destinationOptions = Array.from(
@@ -245,17 +271,56 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
 
         {error && <p style={{ color: "red", marginTop: "1rem" }}>{error}</p>}
 
-        {/* Résumé chiffré */}
-        {mode === "spending" && filteredSpendings.length > 0 && (
-          <p className="history-summary">
-            Total dépensé sur la période filtrée : <strong>{formatAmount(totalSpending)} €</strong>
-          </p>
+        {/* NOUVEAU : Afficher les VRAIS totaux de l'API */}
+        {mode === "spending" && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              marginTop: "1rem",
+            }}
+          >
+            <p className="history-summary">
+              <strong>Total dépensé (calculé par l'API) : {formatAmount(totalSpendingsFromAPI)} €</strong>
+            </p>
+            {filteredSpendings.length > 0 && (
+              <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                Total des lignes filtrées affichées : {formatAmount(totalSpendingFiltered)} €
+                {Math.abs(totalSpendingFiltered - totalSpendingsFromAPI) > 1 && (
+                  <span style={{ color: "#f97316", marginLeft: "8px" }}>
+                    ⚠️ Différence : {formatAmount(Math.abs(totalSpendingFiltered - totalSpendingsFromAPI))} €
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
         )}
 
-        {mode === "revenue" && filteredRevenues.length > 0 && (
-          <p className="history-summary">
-            Total revenus filtrés : <strong>{formatAmount(totalRevenue)}</strong>
-          </p>
+        {mode === "revenue" && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+              marginTop: "1rem",
+            }}
+          >
+            <p className="history-summary">
+              <strong>Total revenus (calculé par l'API) : {formatAmount(totalRevenuesFromAPI)} €</strong>
+            </p>
+            {filteredRevenues.length > 0 && (
+              <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                Total des lignes affichées (montant brut USD) : {formatAmount(totalRevenueFiltered)} USD/EUR
+                {Math.abs(totalRevenueFiltered - totalRevenuesFromAPI) > 1 && (
+                  <span style={{ color: "#f97316", marginLeft: "8px" }}>
+                    ⚠️ La différence est normale car les lignes affichent le montant en USD, 
+                    mais le total API calcule en EUR après conversion crypto
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
         )}
 
         {/* Tableau DEPENSES */}
