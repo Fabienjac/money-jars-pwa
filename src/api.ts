@@ -93,3 +93,51 @@ export async function fetchTotals() {
 
   return res.json() as Promise<TotalsResponse>;
 }
+
+// Ajoutez cette fonction à api.ts après fetchTotals()
+
+export interface AnalyticsResponse {
+  monthlyData: Array<{
+    month: string;
+    revenues: number;
+    spendings: number;
+  }>;
+  sourcesData: Array<{
+    name: string;
+    value: number;
+  }>;
+  jarEvolution: Array<{
+    month: string;
+    NEC?: number;
+    FFA?: number;
+    LTSS?: number;
+    PLAY?: number;
+    EDUC?: number;
+    GIFT?: number;
+  }>;
+  trends: {
+    currentMonth: string;
+    previousMonth: string;
+    revenues: {
+      current: number;
+      previous: number;
+    };
+    spendings: {
+      current: number;
+      previous: number;
+    };
+  };
+}
+
+export async function fetchAnalytics() {
+  const url = `${API_URL}?action=analytics&key=${encodeURIComponent(API_KEY)}`;
+
+  const res = await fetch(url, { method: "GET" });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Erreur API analytics (${res.status}): ${text}`);
+  }
+
+  return res.json() as Promise<AnalyticsResponse>;
+}

@@ -1,7 +1,9 @@
-// src/components/JarsView.tsx - VERSION AVEC BARRES DE PROGRESSION VISIBLES
+// src/components/JarsView.tsx - VERSION AVEC ANALYSES
 import React, { useEffect, useState } from "react";
 import { fetchTotals } from "../api";
 import { TotalsResponse, JarKey } from "../types";
+import { AnalyticsDashboard } from "./AnalyticsDashboard";
+import { TrendBadgeMini } from "./TrendBadge";
 
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: "Nécessités",
@@ -65,6 +67,7 @@ const JarsView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(null);
+  const [showAnalytics, setShowAnalytics] = useState(true);
 
   const loadData = async () => {
     try {
@@ -116,13 +119,19 @@ const JarsView: React.FC = () => {
   );
   const totalBalance = totalRevenues - totalSpendings;
 
+  // Calculer les revenus/dépenses du mois précédent (simulé ici, à adapter)
+  // Dans une vraie implémentation, ces valeurs viendraient de l'API analytics
+  const previousRevenues = totalRevenues * 0.9; // Exemple
+  const previousSpendings = totalSpendings * 1.1; // Exemple
+
   return (
     <main className="page home-page">
-      {/* 3 cartes KPI */}
+      {/* 3 cartes KPI avec tendances */}
       <section className="home-kpis">
         <article className="home-kpi-pill home-kpi-pill--revenues">
           <p className="home-kpi-label">Revenus</p>
           <p className="home-kpi-value">{formatMoney(totalRevenues)} €</p>
+          {/* <TrendBadgeMini current={totalRevenues} previous={previousRevenues} /> */}
         </article>
 
         <article className="home-kpi-pill home-kpi-pill--spendings">
@@ -162,7 +171,6 @@ const JarsView: React.FC = () => {
                 ? backendSplit
                 : 0;
 
-            // Calcul de la progression (dépensé / alloué)
             const allocated = jar.revenues || 0;
             const spent = jar.spendings || 0;
             const progressPercent = allocated > 0 ? (spent / allocated) * 100 : 0;
@@ -192,7 +200,6 @@ const JarsView: React.FC = () => {
                   {formatMoney(jar.net)} <span>€</span>
                 </p>
 
-                {/* Barre de progression VISIBLE */}
                 <div className="jar-progress-wrapper">
                   <div className="jar-progress-info">
                     <span className="jar-progress-label">Dépensé</span>
@@ -215,7 +222,6 @@ const JarsView: React.FC = () => {
                   Dépensé : {formatMoney(jar.spendings)} €
                 </p>
 
-                {/* Icône de tendance */}
                 {jar.net > 0 && (
                   <div className="jar-trend-icon">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -233,6 +239,22 @@ const JarsView: React.FC = () => {
             );
           })}
         </div>
+      </section>
+
+      {/* Toggle pour afficher/masquer les analyses */}
+      <section className="home-section">
+        <div className="home-section-header">
+          <h2 className="home-section-title">Analyses</h2>
+          <button
+            type="button"
+            className="chip-button"
+            onClick={() => setShowAnalytics(!showAnalytics)}
+          >
+            {showAnalytics ? "Masquer" : "Afficher"}
+          </button>
+        </div>
+
+        {showAnalytics && <AnalyticsDashboard />}
       </section>
     </main>
   );
