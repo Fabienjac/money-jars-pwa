@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { appendSpending } from "../api";
 import { JarKey, SpendingRow } from "../types";
 import { loadAutoRules, AutoRule } from "../autoRules";
+import { UniversalImporter } from "./UniversalImporter";
 
 interface SpendingFormProps {
   prefill?: any | null;
@@ -23,6 +24,44 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [showImporter, setShowImporter] = useState(false);
+
+  // === Gestion de l'import en masse ===
+  const handleBulkImport = async (transactions: any[]) => {
+    let successCount = 0;
+    let errorCount = 0;
+    
+    setLoading(true);
+    setMessage("Import en cours...");
+
+    for (const t of transactions) {
+      try {
+        await appendSpending({
+          date: t.date,
+          jar: t.suggestedJar || "NEC",
+          account: t.suggestedAccount || "Imported",
+          amount: t.amount,
+          description: t.description,
+        });
+        successCount++;
+      } catch (err) {
+        console.error("Erreur import transaction:", err);
+        errorCount++;
+      }
+    }
+
+    setLoading(false);
+    setShowImporter(false);
+    
+    if (errorCount === 0) {
+      setMessage(`✅ ${successCount} transaction(s) importée(s) avec succès !`);
+    } else {
+      setMessage(`⚠️ ${successCount}/${transactions.length} transaction(s) importée(s) (${errorCount} erreur(s))`);
+    }
+    
+    // Effacer le message après 5 secondes
+    setTimeout(() => setMessage(null), 5000);
+  };
 
   // === Pré-remplissage quand on vient de l’Historique ===
   useEffect(() => {
@@ -102,9 +141,31 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
 
   return (
     <main className="page">
-      <h2>Nouvelle dépense</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+        <h2 style={{ margin: 0 }}>Nouvelle dépense</h2>
+        <button
+          type="button"
+          onClick={() => setShowImporter(!showImporter)}
+          style={{
+            padding: "10px 20px",
+            borderRadius: "12px",
+            border: "1px solid var(--border-color)",
+            background: showImporter ? "var(--bg-body)" : "linear-gradient(135deg, #34C759 0%, #28a745 100%)",
+            color: showImporter ? "var(--text-main)" : "white",
+            fontSize: "14px",
+            fontWeight: "600",
+            cursor: "pointer",
+            boxShadow: showImporter ? "none" : "var(--shadow-sm)",
+          }}
+        >
+          {showImporter ? "✕ Fermer l'import" : "📂 Importer des transactions"}
+        </button>
+      </div>
 
-      <form className="card form" onSubmit={handleSubmit}>
+      {showImporter ? (
+        <UniversalImporter onImport={handleBulkImport} />
+      ) : (
+        <form className="card form" onSubmit={handleSubmit}>
         <label className="field">
           <span>Date</span>
           <input
@@ -171,6 +232,7 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
           {loading ? "Enregistrement…" : "Enregistrer"}
         </button>
       </form>
+      )}
     </main>
   );
 };
