@@ -7,8 +7,15 @@ interface Transaction {
   description: string;
   amount: number;
   currency?: string;
+  originalAmount?: number;
+  originalCurrency?: string;
+  conversionRate?: number | null;
+  conversionNote?: string | null;
   suggestedJar?: JarKey;
   suggestedAccount?: string;
+  selected?: boolean;
+  isDuplicate?: boolean;
+  duplicateNote?: string;
 }
 
 interface UniversalImporterProps {
@@ -26,6 +33,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [step, setStep] = useState<"upload" | "review">("upload");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -73,13 +83,56 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       }
 
       const data = await response.json();
-      setTransactions(data.transactions || []);
+      
+      console.log("📥 Transactions extraites:", data.transactions?.length);
+      
+      // Vérifier les doublons
+      console.log("🔍 Vérification des doublons...");
+      const transactionsWithDuplicateCheck = await checkDuplicates(data.transactions || []);
+      
+      const duplicateCount = transactionsWithDuplicateCheck.filter(t => t.isDuplicate).length;
+      console.log(`⚠️ ${duplicateCount} doublon(s) détecté(s)`);
+      
+      // Marquer toutes les transactions comme sélectionnées par défaut (sauf les doublons)
+      const transactionsWithSelection = transactionsWithDuplicateCheck.map(t => ({
+        ...t,
+        selected: !t.isDuplicate, // Décocher automatiquement les doublons
+      }));
+      
+      setTransactions(transactionsWithSelection);
       setStep("review");
     } catch (err: any) {
       console.error("Erreur extraction:", err);
       setError(err.message || "Erreur lors de l'extraction du fichier");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Vérifier les doublons en appelant l'API
+  const checkDuplicates = async (transactions: Transaction[]) => {
+    try {
+      console.log(`🔍 Appel API checkDuplicates pour ${transactions.length} transactions`);
+      
+      const response = await fetch("/.netlify/functions/checkDuplicates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transactions }),
+      });
+
+      console.log(`📡 Réponse checkDuplicates: ${response.status}`);
+
+      if (!response.ok) {
+        console.warn("⚠️ Impossible de vérifier les doublons - statut:", response.status);
+        return transactions;
+      }
+
+      const data = await response.json();
+      console.log("✅ Données reçues:", data);
+      return data.transactions || transactions;
+    } catch (error) {
+      console.warn("Erreur lors de la vérification des doublons:", error);
+      return transactions;
     }
   };
 
@@ -93,13 +146,64 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     );
   };
 
-  const handleImport = () => {
-    onImport(transactions);
-    setFile(null);
-    setFileFormat(null);
-    setTransactions([]);
-    setStep("upload");
+  const handleImport = async () => {
+    // Importer seulement les transactions sélectionnées
+    const selectedTransactions = transactions.filter(t => t.selected);
+    
+    if (selectedTransactions.length === 0) {
+      return;
+    }
+
+    setImporting(true);
+    setImportProgress({ current: 0, total: selectedTransactions.length });
+
+    try {
+      // Appeler onImport de manière asynchrone avec progression
+      await onImport(selectedTransactions);
+      
+      // Succès : réinitialiser
+      setFile(null);
+      setFileFormat(null);
+      setTransactions([]);
+      setStep("upload");
+    } catch (error) {
+      console.error("Erreur lors de l'import:", error);
+      setError("Erreur lors de l'import des transactions");
+    } finally {
+      setImporting(false);
+      setImportProgress({ current: 0, total: 0 });
+    }
   };
+
+  const toggleSelectAll = () => {
+    const allNonDuplicatesSelected = transactions
+      .filter(t => !t.isDuplicate)
+      .every(t => t.selected);
+    
+    setTransactions(prev =>
+      prev.map(t => ({
+        ...t,
+        selected: t.isDuplicate ? false : !allNonDuplicatesSelected,
+      }))
+    );
+  };
+
+  // Filtrer les transactions selon la recherche
+  const filteredTransactions = transactions.filter((t) => {
+    if (!searchQuery.trim()) return true;
+    
+    const query = searchQuery.toLowerCase();
+    return (
+      t.description?.toLowerCase().includes(query) ||
+      t.date?.includes(query) ||
+      t.amount?.toString().includes(query) ||
+      t.suggestedAccount?.toLowerCase().includes(query) ||
+      t.suggestedJar?.toLowerCase().includes(query)
+    );
+  });
+
+  const selectedCount = transactions.filter(t => t.selected).length;
+  const duplicateCount = transactions.filter(t => t.isDuplicate).length;
 
   const handleBack = () => {
     setStep("upload");
@@ -150,10 +254,76 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           </button>
         </div>
 
-        <p style={{ color: "var(--text-muted)", marginBottom: "20px" }}>
-          {transactions.length} transaction(s) détectée(s). Vérifiez et
-          modifiez si nécessaire avant d'importer.
+        <p style={{ color: "var(--text-muted)", marginBottom: "12px" }}>
+          {transactions.length} transaction(s) détectée(s)
+          {duplicateCount > 0 && ` • ${duplicateCount} doublon(s) détecté(s)`}
+          {searchQuery && ` • ${filteredTransactions.length} affichée(s)`}
         </p>
+
+        {/* Champ de recherche */}
+        <div style={{ marginBottom: "16px" }}>
+          <input
+            type="text"
+            placeholder="🔍 Rechercher une transaction (description, date, montant...)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              borderRadius: "12px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-card)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "20px",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            backgroundColor: "rgba(0, 122, 255, 0.1)",
+            border: "1px solid rgba(0, 122, 255, 0.2)",
+          }}
+        >
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              cursor: "pointer",
+              fontSize: "14px",
+              fontWeight: "600",
+              color: "var(--text-main)",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={transactions.filter(t => !t.isDuplicate).every(t => t.selected)}
+              onChange={toggleSelectAll}
+              style={{
+                width: "18px",
+                height: "18px",
+                cursor: "pointer",
+              }}
+            />
+            Tout sélectionner / désélectionner
+          </label>
+          <span
+            style={{
+              fontSize: "14px",
+              fontWeight: "600",
+              color: "var(--jar-nec)",
+            }}
+          >
+            {selectedCount} sélectionnée(s)
+          </span>
+        </div>
 
         <div
           style={{
@@ -162,17 +332,110 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             marginBottom: "20px",
           }}
         >
-          {transactions.map((transaction, index) => (
+          {filteredTransactions.length === 0 && searchQuery && (
             <div
-              key={index}
+              style={{
+                padding: "40px",
+                textAlign: "center",
+                color: "var(--text-muted)",
+              }}
+            >
+              Aucune transaction ne correspond à "{searchQuery}"
+            </div>
+          )}
+          
+          {filteredTransactions.map((transaction, index) => {
+            // Trouver l'index original pour updateTransaction
+            const originalIndex = transactions.indexOf(transaction);
+            
+            return (
+            <div
+              key={originalIndex}
               style={{
                 padding: "16px",
                 marginBottom: "12px",
                 borderRadius: "12px",
-                border: "1px solid var(--border-color)",
-                backgroundColor: "var(--bg-body)",
+                border: transaction.isDuplicate
+                  ? "2px solid #FF9500"
+                  : transaction.selected
+                  ? "2px solid var(--jar-nec)"
+                  : "1px solid var(--border-color)",
+                backgroundColor: transaction.isDuplicate
+                  ? "rgba(255, 149, 0, 0.05)"
+                  : "var(--bg-body)",
+                opacity: transaction.selected || transaction.isDuplicate ? 1 : 0.6,
               }}
             >
+              {/* Header avec checkbox */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginBottom: "12px",
+                  paddingBottom: "12px",
+                  borderBottom: "1px solid var(--border-color)",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={transaction.selected || false}
+                  disabled={transaction.isDuplicate}
+                  onChange={(e) =>
+                    updateTransaction(originalIndex, "selected", e.target.checked)
+                  }
+                  style={{
+                    width: "20px",
+                    height: "20px",
+                    cursor: transaction.isDuplicate ? "not-allowed" : "pointer",
+                  }}
+                />
+                <div style={{ flex: 1 }}>
+                  <span
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: "600",
+                      color: "var(--text-main)",
+                    }}
+                  >
+                    Transaction #{originalIndex + 1}
+                  </span>
+                  {transaction.isDuplicate && (
+                    <div
+                      style={{
+                        marginTop: "4px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: "600",
+                          color: "#FF9500",
+                          backgroundColor: "rgba(255, 149, 0, 0.1)",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                        }}
+                      >
+                        ⚠️ DOUBLON DÉTECTÉ
+                      </span>
+                      {transaction.duplicateNote && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          {transaction.duplicateNote}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div
                 style={{
                   display: "grid",
@@ -196,7 +459,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                     type="date"
                     value={transaction.date}
                     onChange={(e) =>
-                      updateTransaction(index, "date", e.target.value)
+                      updateTransaction(originalIndex, "date", e.target.value)
                     }
                     style={{
                       width: "100%",
@@ -241,6 +504,18 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                       color: "var(--text-main)",
                     }}
                   />
+                  {transaction.conversionNote && (
+                    <div
+                      style={{
+                        marginTop: "4px",
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        fontStyle: "italic",
+                      }}
+                    >
+                      💱 {transaction.conversionNote}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ gridColumn: "1 / -1" }}>
@@ -259,7 +534,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                     type="text"
                     value={transaction.description}
                     onChange={(e) =>
-                      updateTransaction(index, "description", e.target.value)
+                      updateTransaction(originalIndex, "description", e.target.value)
                     }
                     style={{
                       width: "100%",
@@ -329,7 +604,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                     value={transaction.suggestedAccount || ""}
                     onChange={(e) =>
                       updateTransaction(
-                        index,
+                        originalIndex,
                         "suggestedAccount",
                         e.target.value
                       )
@@ -347,8 +622,37 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                 </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
+
+        {/* Message d'import en cours */}
+        {importing && (
+          <div
+            style={{
+              padding: "16px",
+              marginBottom: "20px",
+              borderRadius: "12px",
+              backgroundColor: "rgba(52, 199, 89, 0.1)",
+              border: "1px solid rgba(52, 199, 89, 0.3)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "16px",
+                fontWeight: "600",
+                color: "#34C759",
+                marginBottom: "8px",
+              }}
+            >
+              ⏳ Import en cours...
+            </div>
+            <div style={{ fontSize: "14px", color: "var(--text-muted)" }}>
+              Veuillez patienter pendant l'enregistrement des transactions
+            </div>
+          </div>
+        )}
 
         <div style={{ display: "flex", gap: "12px" }}>
           <button
@@ -369,24 +673,24 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           </button>
           <button
             onClick={handleImport}
-            disabled={transactions.length === 0}
+            disabled={selectedCount === 0 || importing}
             style={{
               flex: 2,
               padding: "14px",
               borderRadius: "12px",
               border: "none",
               background:
-                transactions.length === 0
+                (selectedCount === 0 || importing)
                   ? "var(--border-color)"
                   : "linear-gradient(135deg, var(--jar-nec) 0%, #0051d5 100%)",
               color: "white",
               fontSize: "16px",
               fontWeight: "700",
-              cursor: transactions.length === 0 ? "not-allowed" : "pointer",
-              opacity: transactions.length === 0 ? 0.5 : 1,
+              cursor: (selectedCount === 0 || importing) ? "not-allowed" : "pointer",
+              opacity: (selectedCount === 0 || importing) ? 0.5 : 1,
             }}
           >
-            Importer {transactions.length} transaction(s)
+            {importing ? "⏳ Import en cours..." : `Importer ${selectedCount} transaction(s) sélectionnée(s)`}
           </button>
         </div>
       </div>
