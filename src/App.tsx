@@ -5,6 +5,7 @@ import RevenueForm from "./components/RevenueForm";
 import HistoryView, { HistoryUseEntry } from "./components/HistoryView";
 import JarsView from "./components/JarsView";
 import SettingsView from "./components/SettingsView";
+import { UniversalImporterV2 } from "./components/UniversalImporterV2";
 import "./style.css";
 
 type Section = "home" | "history" | "settings";
@@ -19,6 +20,9 @@ function App() {
 
   const [prefillSpending, setPrefillSpending] = useState<any | null>(null);
   const [prefillRevenue, setPrefillRevenue] = useState<any | null>(null);
+
+  // Importeur universel
+  const [importerOpen, setImporterOpen] = useState(false);
 
   // Thème
   useEffect(() => {
@@ -54,6 +58,108 @@ function App() {
       openEntry("spending", entry.row);
     } else {
       openEntry("revenue", entry.row);
+    }
+  };
+
+  // Import de transactions depuis fichiers
+  const handleImportTransactions = async (transactions: any[], type: "spending" | "revenue" = "spending") => {
+    console.log(`📦 Importing ${transactions.length} ${type === "revenue" ? "revenues" : "transactions"}...`);
+    
+    try {
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Importer chaque transaction individuellement
+      for (const t of transactions) {
+        try {
+          // Le Google Apps Script attend les données dans body.row !
+          const dataToSend = type === "spending" ? {
+            action: "append",
+            type: "spending",
+            row: {
+              date: t.date,
+              jar: t.suggestedJar,
+              account: t.suggestedAccount,
+              amount: t.amount,
+              description: t.description,
+            }
+          } : {
+            action: "append",
+            type: "revenue",
+            row: {
+              date: t.date,
+              source: t.suggestedSource || t.suggestedAccount || t.description,
+              amount: t.amount,
+              valeur: t.valeur || t.currency || "",
+              quantiteCrypto: t.quantiteCrypto || "",
+              method: t.suggestedMethod || "",
+              tauxUSDEUR: t.tauxUSDEUR || "",
+              adresseCrypto: t.adresseCrypto || "",
+              compteDestination: t.compteDestination || "",
+              type: t.type || "",
+            }
+          };
+
+          console.log(`📤 Envoi: ${JSON.stringify(dataToSend)}`);
+
+          const response = await fetch("/.netlify/functions/gsheetProxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(dataToSend),
+          });
+
+          const responseText = await response.text();
+          console.log(`📥 Réponse: ${responseText}`);
+
+          if (!response.ok) {
+            console.error(`❌ Failed to import: ${t.description}`, responseText);
+            errorCount++;
+          } else {
+            // Vérifier que la réponse contient un succès
+            try {
+              const responseData = JSON.parse(responseText);
+              if (responseData.ok === false || responseData.error) {
+                console.error(`❌ Server error for: ${t.description}`, responseData);
+                errorCount++;
+              } else {
+                console.log(`✅ Imported: ${t.description || t.suggestedSource}`);
+                successCount++;
+              }
+            } catch (e) {
+              // Si pas de JSON, considérer comme succès si status 200
+              console.log(`✅ Imported: ${t.description || t.suggestedSource}`);
+              successCount++;
+            }
+          }
+
+          // Petit délai pour ne pas surcharger l'API
+          await new Promise(resolve => setTimeout(resolve, 200));
+
+        } catch (error: any) {
+          console.error(`❌ Error importing ${t.description || t.suggestedSource}:`, error);
+          errorCount++;
+        }
+      }
+
+      console.log(`✅ Import terminé: ${successCount} réussie(s), ${errorCount} échouée(s)`);
+      
+      if (successCount > 0) {
+        alert(`✅ ${successCount} ${type === "revenue" ? "revenu(s)" : "transaction(s)"} importée(s) avec succès !${errorCount > 0 ? `\n⚠️ ${errorCount} échouée(s)` : ''}`);
+      } else {
+        throw new Error(`Aucun${type === "revenue" ? " revenu" : "e transaction"} n'a pu être importé${type === "revenue" ? "" : "e"}`);
+      }
+      
+      // Fermer l'importeur
+      setImporterOpen(false);
+      
+      // Rafraîchir la page pour voir les nouvelles données
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+      
+    } catch (error: any) {
+      console.error("❌ Erreur import:", error);
+      alert(`❌ Erreur lors de l'import: ${error.message}`);
     }
   };
 
@@ -177,13 +283,52 @@ function App() {
         </button>
       </nav>
 
-      {/* Floating Action Button */}
+      {/* Floating Action Button - Principal (violet) */}
       <button
         type="button"
         className="fab"
         onClick={() => openEntry("spending")}
+        style={{
+          position: "fixed",
+          bottom: "100px", // ← Plus haut (au-dessus de la navbar)
+          right: "20px",
+          width: "56px",
+          height: "56px",
+          borderRadius: "50%",
+          zIndex: 999,
+        }}
       >
         +
+      </button>
+
+      {/* Bouton Import (vert) - Au-dessus du bouton violet */}
+      <button
+        type="button"
+        onClick={() => setImporterOpen(true)}
+        style={{
+          position: "fixed",
+          bottom: "170px", // ← Encore plus haut (au-dessus du bouton +)
+          right: "20px",
+          width: "56px",
+          height: "56px",
+          borderRadius: "50%",
+          border: "none",
+          background: "linear-gradient(135deg, #34C759 0%, #30B350 100%)",
+          color: "white",
+          fontSize: "24px",
+          cursor: "pointer",
+          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+          zIndex: 999,
+          transition: "transform 0.2s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "scale(1.05)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "scale(1)";
+        }}
+      >
+        📂
       </button>
 
       {/* Bottom sheet "Nouvelle entrée" */}
@@ -242,6 +387,51 @@ function App() {
                   onClearPrefill={() => setPrefillRevenue(null)}
                 />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Importeur Universel */}
+      {importerOpen && (
+        <div 
+          className="entry-sheet-backdrop" 
+          onClick={() => setImporterOpen(false)}
+          style={{ zIndex: 1001 }}
+        >
+          <div
+            className="entry-sheet"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "900px",
+              width: "95%",
+              maxHeight: "90vh",
+              height: "90vh", // Force la hauteur
+              overflow: "hidden", // Pas de scroll ici
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <header className="entry-sheet-header" style={{ flexShrink: 0 }}>
+              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700" }}>
+                📂 Importer des transactions
+              </h2>
+              <button
+                type="button"
+                className="entry-close-btn"
+                onClick={() => setImporterOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="entry-sheet-body" style={{ 
+              padding: 0, 
+              flex: 1,
+              minHeight: 0,
+              overflow: "hidden",
+            }}>
+              <UniversalImporterV2 onImport={handleImportTransactions} />
             </div>
           </div>
         </div>
