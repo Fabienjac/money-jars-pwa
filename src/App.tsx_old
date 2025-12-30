@@ -9,8 +9,6 @@ import { UniversalImporter } from "./components/UniversalImporter";
 import { RecentTransactions } from "./components/RecentTransactions";
 import TagStatsView from "./components/TagStatsView";
 import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
-import { OfflineIndicator } from "./components/OfflineIndicator";
-import { useOffline } from "./hooks/useOffline";
 import { loadAccounts } from "./accountsUtils";
 import "./style.css";
 
@@ -37,9 +35,6 @@ function App() {
   
   // Comptes de dépenses
   const [accounts, setAccounts] = useState<Array<{id: string, name: string, icon: string}>>([]);
-
-  // ✅ Mode offline
-  const offline = useOffline();
 
   // Thème
   useEffect(() => {
@@ -88,39 +83,6 @@ function App() {
   const handleImportTransactions = async (transactions: any[], type: "spending" | "revenue" = "spending") => {
     console.log(`📦 Importing ${transactions.length} ${type === "revenue" ? "revenues" : "transactions"}...`);
     
-    // Fonction pour convertir la date au format DD/MM/YYYY
-    const formatDateForGoogleSheets = (dateStr: string) => {
-      if (!dateStr) return "";
-      
-      // Nettoyer les espaces
-      const cleaned = dateStr.replace(/\s*:\s*/g, ':').replace(/\s*,\s*/g, ', ');
-      
-      // Map des mois
-      const months: { [key: string]: string } = {
-        'January': '01', 'February': '02', 'March': '03', 'April': '04',
-        'May': '05', 'June': '06', 'July': '07', 'August': '08',
-        'September': '09', 'October': '10', 'November': '11', 'December': '12'
-      };
-      
-      // Parser "04 September 2025, 12:00pm" → "04/09/2025"
-      const match = cleaned.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
-      
-      if (match) {
-        const day = match[1].padStart(2, '0');
-        const monthName = match[2];
-        const year = match[3];
-        const month = months[monthName];
-        
-        if (month) {
-          return `${day}/${month}/${year}`;
-        }
-      }
-      
-      // Si le parsing échoue, retourner la date nettoyée
-      console.warn(`⚠️ Could not parse date: ${dateStr}, using cleaned version`);
-      return cleaned;
-    };
-    
     // Afficher l'écran "Importation en cours..."
     setIsImporting(true);
     setShowImportSuccess(true);
@@ -130,138 +92,15 @@ function App() {
       let successCount = 0;
       let errorCount = 0;
 
-      // Fonction pour extraire la devise de la méthode
-      const extractCurrencyFromMethod = (method: string): string | null => {
-        if (!method) return null;
-        
-        const currencyPatterns = [
-          /BTC/i, /ETH/i, /USDT/i, /USDC/i, /XRP/i,
-          /ADA/i, /SOL/i, /DOGE/i, /DOT/i, /MATIC/i,
-          /LTC/i, /BCH/i,
-        ];
-        
-        for (const pattern of currencyPatterns) {
-          if (pattern.test(method)) {
-            return method.match(pattern)![0].toUpperCase();
-          }
-        }
-        
-        return null;
-      };
-
-      // Fonction pour récupérer le taux de change historique
-      const getHistoricalRate = async (fromCurrency: string, dateStr: string): Promise<number | null> => {
-        try {
-          // Convertir la date au format DD/MM/YYYY d'abord
-          const formattedDate = formatDateForGoogleSheets(dateStr);
-          
-          // Puis convertir DD/MM/YYYY en ISO (YYYY-MM-DD)
-          let isoDate: string;
-          if (formattedDate.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-            const [day, month, year] = formattedDate.split('/');
-            isoDate = `${year}-${month}-${day}`;
-          } else if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            isoDate = dateStr;
-          } else {
-            console.error(`❌ Invalid date format: ${dateStr}`);
-            return null;
-          }
-          
-          // Cryptomonnaies : utiliser CoinGecko
-          const cryptoIds: { [key: string]: string } = {
-            'BTC': 'bitcoin',
-            'ETH': 'ethereum',
-            'USDT': 'tether',
-            'USDC': 'usd-coin',
-            'XRP': 'ripple',
-            'ADA': 'cardano',
-            'SOL': 'solana',
-            'DOGE': 'dogecoin',
-            'DOT': 'polkadot',
-            'MATIC': 'matic-network',
-            'LTC': 'litecoin',
-            'BCH': 'bitcoin-cash',
-          };
-          
-          if (cryptoIds[fromCurrency]) {
-            // Crypto : utiliser CoinGecko
-            const coinId = cryptoIds[fromCurrency];
-            const [year, month, day] = isoDate.split('-');
-            const dateFormatted = `${day}-${month}-${year}`; // DD-MM-YYYY pour CoinGecko
-            
-            const url = `https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${dateFormatted}`;
-            console.log(`🔄 Fetching crypto rate ${fromCurrency}→EUR for ${dateFormatted} via CoinGecko`);
-            
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-              console.error(`❌ CoinGecko API returned ${response.status}`);
-              return null;
-            }
-            
-            const data = await response.json();
-            
-            if (!data.market_data || !data.market_data.current_price || !data.market_data.current_price.eur) {
-              console.error(`❌ No rate found for ${fromCurrency}→EUR in CoinGecko response`);
-              return null;
-            }
-            
-            const rate = data.market_data.current_price.eur;
-            console.log(`✅ Rate ${fromCurrency}→EUR: ${rate}`);
-            return rate;
-          } else {
-            // Devise fiat : utiliser Frankfurter
-            const url = `https://api.frankfurter.app/${isoDate}?from=${fromCurrency}&to=EUR`;
-            console.log(`🔄 Fetching fiat rate ${fromCurrency}→EUR for ${isoDate} via Frankfurter`);
-            
-            const response = await fetch(url);
-            
-            if (!response.ok) {
-              console.error(`❌ Frankfurter API returned ${response.status}`);
-              return null;
-            }
-            
-            const data = await response.json();
-            
-            if (!data.rates || !data.rates.EUR) {
-              console.error(`❌ No rate found for ${fromCurrency}→EUR`);
-              return null;
-            }
-            
-            console.log(`✅ Rate ${fromCurrency}→EUR: ${data.rates.EUR}`);
-            return data.rates.EUR;
-          }
-        } catch (error) {
-          console.error(`❌ Error fetching rate:`, error);
-          return null;
-        }
-      };
-
       // Importer chaque transaction individuellement
       for (const t of transactions) {
         try {
-          // Pour les REVENUS : calculer automatiquement le taux si nécessaire
-          if (type === "revenue" && (!t.usdEurRate || t.usdEurRate === 0)) {
-            const method = t.methodeCrypto || t.suggestedMethod || "";
-            const currency = extractCurrencyFromMethod(method);
-            
-            if (currency && currency !== "EUR") {
-              console.log(`💱 Calcul auto du taux ${currency}/EUR pour ${t.date}...`);
-              const rate = await getHistoricalRate(currency, t.date);
-              
-              if (rate) {
-                t.usdEurRate = rate;
-                console.log(`✅ Taux calculé: ${rate}`);
-              }
-            }
-          }
-
           // Le Google Apps Script attend les données dans body.row !
           const dataToSend = type === "spending" ? {
             action: "append",
             type: "spending",
             row: {
-              date: formatDateForGoogleSheets(t.date),
+              date: t.date,
               jar: t.suggestedJar,
               account: t.suggestedAccount,
               amount: t.amount,
@@ -272,62 +111,53 @@ function App() {
             action: "append",
             type: "revenue",
             row: {
-              date: formatDateForGoogleSheets(t.date),
+              date: t.date,
               source: t.suggestedSource || t.suggestedAccount || t.description,
               amount: t.amount,
               valeur: t.valeur || t.currency || "",
               quantiteCrypto: t.quantiteCrypto || "",
-              method: t.methodeCrypto || t.suggestedMethod || "",  // ✅ Corrigé: methodeCrypto
-              tauxUSDEUR: t.usdEurRate || t.tauxUSDEUR || "",      // ✅ Corrigé: usdEurRate
+              method: t.suggestedMethod || "",
+              tauxUSDEUR: t.tauxUSDEUR || "",
               adresseCrypto: t.adresseCrypto || "",
-              compteDestination: t.compteDestination || t.suggestedMethod || "",
+              compteDestination: t.compteDestination || "",
               type: t.type || "",
             }
           };
 
           console.log(`📤 Envoi: ${JSON.stringify(dataToSend)}`);
 
-          // ✅ Vérifier si en ligne
-          if (offline.isOnline) {
-            // Mode online : envoi direct
-            const response = await fetch("/.netlify/functions/gsheetProxy", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(dataToSend),
-            });
+          const response = await fetch("/.netlify/functions/gsheetProxy", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(dataToSend),
+          });
 
-            const responseText = await response.text();
-            console.log(`📥 Réponse: ${responseText}`);
+          const responseText = await response.text();
+          console.log(`📥 Réponse: ${responseText}`);
 
-            if (!response.ok) {
-              console.error(`❌ Failed to import: ${t.description}`, responseText);
-              errorCount++;
-            } else {
-              // Vérifier que la réponse contient un succès
-              try {
-                const responseData = JSON.parse(responseText);
-                if (responseData.ok === false || responseData.error) {
-                  console.error(`❌ Server error for: ${t.description}`, responseData);
-                  errorCount++;
-                } else {
-                  console.log(`✅ Imported: ${t.description || t.suggestedSource}`);
-                  successCount++;
-                }
-              } catch (e) {
-                // Si pas de JSON, considérer comme succès si status 200
+          if (!response.ok) {
+            console.error(`❌ Failed to import: ${t.description}`, responseText);
+            errorCount++;
+          } else {
+            // Vérifier que la réponse contient un succès
+            try {
+              const responseData = JSON.parse(responseText);
+              if (responseData.ok === false || responseData.error) {
+                console.error(`❌ Server error for: ${t.description}`, responseData);
+                errorCount++;
+              } else {
                 console.log(`✅ Imported: ${t.description || t.suggestedSource}`);
                 successCount++;
               }
+            } catch (e) {
+              // Si pas de JSON, considérer comme succès si status 200
+              console.log(`✅ Imported: ${t.description || t.suggestedSource}`);
+              successCount++;
             }
-
-            // Petit délai pour ne pas surcharger l'API
-            await new Promise(resolve => setTimeout(resolve, 200));
-          } else {
-            // ✅ Mode offline : ajouter à la file d'attente
-            offline.addPendingTransaction(type, dataToSend.row);
-            successCount++;
-            console.log(`📴 Transaction ajoutée à la file (offline): ${t.description || t.suggestedSource}`);
           }
+
+          // Petit délai pour ne pas surcharger l'API
+          await new Promise(resolve => setTimeout(resolve, 200));
 
         } catch (error: any) {
           console.error(`❌ Error importing ${t.description || t.suggestedSource}:`, error);
@@ -336,11 +166,6 @@ function App() {
       }
 
       console.log(`✅ Import terminé: ${successCount} réussie(s), ${errorCount} échouée(s)`);
-      
-      // Message différent selon le mode
-      if (!offline.isOnline && successCount > 0) {
-        console.log(`📴 ${successCount} transaction(s) seront synchronisées au retour en ligne`);
-      }
       
       // Mettre à jour les stats et afficher l'écran de succès
       setImportStats({ successCount, errorCount });
@@ -355,9 +180,6 @@ function App() {
 
   return (
     <div className={`app-shell ${darkMode ? "dark" : ""}`}>
-      {/* ✅ Indicateur de mode offline */}
-      <OfflineIndicator />
-      
       <div className="app-main">
         <header className="home-header">
           <div>

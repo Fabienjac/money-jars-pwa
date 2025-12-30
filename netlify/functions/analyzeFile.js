@@ -205,7 +205,8 @@ async function analyzePDF(buffer) {
 
     const amountText = amountMatch[1];
     const currency = amountMatch[2];
-    const amount = Math.abs(parseFloat(amountText.replace(",", "")));
+    const amountWithSign = parseFloat(amountText.replace(",", "")); // Conserver le signe
+    const amount = Math.abs(amountWithSign);
 
     // Extraire la description
     if (lineOffset === 0) {
@@ -243,14 +244,21 @@ async function analyzePDF(buffer) {
       continue;
     }
 
+    // ✅ FILTRER LES REMBOURSEMENTS (montants positifs)
+    if (amountWithSign > 0) {
+      console.log(`⏭️  Skipping refund (positive amount): ${normalizedDate} | ${descriptionText} | +${amount} ${currency}`);
+      continue;
+    }
+
     if (amount > 0) {
       dataLines.push({
         Date: normalizedDate,
         Description: descriptionText,
         Amount: amount,
         Currency: currency,
+        OriginalAmount: amountWithSign, // Ajouter le montant original avec signe
       });
-      console.log(`✅ Transaction found: ${normalizedDate} | ${descriptionText} | ${amount} ${currency}`);
+      console.log(`✅ Transaction found: ${normalizedDate} | ${descriptionText} | ${amountWithSign} ${currency}`);
     }
   }
 

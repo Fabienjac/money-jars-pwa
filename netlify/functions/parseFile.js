@@ -1,4 +1,4 @@
-// netlify/functions/parseFile.js - Version COMPLETE avec devises + Revolut
+// netlify/functions/parseFile.js - VERSION avec FILTRAGE DES REMBOURSEMENTS
 const pdfParse = require("pdf-parse");
 const Papa = require("papaparse");
 const XLSX = require("xlsx");
@@ -36,26 +36,43 @@ exports.handler = async (event) => {
     // Parser selon le format
     switch (format) {
       case "pdf":
-        console.log("🔍 Parsing PDF...");
+        console.log("📄 Parsing PDF...");
         transactions = await parsePDFFile(fileBuffer);
         break;
       case "csv":
-        console.log("🔍 Parsing CSV...");
+        console.log("📄 Parsing CSV...");
         transactions = parseCSVFile(fileBuffer);
         break;
       case "xlsx":
-        console.log("🔍 Parsing XLSX...");
+        console.log("📄 Parsing XLSX...");
         transactions = parseXLSXFile(fileBuffer);
         break;
       default:
         throw new Error(`Format non supporté: ${format}`);
     }
 
-    console.log(`✅ Parsed ${transactions.length} transactions`);
+    console.log(`📊 Parsed ${transactions.length} transactions (before filtering)`);
+
+    // ✅ FILTRAGE: IGNORER LES TRANSACTIONS POSITIVES (remboursements)
+    const negativeTransactions = transactions.filter(t => {
+      // Si le montant original (avant conversion) est positif, ignorer
+      if (t.originalAmount && t.originalAmount > 0) {
+        console.log(`⏭️  Skipping positive transaction (refund): ${t.description} ${t.originalAmount} ${t.originalCurrency}`);
+        return false;
+      }
+      // Si pas de montant original, vérifier le montant final
+      if (t.amount > 0) {
+        console.log(`⏭️  Skipping positive transaction (refund): ${t.description} ${t.amount} ${t.currency}`);
+        return false;
+      }
+      return true;
+    });
+
+    console.log(`✅ Kept ${negativeTransactions.length} negative transactions (filtered out ${transactions.length - negativeTransactions.length} refunds)`);
 
     // Convertir les devises en EUR
     console.log("💱 Converting currencies to EUR...");
-    const transactionsWithConversion = await convertCurrenciesToEUR(transactions);
+    const transactionsWithConversion = await convertCurrenciesToEUR(negativeTransactions);
 
     return {
       statusCode: 200,
@@ -68,6 +85,7 @@ exports.handler = async (event) => {
         format,
         transactions: transactionsWithConversion,
         count: transactionsWithConversion.length,
+        filtered: transactions.length - negativeTransactions.length,
       }),
     };
   } catch (error) {
@@ -222,8 +240,8 @@ async function parsePDFFile(buffer) {
   const parsed = await pdfParse(buffer);
   const text = parsed.text;
 
-  console.log(`📝 Extracted text length: ${text.length}`);
-  console.log(`📝 First 200 chars: ${text.substring(0, 200)}`);
+  console.log(`📄 Extracted text length: ${text.length}`);
+  console.log(`📄 First 200 chars: ${text.substring(0, 200)}`);
 
   // Détecter le type de banque
   if (text.includes("RedotPay") || text.includes("REDOTPAY")) {
@@ -289,7 +307,10 @@ function parseCSVFile(buffer) {
       amountStr.toString().replace(",", ".").replace(/[^\d.-]/g, "")
     );
     if (isNaN(amount)) continue;
-    amount = Math.abs(amount);
+    
+    // ✅ IMPORTANT: Ne pas prendre la valeur absolue ici
+    // On garde le signe pour pouvoir filtrer les transactions positives
+    // amount = Math.abs(amount);
 
     // Parser la date avec support timestamp Revolut
     let dateISO = "";
@@ -308,8 +329,10 @@ function parseCSVFile(buffer) {
     transactions.push({
       date: dateISO,
       description: description.trim(),
-      amount,
+      amount: Math.abs(amount), // Valeur absolue pour l'affichage
+      originalAmount: amount, // ✅ Montant original avec signe pour le filtrage
       currency: "EUR",
+      originalCurrency: "EUR",
       suggestedJar: suggestJar(description),
       suggestedAccount: account || "Imported",
     });
@@ -341,7 +364,10 @@ function parseXLSXFile(buffer) {
       amountValue.toString().replace(",", ".").replace(/[^\d.-]/g, "")
     );
     if (isNaN(amount)) continue;
-    amount = Math.abs(amount);
+    
+    // ✅ Ne pas prendre la valeur absolue ici
+    const originalAmount = amount;
+    amount = Math.abs(amount); // Pour l'affichage
 
     let dateISO = "";
     if (typeof date === "number") {
@@ -363,7 +389,9 @@ function parseXLSXFile(buffer) {
       date: dateISO,
       description: description.toString().trim(),
       amount,
+      originalAmount,
       currency: "EUR",
+      originalCurrency: "EUR",
       suggestedJar: suggestJar(description.toString()),
       suggestedAccount: account.toString() || "Imported",
     });
@@ -379,10 +407,10 @@ function parseRedotPayTransactions(text) {
   const transactions = [];
   const lines = text.split("\n");
 
-  console.log(`🔍 RedotPay: Parsing ${lines.length} lines`);
+  console.log(`📄 RedotPay: Parsing ${lines.length} lines`);
 
   const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),\s+(\d{4})/;
-  const amountRegex = /(-?\d{1,3}(?:[,]\d{3})*(?:\.\d{2}))\s+(EUR|USD|AUD|GBP|CAD|CHF)/;
+  const amountRegex = /(-?\d{1,3}(?:[,]\d{3})*(?:\.\d{2}))\s+(EUR|USD|AUD|GBP|CAD|CHF|THB|MYR)/;
 
   let dateMatches = 0;
   let amountMatches = 0;
@@ -414,7 +442,8 @@ function parseRedotPayTransactions(text) {
     
     amountMatches++;
 
-    const amount = Math.abs(parseFloat(amountMatch[1].replace(",", "")));
+    const amountWithSign = parseFloat(amountMatch[1].replace(",", ""));
+    const amount = Math.abs(amountWithSign);
     const currency = amountMatch[2];
 
     const description = line
@@ -429,7 +458,9 @@ function parseRedotPayTransactions(text) {
         date: dateISO,
         description,
         amount,
+        originalAmount: amountWithSign, // ✅ Conserver le signe original
         currency,
+        originalCurrency: currency,
         suggestedJar: suggestJar(description),
         suggestedAccount: "RedotPay",
       });
@@ -465,7 +496,8 @@ function parseN26Transactions(text) {
     const amountMatch = line.match(amountRegex);
     if (!amountMatch) continue;
 
-    const amount = Math.abs(parseFloat(amountMatch[1].replace(",", ".")));
+    const amountWithSign = parseFloat(amountMatch[1].replace(",", "."));
+    const amount = Math.abs(amountWithSign);
 
     const description = line
       .replace(dateMatch[0], "")
@@ -478,7 +510,9 @@ function parseN26Transactions(text) {
         date: dateISO,
         description,
         amount,
+        originalAmount: amountWithSign,
         currency: "EUR",
+        originalCurrency: "EUR",
         suggestedJar: suggestJar(description),
         suggestedAccount: "N26",
       });

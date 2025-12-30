@@ -1,0 +1,113 @@
+// src/types.ts
+export type JarKey = 'NEC' | 'FFA' | 'LTSS' | 'PLAY' | 'EDUC' | 'GIFT';
+
+export interface SpendingRow {
+  date: string;
+  jar: JarKey;
+  account: string;
+  amount: number;
+  description: string;
+  tags?: string;  // NOUVEAU : Tags séparés par virgules "food,recurrent,urgent"
+}
+
+export interface RevenueRow {
+  date: string;              // Colonne A: Date
+  source: string;            // Colonne B: Source
+  amount?: number;           // Colonne C: Montant
+  value?: string;            // Colonne D: Valeur (USD, EUR, etc.)
+  cryptoQuantity?: number;   // Colonne E: Quantité Crypto
+  method?: string;           // Colonne F: Méthode
+  rate?: number;             // Colonne G: Taux USD/EUR
+  cryptoAddress?: string;    // Colonne H: Adresse crypto
+  destination?: string;      // Colonne J: Compte de destination
+  incomeType?: string;       // Colonne K: Type
+  tags?: string;             // Colonne L: Tags (NOUVEAU)
+}
+
+export interface JarTotals {
+  revenues: number;
+  spendings: number;
+  net: number;
+  revPct: number;
+}
+
+export interface TotalsResponse {
+  jars: Record<JarKey, JarTotals>;
+  totalRevenues: number;
+  split: Record<JarKey, number>;
+}
+
+export interface SearchSpendingResult {
+  date: string;
+  jar: JarKey;
+  account: string;
+  amount: number;
+  description: string;
+  tags?: string;  // NOUVEAU
+}
+
+export interface SearchRevenueResult {
+  mois: string;
+  date: string;
+  source: string;
+  amount: number;            // Montant
+  value: string;             // Valeur (USD, EUR, etc.)
+  cryptoQuantity: number;    // Quantité Crypto
+  method: string;            // Méthode
+  rate: number;              // Taux USD/EUR
+  cryptoAddress: string;     // Adresse crypto
+  destination: string;       // Compte de destination
+  incomeType: string;        // Type
+  tags?: string;             // NOUVEAU
+}
+
+/* ===========================
+   RÉGLAGES (front uniquement)
+   =========================== */
+
+export interface JarSetting {
+  key: JarKey;
+  percent: number;        // 55 pour 55 %
+  initialBalance: number; // en EUR
+}
+
+export type AutoRuleKind = 'spending' | 'revenue';
+
+export interface AutoRule {
+  id: string;            // UUID simple
+  kind: AutoRuleKind;    // dépense ou revenu
+  name?: string;         // optionnel, label de règle
+  keyword: string;       // mot-clé à détecter (dans la description / source)
+  jar: JarKey;           // jarre cible
+  account?: string;      // compte de paiement (pour dépenses)
+  destination?: string;  // destination (pour revenus)
+  incomeType?: string;   // type de revenu si tu veux
+}
+
+export interface Account {
+  id: string;            // UUID simple
+  name: string;          // Nom du compte (Cash, Revolut, etc.)
+  color?: string;        // Couleur optionnelle pour l'affichage
+  icon?: string;         // Icône optionnelle (emoji)
+}
+
+export interface RevenueAccount {
+  id: string;            // UUID simple
+  name: string;          // Nom du compte de revenu (Binance, Upwork, etc.)
+  icon?: string;         // Icône optionnelle (emoji)
+  type?: string;         // Type de revenu (Crypto, Freelance, etc.)
+}
+
+/* ===========================
+   TAGS STATS
+   =========================== */
+
+export interface TagStat {
+  tagId: string;
+  tagName: string;
+  emoji: string;
+  color: string;
+  totalAmount: number;
+  count: number;
+  percentage: number;
+}
