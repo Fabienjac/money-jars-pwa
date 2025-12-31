@@ -1,9 +1,13 @@
-// src/App.tsx
+// src/App.tsx - VERSION V2 avec JarsViewV2 et QuickSpendingForm
 import React, { useState, useEffect } from "react";
 import SpendingForm from "./components/SpendingForm";
 import RevenueForm from "./components/RevenueForm";
 import HistoryView, { HistoryUseEntry } from "./components/HistoryView";
 import JarsView from "./components/JarsView";
+// ✅ AJOUT : Nouveaux composants V2
+import JarsViewV2 from "./components/JarsViewV2";
+import QuickSpendingForm from "./components/QuickSpendingForm";
+// Fin ajouts V2
 import SettingsView from "./components/SettingsView";
 import { UniversalImporter } from "./components/UniversalImporter";
 import { RecentTransactions } from "./components/RecentTransactions";
@@ -27,6 +31,20 @@ function App() {
   const [prefillSpending, setPrefillSpending] = useState<any | null>(null);
   const [prefillRevenue, setPrefillRevenue] = useState<any | null>(null);
 
+  // ✅ AJOUT : États pour les nouveaux modals V2
+  const [showQuickSpending, setShowQuickSpending] = useState(false);
+  const [showQuickRevenue, setShowQuickRevenue] = useState(false);
+  
+  // ✅ AJOUT : Toggle pour activer/désactiver la V2 (optionnel - pour A/B test)
+  const [useV2, setUseV2] = useState(() => {
+    try {
+      const stored = localStorage.getItem("use_jars_v2");
+      return stored === null ? true : stored === "true"; // Par défaut TRUE = V2 activée
+    } catch {
+      return true; // Par défaut, utiliser V2
+    }
+  });
+
   // Importeur universel
   const [importerOpen, setImporterOpen] = useState(false);
   
@@ -38,7 +56,7 @@ function App() {
   // Comptes de dépenses
   const [accounts, setAccounts] = useState<Array<{id: string, name: string, icon: string}>>([]);
 
-  // ✅ Mode offline
+  // Mode offline
   const offline = useOffline();
 
   // Thème
@@ -277,8 +295,8 @@ function App() {
               amount: t.amount,
               valeur: t.valeur || t.currency || "",
               quantiteCrypto: t.quantiteCrypto || "",
-              method: t.methodeCrypto || t.suggestedMethod || "",  // ✅ Corrigé: methodeCrypto
-              tauxUSDEUR: t.usdEurRate || t.tauxUSDEUR || "",      // ✅ Corrigé: usdEurRate
+              method: t.methodeCrypto || t.suggestedMethod || "",
+              tauxUSDEUR: t.usdEurRate || t.tauxUSDEUR || "",
               adresseCrypto: t.adresseCrypto || "",
               compteDestination: t.compteDestination || t.suggestedMethod || "",
               type: t.type || "",
@@ -287,7 +305,7 @@ function App() {
 
           console.log(`📤 Envoi: ${JSON.stringify(dataToSend)}`);
 
-          // ✅ Vérifier si en ligne
+          // Vérifier si en ligne
           if (offline.isOnline) {
             // Mode online : envoi direct
             const response = await fetch("/.netlify/functions/gsheetProxy", {
@@ -323,7 +341,7 @@ function App() {
             // Petit délai pour ne pas surcharger l'API
             await new Promise(resolve => setTimeout(resolve, 200));
           } else {
-            // ✅ Mode offline : ajouter à la file d'attente
+            // Mode offline : ajouter à la file d'attente
             offline.addPendingTransaction(type, dataToSend.row);
             successCount++;
             console.log(`📴 Transaction ajoutée à la file (offline): ${t.description || t.suggestedSource}`);
@@ -355,7 +373,7 @@ function App() {
 
   return (
     <div className={`app-shell ${darkMode ? "dark" : ""}`}>
-      {/* ✅ Indicateur de mode offline */}
+      {/* Indicateur de mode offline */}
       <OfflineIndicator />
       
       <div className="app-main">
@@ -375,7 +393,20 @@ function App() {
         </header>
 
         <main className="app-content">
-          {section === "home" && <JarsView />}
+          {/* ✅ MODIFICATION : Utiliser JarsViewV2 à la place de JarsView */}
+          {section === "home" && (
+            <>
+              {useV2 ? (
+                <JarsViewV2
+                  onOpenSpending={() => setShowQuickSpending(true)}
+                  onOpenRevenue={() => setShowQuickRevenue(true)}
+                />
+              ) : (
+                <JarsView />
+              )}
+            </>
+          )}
+          
           {section === "history" && <HistoryView onUseEntry={handleUseEntry} />}
           {section === "settings" && <SettingsView />}
           {section === "tags" && <TagStatsView />}
@@ -489,7 +520,7 @@ function App() {
                 strokeLinejoin="round"
               />
               <path
-                d="M22.75 17.5C22.6125 17.8083 22.575 18.1542 22.6433 18.4867C22.7117 18.8192 22.8817 19.1217 23.1275 19.355L23.1875 19.415C23.3823 19.6097 23.5367 19.8408 23.642 20.0951C23.7472 20.3494 23.8012 20.6219 23.8012 20.8972C23.8012 21.1725 23.7472 21.445 23.642 21.6993C23.5367 21.9536 23.3823 22.1847 23.1875 22.3795C22.9928 22.5743 22.7617 22.7287 22.5074 22.8339C22.2531 22.9392 21.9806 22.9932 21.7053 22.9932C21.43 22.9932 21.1575 22.9392 20.9032 22.8339C20.6489 22.7287 20.4178 22.5743 20.223 22.3795L20.163 22.3195C19.9297 22.0737 19.6272 21.9037 19.2947 21.8353C18.9622 21.767 18.6163 21.8045 18.308 21.942C18.0049 22.074 17.7506 22.2955 17.5775 22.5773C17.4044 22.859 17.3204 23.1881 17.3365 23.52V23.75C17.3365 24.3025 17.1169 24.8324 16.7262 25.223C16.3356 25.6137 15.8057 25.8333 15.2532 25.8333C14.7007 25.8333 14.1708 25.6137 13.7801 25.223C13.3895 24.8324 13.1698 24.3025 13.1698 23.75V23.66C13.1483 23.3178 13.0542 22.9845 12.8947 22.6845C12.7353 22.3845 12.5149 22.1258 12.2497 21.9273C11.9412 21.685 11.5953 21.5475 11.2628 21.5267C10.9303 21.5058 10.5976 21.6023 10.293 21.8062L10.233 21.8662C10.0382 22.061 9.80711 22.2154 9.55282 22.3207C9.29853 22.4259 9.02606 22.4799 8.75075 22.4799C8.47544 22.4799 8.20297 22.4259 7.94868 22.3207C7.69439 22.2154 7.46331 22.061 7.2685 21.8662C7.07369 21.6714 6.91928 21.4403 6.81405 21.186C6.70881 20.9317 6.65478 20.6592 6.65478 20.3839C6.65478 20.1086 6.70881 19.8361 6.81405 19.5818C6.91928 19.3275 7.07369 19.0964 7.2685 18.9016L7.3285 18.8416C7.53239 18.537 7.62889 18.2043 7.60803 17.8718C7.58718 17.5393 7.44989 17.2167 7.2076 16.9082C7.00911 16.643 6.75042 16.4226 6.45042 16.2632C6.15042 16.1038 5.81714 16.0096 5.475 15.9882H5.25C4.69747 15.9882 4.16756 15.7686 3.77691 15.3779C3.38627 14.9873 3.16667 14.4574 3.16667 13.9048C3.16667 13.3523 3.38627 12.8224 3.77691 12.4318C4.16756 12.0411 4.69747 11.8215 5.25 11.8215H5.34C5.68214 11.8 6.01542 11.7059 6.31542 11.5465C6.61542 11.387 6.87411 11.1666 7.0726 10.9015C7.31489 10.593 7.45218 10.2703 7.47303 9.93782C7.49389 9.60533 7.39739 9.27261 7.1935 8.96799V8.96799L7.1335 8.90799C6.93869 8.71318 6.78428 8.48211 6.67905 8.22782C6.57381 7.97353 6.51978 7.70106 6.51978 7.42575C6.51978 7.15044 6.57381 6.87797 6.67905 6.62368C6.78428 6.36939 6.93869 6.13831 7.1335 5.9435C7.32831 5.74869 7.55939 5.59428 7.81368 5.48905C8.06797 5.38381 8.34044 5.32978 8.61575 5.32978C8.89106 5.32978 9.16353 5.38381 9.41782 5.48905C9.67211 5.59428 9.90319 5.74869 10.098 5.9435L10.158 6.0035C10.4626 6.20739 10.7953 6.30389 11.1278 6.28303C11.4603 6.26218 11.783 6.12489 12.0915 5.8826H12.0915C12.3567 5.68411 12.5771 5.42542 12.7365 5.12542C12.8959 4.82542 12.99 4.49214 13.0115 4.15H13.0115V3.92C13.0115 3.36747 13.2311 2.83756 13.6218 2.44691C14.0124 2.05627 14.5423 1.83667 15.0948 1.83667C15.6474 1.83667 16.1773 2.05627 16.5679 2.44691C16.9586 2.83756 17.1782 3.36747 17.1782 3.92V3.98C17.1996 4.32214 17.2938 4.65542 17.4532 4.95542C17.6126 5.25542 17.8329 5.51411 18.0982 5.7126C18.4067 5.95489 18.7293 6.09218 19.0618 6.11303C19.3943 6.13389 19.727 6.03739 20.0316 5.8335L20.0916 5.7735C20.2864 5.57869 20.5175 5.42428 20.7718 5.31905C21.0261 5.21381 21.2986 5.15978 21.5739 5.15978C21.8492 5.15978 22.1217 5.21381 22.376 5.31905C22.6303 5.42428 22.8613 5.57869 23.0561 5.7735C23.251 5.96831 23.4054 6.19939 23.5106 6.45368C23.6158 6.70797 23.6699 6.98044 23.6699 7.25575C23.6699 7.53106 23.6158 7.80353 23.5106 8.05782C23.4054 8.31211 23.251 8.54319 23.0561 8.738L22.9961 8.798C22.7922 9.10261 22.6957 9.43533 22.7166 9.76782C22.7374 10.1003 22.8747 10.423 23.117 10.7315V10.7315C23.3155 10.9967 23.5742 11.2171 23.8742 11.3765C24.1742 11.5359 24.5075 11.63 24.8496 11.6515H25.08C25.6325 11.6515 26.1625 11.8711 26.5531 12.2618C26.9437 12.6524 27.1633 13.1823 27.1633 13.7348C27.1633 14.2874 26.9437 14.8173 26.5531 15.2079C26.1625 15.5986 25.6325 15.8182 25.08 15.8182H25.02C24.6779 15.8396 24.3446 15.9338 24.0446 16.0932C23.7446 16.2526 23.4859 16.4729 23.2874 16.7382V16.7382"
+                d="M22.75 14C22.75 14.93 22.6 15.82 22.33 16.67L24.5 18.5L22.75 21.5L20 20.5C19.03 21.38 17.85 22 16.5 22.33V25H11.5V22.33C10.15 22 8.97 21.38 8 20.5L5.25 21.5L3.5 18.5L5.67 16.67C5.4 15.82 5.25 14.93 5.25 14C5.25 13.07 5.4 12.18 5.67 11.33L3.5 9.5L5.25 6.5L8 7.5C8.97 6.62 10.15 6 11.5 5.67V3H16.5V5.67C17.85 6 19.03 6.62 20 7.5L22.75 6.5L24.5 9.5L22.33 11.33C22.6 12.18 22.75 13.07 22.75 14Z"
                 stroke={section === "settings" ? "#007AFF" : "#8E8E93"}
                 strokeWidth="2.5"
                 strokeLinecap="round"
@@ -501,56 +532,99 @@ function App() {
         </button>
       </nav>
 
-      {/* Floating Action Button - Principal (violet) */}
-      <button
-        type="button"
-        className="fab"
-        onClick={() => openEntry("spending")}
-        style={{
-          position: "fixed",
-          bottom: "100px", // ← Plus haut (au-dessus de la navbar)
-          right: "20px",
-          width: "56px",
-          height: "56px",
-          borderRadius: "50%",
-          zIndex: 999,
-        }}
-      >
-        +
-      </button>
+      {/* ✅ MODIFICATION : Boutons flottants UNIQUEMENT si V1 activée */}
+      {!useV2 && (
+        <>
+          {/* Floating Action Button - Principal (violet) */}
+          <button
+            type="button"
+            className="fab"
+            onClick={() => openEntry("spending")}
+            style={{
+              position: "fixed",
+              bottom: "100px",
+              right: "20px",
+              width: "56px",
+              height: "56px",
+              borderRadius: "50%",
+              zIndex: 999,
+            }}
+          >
+            +
+          </button>
 
-      {/* Bouton Import (vert) - Au-dessus du bouton violet */}
-      <button
-        type="button"
-        onClick={() => setImporterOpen(true)}
-        style={{
-          position: "fixed",
-          bottom: "170px", // ← Encore plus haut (au-dessus du bouton +)
-          right: "20px",
-          width: "56px",
-          height: "56px",
-          borderRadius: "50%",
-          border: "none",
-          background: "linear-gradient(135deg, #34C759 0%, #30B350 100%)",
-          color: "white",
-          fontSize: "24px",
-          cursor: "pointer",
-          boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-          zIndex: 999,
-          transition: "transform 0.2s",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = "scale(1.05)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = "scale(1)";
-        }}
-      >
-        📂
-      </button>
+          {/* Bouton Import (vert) - Au-dessus du bouton violet */}
+          <button
+            type="button"
+            onClick={() => setImporterOpen(true)}
+            style={{
+              position: "fixed",
+              bottom: "170px",
+              right: "20px",
+              width: "56px",
+              height: "56px",
+              borderRadius: "50%",
+              border: "none",
+              background: "linear-gradient(135deg, #34C759 0%, #30B350 100%)",
+              color: "white",
+              fontSize: "24px",
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+              zIndex: 999,
+              transition: "transform 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "scale(1.05)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "scale(1)";
+            }}
+          >
+            📂
+          </button>
+        </>
+      )}
 
-      {/* Bottom sheet "Nouvelle entrée" */}
-      {entryOpen && (
+      {/* ✅ AJOUT : Modal QuickSpendingForm (V2) */}
+      {showQuickSpending && (
+        <QuickSpendingForm
+          onClose={() => setShowQuickSpending(false)}
+          onSuccess={() => {
+            console.log("✅ Dépense enregistrée avec succès");
+            // Recharger les données (optionnel)
+            // window.location.reload();
+          }}
+        />
+      )}
+
+      {/* ✅ AJOUT : Modal RevenueForm (V2 - réutilise l'existant) */}
+      {showQuickRevenue && (
+        <div className="entry-sheet-backdrop" onClick={() => setShowQuickRevenue(false)}>
+          <div className="entry-sheet" onClick={(e) => e.stopPropagation()}>
+            <header className="entry-sheet-header">
+              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700" }}>
+                💵 Nouveau revenu
+              </h2>
+              <button
+                type="button"
+                className="entry-close-btn"
+                onClick={() => setShowQuickRevenue(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="entry-sheet-body">
+              <RevenueForm
+                prefill={prefillRevenue}
+                onClearPrefill={() => setPrefillRevenue(null)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom sheet "Nouvelle entrée" (V1 uniquement) */}
+      {entryOpen && !useV2 && (
         <div className="entry-sheet-backdrop" onClick={closeEntry}>
           <div
             className="entry-sheet"
@@ -628,8 +702,8 @@ function App() {
               maxWidth: "900px",
               width: "95%",
               maxHeight: "90vh",
-              height: "90vh", // Force la hauteur
-              overflow: "hidden", // Pas de scroll ici
+              height: "90vh",
+              overflow: "hidden",
               display: "flex",
               flexDirection: "column",
             }}
