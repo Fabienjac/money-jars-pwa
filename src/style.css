@@ -1442,8 +1442,10 @@ button, input, select, a {
     grid-column: auto;
   }
 }
+
 /* ========================================
    QUICK SPENDING FORM - FORMULAIRE RAPIDE
+   VERSION CORRIGÉE - Layout vertical
    ======================================== */
 
 .quick-spending-modal {
@@ -1590,6 +1592,42 @@ button, input, select, a {
 }
 
 /* ========================================
+   DATE
+   ======================================== */
+
+.quick-date-section {
+  display: flex;
+}
+
+.quick-date-label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.quick-date-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.quick-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: var(--text-main);
+}
+
+/* ========================================
    MONTANT DISPLAY
    ======================================== */
 
@@ -1628,12 +1666,12 @@ button, input, select, a {
 }
 
 /* ========================================
-   NUMPAD + JARS
+   NUMPAD + JARS - VERSION CORRIGÉE
    ======================================== */
 
 .quick-numpad-section {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -1667,10 +1705,11 @@ button, input, select, a {
   font-size: 18px;
 }
 
+/* ✅ JARS EN GRID 3x2 (au lieu de colonne) */
 .quick-jars-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 6px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
 }
 
 .quick-jar-btn {
@@ -1679,7 +1718,7 @@ button, input, select, a {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 8px;
+  padding: 12px 8px;
   border: 2px solid var(--border-color);
   border-radius: 12px;
   background: var(--bg-card);
@@ -1697,14 +1736,15 @@ button, input, select, a {
 }
 
 .quick-jar-emoji {
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1;
 }
 
 .quick-jar-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-main);
+  text-align: center;
 }
 
 /* ========================================
@@ -1776,9 +1816,11 @@ button, input, select, a {
 }
 
 .quick-tag-btn span:last-child {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-main);
+  text-align: center;
+  line-height: 1.2;
 }
 
 .quick-tag-btn--active {
@@ -1889,7 +1931,1200 @@ button, input, select, a {
     margin: auto;
   }
 
+  .quick-jars-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
   .quick-tags-grid {
     grid-template-columns: repeat(6, 1fr);
+  }
+}
+/* ========================================
+   HISTORY VIEW - STYLED VERSION
+   Style moderne iOS cohérent
+   ======================================== */
+
+/* Container */
+.history-main {
+  padding: 0 0 24px 0;
+}
+
+.history-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.history-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 20px;
+}
+
+/* ========================================
+   MODE TOGGLE - Style iOS Modern
+   ======================================== */
+
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 4px;
+  background: var(--bg-card);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.mode-toggle-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-toggle-btn.active {
+  background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.mode-toggle-btn:active {
+  transform: scale(0.97);
+}
+
+/* ========================================
+   SEARCH INPUT
+   ======================================== */
+
+.search-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 16px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 15px;
+  font-family: inherit;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 12px;
+}
+
+.search-input::placeholder {
+  color: var(--text-light);
+}
+
+.search-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+/* ========================================
+   FILTER SELECTS
+   ======================================== */
+
+.filter-select {
+  width: 100%;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 16px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 15px;
+  font-weight: 500;
+  font-family: inherit;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 12px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%236e6e73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  padding-right: 40px;
+}
+
+.dark .filter-select {
+  background-image: url("data:image/svg+xml,%3Csvg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%2398989d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.filter-select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+/* ========================================
+   SEARCH BUTTON - Style iOS Modern
+   ======================================== */
+
+.search-btn {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+  color: white;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+  margin-bottom: 20px;
+}
+
+.search-btn:active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.search-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========================================
+   SUMMARY
+   ======================================== */
+
+.history-summary {
+  background: linear-gradient(135deg, #D5F5DD 0%, #E8FAE8 100%);
+  padding: 16px 20px;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.dark .history-summary {
+  background: linear-gradient(135deg, rgba(52, 199, 89, 0.15) 0%, rgba(52, 199, 89, 0.08) 100%);
+}
+
+.history-summary p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.history-summary strong {
+  font-size: 16px;
+  color: var(--text-main);
+}
+
+/* ========================================
+   ERROR MESSAGE
+   ======================================== */
+
+.error-message {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #FFE5E5 0%, #FFF0F0 100%);
+  color: #FF3B30;
+  border-radius: 16px;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.dark .error-message {
+  background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.08) 100%);
+  color: #FF453A;
+}
+
+/* ========================================
+   CARDS
+   ======================================== */
+
+.history-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.history-card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.history-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-card-date {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.history-card-description {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
+.history-card-amount {
+  font-size: 17px;
+  font-weight: 700;
+  color: #FF3B30;
+  white-space: nowrap;
+}
+
+.history-card-amount.revenue {
+  color: #34C759;
+}
+
+.history-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.history-card-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--border-color);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.history-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--bg-body);
+  border-radius: 12px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.history-card-detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.history-card-detail-row span:first-child {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.history-card-detail-row span:last-child {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.history-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.history-card-toggle-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.history-card-toggle-btn:active {
+  transform: scale(0.97);
+  background: var(--border-color);
+}
+
+.history-card-action-btn {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.history-card-action-btn.primary {
+  background: linear-gradient(135deg, #34C759 0%, #30B350 100%);
+  box-shadow: 0 2px 8px rgba(52, 199, 89, 0.3);
+}
+
+.history-card-action-btn:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(0, 122, 255, 0.3);
+}
+
+.history-card-action-btn.primary:active {
+  box-shadow: 0 1px 4px rgba(52, 199, 89, 0.3);
+}
+
+.history-card-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (min-width: 768px) {
+  .history-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .history-cards {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ========================================
+   DARK MODE
+   ======================================== */
+
+.dark .history-card {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark .history-card-toggle-btn:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+/* ========================================
+   SETTINGS VIEW - COMPACT VERSION
+   Interface réglages compacte iOS
+   ======================================== */
+
+.settings-compact {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 0 24px 0;
+}
+
+/* ========================================
+   HEADER
+   ======================================== */
+
+.settings-header {
+  margin-bottom: 24px;
+}
+
+.settings-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+/* ========================================
+   SECTION
+   ======================================== */
+
+.settings-section {
+  background: var(--bg-card);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+}
+
+.settings-section-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 16px 0;
+}
+
+/* ========================================
+   JARS COMPACT GRID
+   ======================================== */
+
+.jars-compact-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.jar-compact-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-body);
+  border-radius: 12px;
+  border-left: 4px solid;
+  gap: 12px;
+}
+
+.jar-compact-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.jar-compact-emoji {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.jar-compact-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jar-compact-input-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.jar-compact-input {
+  width: 60px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  font-family: inherit;
+}
+
+.jar-compact-input:focus {
+  outline: none;
+  border-color: var(--jar-nec);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.jar-compact-percent {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* ========================================
+   TOTAL
+   ======================================== */
+
+.settings-total {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.settings-total.valid {
+  background: linear-gradient(135deg, #D5F5DD 0%, #E8FAE8 100%);
+  color: #34C759;
+}
+
+.settings-total.error {
+  background: linear-gradient(135deg, #FFE5E5 0%, #FFF0F0 100%);
+  color: #FF3B30;
+}
+
+.settings-total.warning {
+  background: linear-gradient(135deg, #FFF5CC 0%, #FFFAE6 100%);
+  color: #FF9500;
+}
+
+.dark .settings-total.valid {
+  background: linear-gradient(135deg, rgba(52, 199, 89, 0.15) 0%, rgba(52, 199, 89, 0.08) 100%);
+  color: #34C759;
+}
+
+.dark .settings-total.error {
+  background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.08) 100%);
+  color: #FF453A;
+}
+
+.dark .settings-total.warning {
+  background: linear-gradient(135deg, rgba(255, 149, 0, 0.15) 0%, rgba(255, 149, 0, 0.08) 100%);
+  color: #FF9F0A;
+}
+
+/* ========================================
+   MESSAGE
+   ======================================== */
+
+.settings-message {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 16px;
+  animation: slideDown 0.2s ease;
+}
+
+.settings-message.success {
+  background: linear-gradient(135deg, #D5F5DD 0%, #E8FAE8 100%);
+  color: #34C759;
+}
+
+.settings-message.error {
+  background: linear-gradient(135deg, #FFE5E5 0%, #FFF0F0 100%);
+  color: #FF3B30;
+}
+
+.dark .settings-message.success {
+  background: linear-gradient(135deg, rgba(52, 199, 89, 0.15) 0%, rgba(52, 199, 89, 0.08) 100%);
+  color: #34C759;
+}
+
+.dark .settings-message.error {
+  background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.08) 100%);
+  color: #FF453A;
+}
+
+/* ========================================
+   ACTIONS
+   ======================================== */
+
+.settings-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.settings-btn-primary {
+  flex: 1;
+  padding: 16px;
+  border: none;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+}
+
+.settings-btn-primary:active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.settings-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-btn-secondary {
+  flex: 1;
+  padding: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text-main);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.settings-btn-secondary:active {
+  transform: scale(0.98);
+  background: var(--border-color);
+}
+
+/* ========================================
+   RESPONSIVE
+   ======================================== */
+
+@media (max-width: 480px) {
+  .jar-compact-label {
+    font-size: 13px;
+  }
+  
+  .jar-compact-input {
+    width: 50px;
+    font-size: 14px;
+  }
+  
+  .settings-actions {
+    flex-direction: column;
+  }
+}
+
+@media (min-width: 768px) {
+  .jars-compact-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* ========================================
+   SETTINGS VIEW - OPTIMIZED COMPACT
+   Tout gardé, juste plus compact et joli
+   ======================================== */
+
+.settings-view {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 0 24px 0;
+}
+
+.settings-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 24px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ========================================
+   SECTION COLLAPSIBLE
+   ======================================== */
+
+.settings-section {
+  background: var(--bg-card);
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+}
+
+.settings-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.settings-section-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-section-toggle {
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.settings-section-toggle.collapsed {
+  transform: rotate(-90deg);
+}
+
+.settings-section-content {
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.settings-section-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ========================================
+   JARS GRID 3x2
+   ======================================== */
+
+.jars-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .jars-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .jars-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.jar-card {
+  background: var(--bg-body);
+  border-radius: 16px;
+  padding: 16px;
+  border-left: 4px solid;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.jar-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jar-card-emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.jar-card-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  flex: 1;
+}
+
+.jar-card-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.jar-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.jar-input-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  width: 40px;
+}
+
+.jar-input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  font-family: inherit;
+}
+
+.jar-input:focus {
+  outline: none;
+  border-color: var(--jar-nec);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.jar-input-unit {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+  width: 20px;
+}
+
+/* Total */
+.settings-total {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.settings-total.valid {
+  background: linear-gradient(135deg, #D5F5DD 0%, #E8FAE8 100%);
+  color: #34C759;
+}
+
+.settings-total.error {
+  background: linear-gradient(135deg, #FFE5E5 0%, #FFF0F0 100%);
+  color: #FF3B30;
+}
+
+.settings-total.warning {
+  background: linear-gradient(135deg, #FFF5CC 0%, #FFFAE6 100%);
+  color: #FF9500;
+}
+
+.dark .settings-total.valid {
+  background: linear-gradient(135deg, rgba(52, 199, 89, 0.15) 0%, rgba(52, 199, 89, 0.08) 100%);
+}
+
+.dark .settings-total.error {
+  background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.08) 100%);
+  color: #FF453A;
+}
+
+.dark .settings-total.warning {
+  background: linear-gradient(135deg, rgba(255, 149, 0, 0.15) 0%, rgba(255, 149, 0, 0.08) 100%);
+  color: #FF9F0A;
+}
+
+/* ========================================
+   RULES COMPACT LIST
+   ======================================== */
+
+.rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rule-card {
+  background: var(--bg-body);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-left: 3px solid;
+}
+
+.rule-card.spending {
+  border-left-color: #FF3B30;
+}
+
+.rule-card.revenue {
+  border-left-color: #34C759;
+}
+
+.rule-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.rule-keyword {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 4px 0;
+}
+
+.rule-details {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rule-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--border-color);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.rule-delete-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: #FF3B30;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.rule-delete-btn:active {
+  transform: scale(0.95);
+}
+
+/* ========================================
+   ACCOUNTS COMPACT GRID
+   ======================================== */
+
+.accounts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.account-card {
+  background: var(--bg-body);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.account-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-delete-btn {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #FF3B30;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.account-delete-btn:active {
+  background: rgba(255, 59, 48, 0.1);
+}
+
+/* ========================================
+   FORM INLINE COMPACT
+   ======================================== */
+
+.form-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.form-group-inline {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label-inline {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.form-input-inline {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.form-input-inline:focus {
+  outline: none;
+  border-color: var(--jar-nec);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.form-select-inline {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.form-emoji-input {
+  width: 60px;
+  padding: 10px;
+  text-align: center;
+  font-size: 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+/* ========================================
+   BUTTONS
+   ======================================== */
+
+.settings-btn-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-btn {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-btn-primary {
+  background: linear-gradient(135deg, #007AFF 0%, #0051D5 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+}
+
+.settings-btn-primary:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(0, 122, 255, 0.3);
+}
+
+.settings-btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-btn-secondary {
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+}
+
+.settings-btn-secondary:active {
+  transform: scale(0.97);
+  background: var(--border-color);
+}
+
+.settings-btn-add {
+  background: linear-gradient(135deg, #34C759 0%, #30B350 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(52, 199, 89, 0.3);
+}
+
+.settings-btn-add:active {
+  transform: scale(0.97);
+  box-shadow: 0 1px 4px rgba(52, 199, 89, 0.3);
+}
+
+.settings-btn-small {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+/* Message */
+.settings-message {
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 16px;
+  animation: slideDown 0.2s ease;
+}
+
+.settings-message.success {
+  background: linear-gradient(135deg, #D5F5DD 0%, #E8FAE8 100%);
+  color: #34C759;
+}
+
+.settings-message.error {
+  background: linear-gradient(135deg, #FFE5E5 0%, #FFF0F0 100%);
+  color: #FF3B30;
+}
+
+.dark .settings-message.success {
+  background: linear-gradient(135deg, rgba(52, 199, 89, 0.15) 0%, rgba(52, 199, 89, 0.08) 100%);
+}
+
+.dark .settings-message.error {
+  background: linear-gradient(135deg, rgba(255, 59, 48, 0.15) 0%, rgba(255, 59, 48, 0.08) 100%);
+  color: #FF453A;
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }

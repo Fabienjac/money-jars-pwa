@@ -24,12 +24,12 @@ const JAR_LABELS: Record<JarKey, { label: string; emoji: string }> = {
 };
 
 const TAG_PRESETS = [
-  { id: "vie_quotidienne", emoji: "🛒", label: "Courses" },
-  { id: "sante_corps", emoji: "🧘", label: "Santé" },
+  { id: "vie_quotidienne", emoji: "🛒", label: "Vie quotidienne" },
+  { id: "sante_corps", emoji: "🧘", label: "Santé & corps" },
   { id: "transport", emoji: "🚗", label: "Transport" },
   { id: "habitat", emoji: "🏠", label: "Habitat" },
   { id: "loisirs", emoji: "🎉", label: "Loisirs" },
-  { id: "don_cadeau", emoji: "🎁", label: "Cadeau" },
+  { id: "don_cadeau", emoji: "🎁", label: "Don / Cadeau" },
 ];
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -37,9 +37,11 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 interface QuickSpendingFormProps {
   onClose: () => void;
   onSuccess?: () => void;
+  prefill?: any | null; // ✅ Ajouté pour pré-remplir depuis historique
 }
 
-const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess }) => {
+const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess, prefill }) => {
+  const [date, setDate] = useState<string>(todayISO());
   const [amount, setAmount] = useState("");
   const [jar, setJar] = useState<JarKey>("NEC");
   const [account, setAccount] = useState("Cash");
@@ -55,6 +57,22 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   ]);
 
   const accounts = loadAccounts();
+
+  // ✅ Gérer le prefill depuis l'historique
+  useEffect(() => {
+    if (prefill) {
+      if (prefill.date) setDate(prefill.date);
+      if (prefill.jar) setJar(prefill.jar);
+      if (prefill.account) setAccount(prefill.account);
+      if (prefill.amount != null) setAmount(String(prefill.amount));
+      if (prefill.description) setDescription(prefill.description);
+      // Tags : à parser si présents
+      if (prefill.tags && typeof prefill.tags === "string") {
+        const tagIds = prefill.tags.split(",").map((t: string) => t.trim()).filter(Boolean);
+        setSelectedTags(tagIds);
+      }
+    }
+  }, [prefill]);
 
   // Auto-dismiss message
   useEffect(() => {
@@ -82,6 +100,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     setAmount(recent.amount.toString());
     setJar(recent.jar);
     setAccount(recent.account);
+    setDate(recent.date); // ✅ Copier aussi la date
   };
 
   const toggleTag = (tagId: string) => {
@@ -104,7 +123,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
       
       await appendSpending({
-        date: todayISO(),
+        date, // ✅ Utiliser la date du state
         jar,
         account,
         amount: parseFloat(amount),
@@ -116,6 +135,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       
       // Reset form
       setTimeout(() => {
+        setDate(todayISO()); // ✅ Réinitialiser à aujourd'hui
         setAmount("");
         setDescription("");
         setSelectedTags([]);
@@ -167,6 +187,19 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
             </div>
           </div>
         )}
+
+        {/* Date */}
+        <div className="quick-date-section">
+          <label className="quick-date-label">
+            📅
+            <input
+              type="date"
+              className="quick-date-input"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+        </div>
 
         {/* Montant */}
         <div className="quick-amount-section">

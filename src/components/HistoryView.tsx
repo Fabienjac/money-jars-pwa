@@ -1,4 +1,4 @@
-// src/components/HistoryView.tsx - VERSION CORRIGÉE AVEC VRAIS TOTAUX
+// src/components/HistoryView.tsx - VERSION MOBILE OPTIMISÉE
 import React, { useState, useEffect } from "react";
 import { searchSpendings, searchRevenues, fetchTotals } from "../api";
 import { SearchSpendingResult, SearchRevenueResult } from "../types";
@@ -33,7 +33,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const [spendings, setSpendings] = useState<SearchSpendingResult[]>([]);
   const [revenues, setRevenues] = useState<SearchRevenueResult[]>([]);
 
-  // NOUVEAUX ÉTATS pour les vrais totaux
+  // États pour les vrais totaux
   const [totalRevenuesFromAPI, setTotalRevenuesFromAPI] = useState<number>(0);
   const [totalSpendingsFromAPI, setTotalSpendingsFromAPI] = useState<number>(0);
 
@@ -44,6 +44,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const [jarFilter, setJarFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
 
+  // ✅ NOUVEAU : État pour card expanded
+  const [expandedCard, setExpandedCard] = useState<number | null>(null);
+
   // Charger les vrais totaux depuis l'API
   useEffect(() => {
     const loadTotals = async () => {
@@ -51,7 +54,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
         const totals = await fetchTotals();
         setTotalRevenuesFromAPI(totals.totalRevenues || 0);
         
-        // Calculer le total des dépenses
         const totalSpend = Object.values(totals.jars).reduce(
           (sum, jar) => sum + (jar.spendings || 0),
           0
@@ -65,7 +67,6 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     loadTotals();
   }, []);
 
-  // Charger automatiquement au montage du composant
   useEffect(() => {
     handleSearch();
   }, [mode]);
@@ -98,7 +99,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     setMode(m);
     setSpendings([]);
     setRevenues([]);
-    setError(null);
+    setQuery("");
   };
 
   const handleUseSpendingRow = (row: SearchSpendingResult) => {
@@ -113,202 +114,180 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
 
   const now = new Date();
 
-  const matchPeriod = (dateStr: string): boolean => {
+  // Filtres de période
+  const filterByPeriod = (dateStr: string): boolean => {
     if (periodFilter === "all") return true;
-    const d = parseDate(dateStr);
-    if (!d) return true;
-
-    const diffDays = (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
-
-    switch (periodFilter) {
-      case "30d":
-        return diffDays <= 30;
-      case "90d":
-        return diffDays <= 90;
-      case "year":
-        return diffDays <= 365;
-      default:
-        return true;
-    }
+    const dt = parseDate(dateStr);
+    if (!dt) return false;
+    const diff = now.getTime() - dt.getTime();
+    const days = diff / (1000 * 60 * 60 * 24);
+    if (periodFilter === "30d") return days <= 30;
+    if (periodFilter === "90d") return days <= 90;
+    if (periodFilter === "year") return days <= 365;
+    return true;
   };
 
-  const filteredSpendings = spendings.filter((row) => {
-    if (!matchPeriod(row.date)) return false;
-    if (jarFilter !== "all" && row.jar !== jarFilter) return false;
-    if (accountFilter !== "all" && row.account !== accountFilter) return false;
-    return true;
-  });
+  const filteredSpendings = spendings
+    .filter((s) => filterByPeriod(s.date))
+    .filter((s) => jarFilter === "all" || s.jar === jarFilter)
+    .filter((s) => accountFilter === "all" || s.account === accountFilter);
 
-  const filteredRevenues = revenues.filter((row) => {
-    if (!matchPeriod(row.date)) return false;
-    if (typeFilter !== "all" && row.incomeType !== typeFilter) return false;
-    if (destinationFilter !== "all" && row.destination !== destinationFilter) return false;
-    if (methodFilter !== "all" && row.method !== methodFilter) return false;
-    return true;
-  });
+  const filteredRevenues = revenues
+    .filter((r) => filterByPeriod(r.date))
+    .filter((r) => typeFilter === "all" || r.incomeType === typeFilter)
+    .filter((r) => destinationFilter === "all" || r.destination === destinationFilter)
+    .filter((r) => methodFilter === "all" || r.method === methodFilter);
 
-  // Totaux des lignes FILTRÉES (pour info)
-  const totalSpendingFiltered = filteredSpendings.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-  const totalRevenueFiltered = filteredRevenues.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-
-  // Options pour les filtres
-  const destinationOptions = Array.from(
-    new Set(revenues.map((r) => r.destination).filter((x): x is string => Boolean(x)))
+  const totalSpendingFiltered = filteredSpendings.reduce(
+    (sum, s) => sum + (s.amount || 0),
+    0
   );
 
-  const typeOptions = Array.from(
-    new Set(revenues.map((r) => r.incomeType).filter((x): x is string => Boolean(x)))
+  const totalRevenueFiltered = filteredRevenues.reduce(
+    (sum, r) => sum + (r.amount || 0),
+    0
   );
 
-  const methodOptions = Array.from(
-    new Set(revenues.map((r) => r.method).filter((x): x is string => Boolean(x)))
-  );
-
-  const jarOptions = Array.from(
-    new Set(spendings.map((s) => s.jar).filter((x): x is string => Boolean(x)))
-  );
-
-  const accountOptions = Array.from(
-    new Set(spendings.map((s) => s.account).filter((x): x is string => Boolean(x)))
-  );
+  const uniqueTypes = Array.from(new Set(revenues.map((r) => r.incomeType).filter(Boolean)));
+  const uniqueDestinations = Array.from(new Set(revenues.map((r) => r.destination).filter(Boolean)));
+  const uniqueMethods = Array.from(new Set(revenues.map((r) => r.method).filter(Boolean)));
+  const uniqueJars = Array.from(new Set(spendings.map((s) => s.jar).filter(Boolean)));
+  const uniqueAccounts = Array.from(new Set(spendings.map((s) => s.account).filter(Boolean)));
 
   return (
-    <main className="page">
-      <div className="history-card">
-        <h2>Historique</h2>
+    <main className="history-main">
+      <div className="history-container">
+        <h2 className="history-title">Historique</h2>
 
-        {/* Toggle dépenses / revenus */}
-        <div className="toggle-row">
-          <label>
-            <input type="radio" checked={mode === "spending"} onChange={() => handleModeChange("spending")} />
+        {/* Mode Toggle */}
+        <div className="mode-toggle">
+          <button
+            type="button"
+            className={`mode-toggle-btn ${mode === "spending" ? "active" : ""}`}
+            onClick={() => handleModeChange("spending")}
+          >
             Dépenses
-          </label>
-          <label>
-            <input type="radio" checked={mode === "revenue"} onChange={() => handleModeChange("revenue")} />
+          </button>
+          <button
+            type="button"
+            className={`mode-toggle-btn ${mode === "revenue" ? "active" : ""}`}
+            onClick={() => handleModeChange("revenue")}
+          >
             Revenus
-          </label>
+          </button>
         </div>
 
-        {/* Champ de recherche */}
-        <div className="field-group">
-          <input
-            type="text"
-            placeholder="Recherche…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearch();
-            }}
-          />
-        </div>
+        {/* Recherche */}
+        <input
+          type="text"
+          className="search-input"
+          placeholder="Recherche..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+        />
 
-        {/* Filtres avancés */}
-        <div className="history-filters-column">
-          <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}>
-            <option value="all">Toute période</option>
-            <option value="30d">30 derniers jours</option>
-            <option value="90d">90 derniers jours</option>
-            <option value="year">12 derniers mois</option>
-          </select>
+        {/* Filtres */}
+        <select
+          className="filter-select"
+          value={periodFilter}
+          onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+        >
+          <option value="all">Toute période</option>
+          <option value="30d">30 derniers jours</option>
+          <option value="90d">90 derniers jours</option>
+          <option value="year">Cette année</option>
+        </select>
 
-          {mode === "revenue" && (
-            <>
-              <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-                <option value="all">Tous les types</option>
-                {typeOptions.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+        {mode === "revenue" && (
+          <>
+            <select
+              className="filter-select"
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+            >
+              <option value="all">Tous les types</option>
+              {uniqueTypes.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
 
-              <select value={destinationFilter} onChange={(e) => setDestinationFilter(e.target.value)}>
-                <option value="all">Toutes les destinations</option>
-                {destinationOptions.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
+            <select
+              className="filter-select"
+              value={destinationFilter}
+              onChange={(e) => setDestinationFilter(e.target.value)}
+            >
+              <option value="all">Toutes les destinations</option>
+              {uniqueDestinations.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
 
-              <select value={methodFilter} onChange={(e) => setMethodFilter(e.target.value)}>
-                <option value="all">Toutes les méthodes</option>
-                {methodOptions.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
+            <select
+              className="filter-select"
+              value={methodFilter}
+              onChange={(e) => setMethodFilter(e.target.value)}
+            >
+              <option value="all">Toutes les méthodes</option>
+              {uniqueMethods.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </>
+        )}
 
-          {mode === "spending" && (
-            <>
-              <select value={jarFilter} onChange={(e) => setJarFilter(e.target.value)}>
-                <option value="all">Toutes les jarres</option>
-                {jarOptions.map((j) => (
-                  <option key={j} value={j}>
-                    {j}
-                  </option>
-                ))}
-              </select>
+        {mode === "spending" && (
+          <>
+            <select
+              className="filter-select"
+              value={jarFilter}
+              onChange={(e) => setJarFilter(e.target.value)}
+            >
+              <option value="all">Toutes les jarres</option>
+              {uniqueJars.map((j) => (
+                <option key={j} value={j}>{j}</option>
+              ))}
+            </select>
 
-              <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}>
-                <option value="all">Tous les comptes</option>
-                {accountOptions.map((a) => (
-                  <option key={a} value={a}>
-                    {a}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-        </div>
+            <select
+              className="filter-select"
+              value={accountFilter}
+              onChange={(e) => setAccountFilter(e.target.value)}
+            >
+              <option value="all">Tous les comptes</option>
+              {uniqueAccounts.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </>
+        )}
 
-        <button type="button" className="primary-btn" onClick={handleSearch} disabled={loading}>
-          {loading ? "Recherche…" : "Rechercher"}
+        <button
+          type="button"
+          className="search-btn"
+          onClick={handleSearch}
+          disabled={loading}
+        >
+          {loading ? "Chargement..." : "Rechercher"}
         </button>
 
-        {error && <p style={{ color: "red", marginTop: "1rem" }}>{error}</p>}
+        {error && <p className="error-message">{error}</p>}
 
-        {/* NOUVEAU : Afficher les VRAIS totaux de l'API */}
+        {/* Totaux */}
         {mode === "spending" && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-              marginTop: "1rem",
-            }}
-          >
-            <p className="history-summary">
-              <strong>Total dépensé (calculé par l'API) : {formatAmount(totalSpendingsFromAPI)} €</strong>
-            </p>
+          <div className="history-summary">
+            <p><strong>Total dépenses (calculé par l'API) : {formatAmount(totalSpendingsFromAPI)} €</strong></p>
             {filteredSpendings.length > 0 && (
               <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                Total des lignes filtrées affichées : {formatAmount(totalSpendingFiltered)} €
-                {Math.abs(totalSpendingFiltered - totalSpendingsFromAPI) > 1 && (
-                  <span style={{ color: "#f97316", marginLeft: "8px" }}>
-                    ⚠️ Différence : {formatAmount(Math.abs(totalSpendingFiltered - totalSpendingsFromAPI))} €
-                  </span>
-                )}
+                Total des lignes affichées : {formatAmount(totalSpendingFiltered)} €
               </p>
             )}
           </div>
         )}
 
         {mode === "revenue" && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "8px",
-              marginTop: "1rem",
-            }}
-          >
-            <p className="history-summary">
-              <strong>Total revenus (calculé par l'API) : {formatAmount(totalRevenuesFromAPI)} €</strong>
-            </p>
+          <div className="history-summary">
+            <p><strong>Total revenus (calculé par l'API) : {formatAmount(totalRevenuesFromAPI)} €</strong></p>
             {filteredRevenues.length > 0 && (
               <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
                 Total des lignes affichées (montant brut USD) : {formatAmount(totalRevenueFiltered)} USD/EUR
@@ -323,89 +302,99 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           </div>
         )}
 
-        {/* Tableau DEPENSES */}
+        {/* ✅ CARDS DÉPENSES (Mobile-First) */}
         {mode === "spending" && filteredSpendings.length > 0 && (
-          <div className="history-table-wrapper">
-            <table className="history-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Jarre</th>
-                  <th>Compte</th>
-                  <th>Montant</th>
-                  <th>Description</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredSpendings.map((row, i) => (
-                  <tr key={`${row.date}-${row.description}-${i}`}>
-                    <td>{row.date}</td>
-                    <td>{row.jar}</td>
-                    <td>{row.account}</td>
-                    <td>{formatAmount(row.amount)}</td>
-                    <td>{row.description}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="secondary-btn small"
-                        onClick={() => handleUseSpendingRow(row)}
-                        disabled={!onUseEntry}
-                      >
-                        Utiliser
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="history-cards">
+            {filteredSpendings.map((row, i) => (
+              <div key={`${row.date}-${row.description}-${i}`} className="history-card">
+                <div className="history-card-header">
+                  <div className="history-card-main">
+                    <span className="history-card-date">{row.date}</span>
+                    <span className="history-card-description">{row.description}</span>
+                  </div>
+                  <span className="history-card-amount">-{formatAmount(row.amount)} €</span>
+                </div>
+                <div className="history-card-meta">
+                  <span className="history-card-badge">{row.jar}</span>
+                  <span className="history-card-badge">{row.account}</span>
+                </div>
+                <button
+                  type="button"
+                  className="history-card-action-btn"
+                  onClick={() => handleUseSpendingRow(row)}
+                  disabled={!onUseEntry}
+                >
+                  ↻ Utiliser
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Tableau REVENUS */}
+        {/* ✅ CARDS REVENUS (Mobile-First) */}
         {mode === "revenue" && filteredRevenues.length > 0 && (
-          <div className="history-table-wrapper">
-            <table className="history-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Source</th>
-                  <th>Montant</th>
-                  <th>Devise</th>
-                  <th>Crypto</th>
-                  <th>Méthode</th>
-                  <th>Taux</th>
-                  <th>Destination</th>
-                  <th>Type</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRevenues.map((row, i) => (
-                  <tr key={`${row.date}-${row.source}-${i}`}>
-                    <td>{row.date}</td>
-                    <td>{row.source}</td>
-                    <td>{formatAmount(row.amount)}</td>
-                    <td>{row.value}</td>
-                    <td>{formatAmount(row.cryptoQuantity)}</td>
-                    <td>{row.method}</td>
-                    <td>{formatAmount(row.rate)}</td>
-                    <td>{row.destination}</td>
-                    <td>{row.incomeType}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="secondary-btn small"
-                        onClick={() => handleUseRevenueRow(row)}
-                        disabled={!onUseEntry}
-                      >
-                        Utiliser
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="history-cards">
+            {filteredRevenues.map((row, i) => {
+              const isExpanded = expandedCard === i;
+              return (
+                <div key={`${row.date}-${row.source}-${i}`} className="history-card">
+                  <div className="history-card-header">
+                    <div className="history-card-main">
+                      <span className="history-card-date">{row.date}</span>
+                      <span className="history-card-description">{row.source}</span>
+                    </div>
+                    <span className="history-card-amount revenue">+{formatAmount(row.amount)} {row.value}</span>
+                  </div>
+                  
+                  <div className="history-card-meta">
+                    <span className="history-card-badge">{row.method}</span>
+                    {row.destination && <span className="history-card-badge">{row.destination}</span>}
+                  </div>
+
+                  {/* DétailsExpandableUTF */}
+                  {isExpanded && (
+                    <div className="history-card-details">
+                      {row.cryptoQuantity && (
+                        <div className="history-card-detail-row">
+                          <span>Crypto:</span>
+                          <span>{formatAmount(row.cryptoQuantity)}</span>
+                        </div>
+                      )}
+                      {row.rate && (
+                        <div className="history-card-detail-row">
+                          <span>Taux:</span>
+                          <span>{formatAmount(row.rate)}</span>
+                        </div>
+                      )}
+                      {row.incomeType && (
+                        <div className="history-card-detail-row">
+                          <span>Type:</span>
+                          <span>{row.incomeType}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="history-card-actions">
+                    <button
+                      type="button"
+                      className="history-card-toggle-btn"
+                      onClick={() => setExpandedCard(isExpanded ? null : i)}
+                    >
+                      {isExpanded ? "▲ Moins" : "▼ Plus"}
+                    </button>
+                    <button
+                      type="button"
+                      className="history-card-action-btn primary"
+                      onClick={() => handleUseRevenueRow(row)}
+                      disabled={!onUseEntry}
+                    >
+                      ↻ Utiliser
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 

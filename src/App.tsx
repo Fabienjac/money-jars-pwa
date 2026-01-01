@@ -1,4 +1,4 @@
-// src/App.tsx - VERSION V2 avec JarsViewV2 et QuickSpendingForm
+// src/App.tsx - VERSION V3 FINALE avec "Utiliser" qui fonctionne
 import React, { useState, useEffect } from "react";
 import SpendingForm from "./components/SpendingForm";
 import RevenueForm from "./components/RevenueForm";
@@ -35,7 +35,7 @@ function App() {
   const [showQuickSpending, setShowQuickSpending] = useState(false);
   const [showQuickRevenue, setShowQuickRevenue] = useState(false);
   
-  // ✅ AJOUT : Toggle pour activer/désactiver la V2 (optionnel - pour A/B test)
+  // ✅ AJOUT : Toggle pour activer/désactiver la V2
   const [useV2, setUseV2] = useState(() => {
     try {
       const stored = localStorage.getItem("use_jars_v2");
@@ -93,12 +93,24 @@ function App() {
     setEntryOpen(false);
   };
 
-  // Quand on clique "Utiliser" depuis l'historique
+  // ✅ NOUVEAU : Gérer "Utiliser" avec la V2
   const handleUseEntry = (entry: HistoryUseEntry) => {
-    if (entry.kind === "spending") {
-      openEntry("spending", entry.row);
+    if (useV2) {
+      // Mode V2 : ouvrir les nouveaux modals
+      if (entry.kind === "spending") {
+        setPrefillSpending(entry.row);
+        setShowQuickSpending(true);
+      } else {
+        setPrefillRevenue(entry.row);
+        setShowQuickRevenue(true);
+      }
     } else {
-      openEntry("revenue", entry.row);
+      // Mode V1 : ancien comportement
+      if (entry.kind === "spending") {
+        openEntry("spending", entry.row);
+      } else {
+        openEntry("revenue", entry.row);
+      }
     }
   };
 
@@ -382,18 +394,43 @@ function App() {
             <p className="home-kicker">Système des 6 Jars</p>
             <h1 className="home-title">Mes Finances</h1>
           </div>
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setDarkMode((v) => !v)}
-            aria-label={darkMode ? "Passer en mode clair" : "Passer en mode sombre"}
-          >
-            {darkMode ? "☀️" : "🌙"}
-          </button>
+          
+          {/* Boutons d'action */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setImporterOpen(true)}
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #34C759 0%, #30B350 100%)',
+                color: 'white',
+                fontSize: '20px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(52, 199, 89, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="Importer des transactions"
+            >
+              📂
+            </button>
+            
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => setDarkMode((v) => !v)}
+            >
+              {darkMode ? "☀️" : "🌙"}
+            </button>
+          </div>
         </header>
 
         <main className="app-content">
-          {/* ✅ MODIFICATION : Utiliser JarsViewV2 à la place de JarsView */}
+          {/* ✅ MODIFICATION : Utiliser JarsViewV2 */}
           {section === "home" && (
             <>
               {useV2 ? (
@@ -415,6 +452,7 @@ function App() {
 
       {/* Bottom navigation - Icônes modernes */}
       <nav className="bottom-nav">
+        {/* ... navigation inchangée ... */}
         <button
           type="button"
           className={`bottom-nav-btn ${section === "home" ? "active" : ""}`}
@@ -532,7 +570,7 @@ function App() {
         </button>
       </nav>
 
-      {/* ✅ MODIFICATION : Boutons flottants UNIQUEMENT si V1 activée */}
+      {/* ✅ MODIFICATION : Boutons flottants UNIQUEMENT si V1 */}
       {!useV2 && (
         <>
           {/* Floating Action Button - Principal (violet) */}
@@ -553,7 +591,7 @@ function App() {
             +
           </button>
 
-          {/* Bouton Import (vert) - Au-dessus du bouton violet */}
+          {/* Bouton Import (vert) */}
           <button
             type="button"
             onClick={() => setImporterOpen(true)}
@@ -585,21 +623,26 @@ function App() {
         </>
       )}
 
-      {/* ✅ AJOUT : Modal QuickSpendingForm (V2) */}
+      {/* ✅ AJOUT : Modal QuickSpendingForm avec prefill */}
       {showQuickSpending && (
         <QuickSpendingForm
-          onClose={() => setShowQuickSpending(false)}
+          prefill={prefillSpending}
+          onClose={() => {
+            setShowQuickSpending(false);
+            setPrefillSpending(null); // Réinitialiser
+          }}
           onSuccess={() => {
             console.log("✅ Dépense enregistrée avec succès");
-            // Recharger les données (optionnel)
-            // window.location.reload();
           }}
         />
       )}
 
-      {/* ✅ AJOUT : Modal RevenueForm (V2 - réutilise l'existant) */}
+      {/* ✅ AJOUT : Modal RevenueForm avec prefill */}
       {showQuickRevenue && (
-        <div className="entry-sheet-backdrop" onClick={() => setShowQuickRevenue(false)}>
+        <div className="entry-sheet-backdrop" onClick={() => {
+          setShowQuickRevenue(false);
+          setPrefillRevenue(null);
+        }}>
           <div className="entry-sheet" onClick={(e) => e.stopPropagation()}>
             <header className="entry-sheet-header">
               <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700" }}>
@@ -608,7 +651,10 @@ function App() {
               <button
                 type="button"
                 className="entry-close-btn"
-                onClick={() => setShowQuickRevenue(false)}
+                onClick={() => {
+                  setShowQuickRevenue(false);
+                  setPrefillRevenue(null);
+                }}
               >
                 ×
               </button>
