@@ -577,7 +577,10 @@ function App() {
           <button
             type="button"
             className="fab"
-            onClick={() => openEntry("spending")}
+            onClick={() => {
+              setPrefillSpending(null);
+              setShowQuickSpending(true);
+            }}
             style={{
               position: "fixed",
               bottom: "100px",

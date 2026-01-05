@@ -1,10 +1,11 @@
 // src/components/QuickSpendingForm.tsx
 // FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
-import React, { useState, useEffect } from "react";
-import { appendSpending } from "../api";
+import React, { useState, useEffect, useMemo } from "react";
+import { appendSpending, searchSpendings } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
 import { tagsToString } from "../tagsUtils";
+import { useOffline } from "../hooks/useOffline";
 
 interface RecentTransaction {
   description: string;
@@ -43,25 +44,28 @@ interface QuickSpendingFormProps {
 const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess, prefill }) => {
   const [date, setDate] = useState<string>(todayISO());
   const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState<string>("EUR");
+  const [conversionRate, setConversionRate] = useState<number>(1);
+  const [rateSource, setRateSource] = useState<string>("EUR");
+  const [rateLoading, setRateLoading] = useState(false);
+  const [rateError, setRateError] = useState<string | null>(null);
   const [jar, setJar] = useState<JarKey>("NEC");
   const [account, setAccount] = useState("Cash");
   const [description, setDescription] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  
-  // Transactions récentes (simulées - à remplacer par un fetch réel)
-  const [recentTransactions] = useState<RecentTransaction[]>([
-    { description: "chez Jeremy", amount: 52.50, jar: "NEC", account: "Cash", date: "2025-12-31" },
-    { description: "Satoriz", amount: 51.33, jar: "NEC", account: "Cash", date: "2025-12-21" },
-  ]);
+  const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
+  const [recentLoading, setRecentLoading] = useState<boolean>(false);
+
+  const offline = useOffline();
 
   const accounts = loadAccounts();
 
   // ✅ Gérer le prefill depuis l'historique
   useEffect(() => {
     if (prefill) {
-      if (prefill.date) setDate(prefill.date);
+      setDate(todayISO()); // toujours aujourd'hui
       if (prefill.jar) setJar(prefill.jar);
       if (prefill.account) setAccount(prefill.account);
       if (prefill.amount != null) setAmount(String(prefill.amount));
@@ -100,7 +104,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     setAmount(recent.amount.toString());
     setJar(recent.jar);
     setAccount(recent.account);
-    setDate(recent.date); // ✅ Copier aussi la date
+    setDate(todayISO());
   };
 
   const toggleTag = (tagId: string) => {
@@ -119,14 +123,23 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
 
     try {
       setLoading(true);
-      
+
+      const numericAmount = parseFloat(amount);
+      if (isNaN(numericAmount) || numericAmount <= 0) {
+        setMessage("❌ Montant requis");
+        return;
+      }
+
+      const amountEUR = currency === "EUR" ? numericAmount : numericAmount * conversionRate;
+      const amountRounded = Math.round((amountEUR + Number.EPSILON) * 100) / 100;
+
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
       
       await appendSpending({
         date, // ✅ Utiliser la date du state
         jar,
         account,
-        amount: parseFloat(amount),
+        amount: amountRounded,
         description: description || `Dépense ${jar}`,
         tags: tagsString,
       });
@@ -151,6 +164,127 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     }
   };
 
+  // Charger les transactions récentes (5 dernières)
+  useEffect(() => {
+    const cacheKey = "quick_recent_spendings";
+    const readCache = (): RecentTransaction[] => {
+      try {
+        const raw = localStorage.getItem(cacheKey);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+
+    const saveCache = (items: RecentTransaction[]) => {
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(items));
+      } catch {
+        /* ignore */
+      }
+    };
+
+    const hydrateFromCache = () => {
+      const cached = readCache();
+      if (cached.length > 0) {
+        setRecentTransactions(cached);
+      }
+    };
+
+    const fetchRecents = async () => {
+      setRecentLoading(true);
+      try {
+        if (!offline.isOnline) {
+          hydrateFromCache();
+          return;
+        }
+
+        const res = await searchSpendings("", 5);
+        const rows = res.rows || [];
+
+        const normalized = rows
+          .filter((r) => r.description && r.amount != null)
+          .map((r) => ({
+            description: r.description,
+            amount: Number(r.amount),
+            jar: r.jar as JarKey,
+            account: r.account || "Cash",
+            date: r.date,
+          }));
+
+        setRecentTransactions(normalized);
+        saveCache(normalized);
+        offline.cacheTransactions?.(normalized);
+      } catch (err) {
+        console.error("Erreur chargement transactions récentes:", err);
+        hydrateFromCache();
+      } finally {
+        setRecentLoading(false);
+      }
+    };
+
+    fetchRecents();
+  }, [offline]);
+
+  // Mettre à jour la devise et le taux
+  useEffect(() => {
+    let cancelled = false;
+    const fetchRate = async () => {
+      if (currency === "EUR") {
+        setConversionRate(1);
+        setRateSource("EUR");
+        setRateError(null);
+        return;
+      }
+
+      setRateLoading(true);
+      setRateError(null);
+      const fallbackRates: Record<string, number> = {
+        USD: 0.93,
+        GBP: 1.17,
+        CHF: 1.04,
+        JPY: 0.0061,
+        CAD: 0.68,
+      };
+
+      try {
+        const url = `https://api.exchangerate.host/latest?base=${encodeURIComponent(currency)}&symbols=EUR`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(String(response.status));
+        const data = await response.json();
+        const rate = data?.rates?.EUR;
+        if (!rate) throw new Error("rate missing");
+        if (!cancelled) {
+          setConversionRate(rate);
+          setRateSource("live");
+        }
+      } catch (err) {
+        console.warn("⚠️ Taux de change indisponible, fallback local:", err);
+        const fallback = fallbackRates[currency] ?? 1;
+        if (!cancelled) {
+          setConversionRate(fallback);
+          setRateSource("local");
+          setRateError("Taux estimé (offline)");
+        }
+      } finally {
+        if (!cancelled) setRateLoading(false);
+      }
+    };
+
+    fetchRate();
+    return () => {
+      cancelled = true;
+    };
+  }, [currency]);
+
+  const convertedAmount = useMemo(() => {
+    const numeric = parseFloat(amount || "0");
+    if (isNaN(numeric)) return 0;
+    return numeric * conversionRate;
+  }, [amount, conversionRate]);
+
   return (
     <div className="quick-spending-modal">
       <div className="quick-spending-overlay" onClick={onClose} />
@@ -169,7 +303,14 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
         </div>
 
         {/* Récentes */}
-        {recentTransactions.length > 0 && (
+        {recentLoading ? (
+          <div className="quick-recent-section">
+            <p className="quick-recent-label">📝 Récentes</p>
+            <div className="quick-recent-list">
+              <span className="quick-recent-item">Chargement...</span>
+            </div>
+          </div>
+        ) : recentTransactions.length > 0 && (
           <div className="quick-recent-section">
             <p className="quick-recent-label">📝 Récentes</p>
             <div className="quick-recent-list">
@@ -206,7 +347,32 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           <p className="quick-amount-label">💰 Montant</p>
           <div className="quick-amount-display">
             {amount || "0"}
-            <span className="quick-amount-currency">€</span>
+            <span className="quick-amount-currency">{currency}</span>
+          </div>
+          <div className="quick-amount-currency-row">
+            <label className="quick-currency-select-wrapper">
+              <span role="img" aria-label="currency">💱</span>
+              <select
+                className="quick-currency-select"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+              >
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+                <option value="GBP">GBP</option>
+                <option value="CHF">CHF</option>
+                <option value="JPY">JPY</option>
+                <option value="CAD">CAD</option>
+              </select>
+            </label>
+            <div className="quick-amount-conversion">
+              {rateLoading ? "⏳ Taux..." : (
+                <>
+                  ≈ {convertedAmount.toFixed(2)} € {rateSource === "local" && " (estimé)"}
+                  {rateError && <span className="quick-rate-warning"> • {rateError}</span>}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
