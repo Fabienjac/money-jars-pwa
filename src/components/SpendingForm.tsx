@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { appendSpending } from "../api";
 import { JarKey, SpendingRow } from "../types";
 import { loadAutoRules, AutoRule } from "../autoRules";
@@ -31,6 +31,7 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
   const [message, setMessage] = useState<string | null>(null);
   const [showImporter, setShowImporter] = useState(false);
   const [accounts] = useState(loadAccounts());
+  const [accountSearch, setAccountSearch] = useState("");
 
   // Auto-dismiss message
   useEffect(() => {
@@ -161,6 +162,14 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
     }
   };
 
+  const filteredAccounts = useMemo(() => {
+    const query = accountSearch.trim().toLowerCase();
+    if (!query) return accounts;
+    return accounts.filter((acc) => acc.name.toLowerCase().includes(query));
+  }, [accountSearch, accounts]);
+
+  const showAccountSearch = accounts.length > 6;
+
   return (
     <main className="page">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -258,30 +267,84 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
           <label style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>
             💳 Compte
           </label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(85px, 1fr))", gap: "8px" }}>
-            {accounts.map((acc) => (
+          {showAccountSearch && (
+            <div style={{ marginBottom: "8px" }}>
+              <input
+                type="search"
+                placeholder="Rechercher un compte..."
+                value={accountSearch}
+                onChange={(e) => setAccountSearch(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: "10px",
+                  border: "1px solid var(--border-color)",
+                  fontSize: "13px",
+                }}
+              />
+            </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              overflowX: "auto",
+              paddingBottom: "6px",
+              WebkitOverflowScrolling: "touch",
+            }}
+          >
+            {filteredAccounts.map((acc) => (
               <button
                 key={acc.id}
                 type="button"
                 onClick={() => setAccount(acc.name)}
                 style={{
-                  padding: "10px 6px",
-                  borderRadius: "12px",
+                  minWidth: "120px",
+                  width: "130px",
+                  maxWidth: "140px",
+                  padding: "12px 10px",
+                  borderRadius: "14px",
                   border: account === acc.name ? "2px solid #007AFF" : "1px solid var(--border-color)",
                   background: account === acc.name ? "rgba(0, 122, 255, 0.1)" : "var(--bg-card)",
                   cursor: "pointer",
                   display: "flex",
                   flexDirection: "column",
-                  alignItems: "center",
-                  gap: "4px",
+                  alignItems: "flex-start",
+                  gap: "6px",
+                  textAlign: "left",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+                  transition: "transform 0.1s ease, border-color 0.1s ease",
                 }}
               >
-                <span style={{ fontSize: "26px" }}>{acc.icon || "💳"}</span>
-                <span style={{ fontSize: "11px", fontWeight: "600", color: account === acc.name ? "#007AFF" : "var(--text-main)" }}>
+                <span style={{ fontSize: "24px" }}>{acc.icon || "💳"}</span>
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: "700",
+                    color: account === acc.name ? "#007AFF" : "var(--text-main)",
+                    lineHeight: "1.3",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
                   {acc.name}
                 </span>
               </button>
             ))}
+            {filteredAccounts.length === 0 && (
+              <div
+                style={{
+                  minWidth: "120px",
+                  color: "var(--text-muted)",
+                  fontSize: "13px",
+                  padding: "10px 0",
+                }}
+              >
+                Aucun compte trouvé
+              </div>
+            )}
           </div>
           {!account && <p style={{ fontSize: "11px", color: "#FF3B30", marginTop: "4px" }}>⚠️ Sélectionnez un compte</p>}
         </div>
