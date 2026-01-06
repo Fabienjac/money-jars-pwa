@@ -1,6 +1,6 @@
 // src/components/QuickSpendingForm.tsx
 // FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { appendSpending, searchSpendings } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
@@ -165,6 +165,8 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   };
 
   // Charger les transactions récentes (5 dernières)
+  const hasFetchedRef = useRef(false);
+
   useEffect(() => {
     const cacheKey = "quick_recent_spendings";
     const readCache = (): RecentTransaction[] => {
@@ -226,8 +228,11 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       }
     };
 
-    fetchRecents();
-  }, [offline]);
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      fetchRecents();
+    }
+  }, [offline.isOnline]);
 
   // Mettre à jour la devise et le taux
   useEffect(() => {
