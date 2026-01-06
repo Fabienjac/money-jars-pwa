@@ -80,15 +80,18 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   const [recentSources, setRecentSources] = useState<string[]>(() => loadRecentItems(RECENT_SOURCES_KEY));
   const [recentMethods, setRecentMethods] = useState<string[]>(() => loadRecentItems(RECENT_METHODS_KEY));
   type SectionKey = "base" | "crypto" | "destination";
-  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
+  const createInitialSectionsState = (): Record<SectionKey, boolean> => ({
     base: true,
     crypto: false,
     destination: false,
   });
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>(createInitialSectionsState());
 
   const toggleSection = (section: SectionKey) => {
     setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
+
+  const resetSections = () => setOpenSections(createInitialSectionsState());
 
   useEffect(() => {
     if (!prefill) return;
@@ -162,6 +165,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
 
     if (rule.destination) {
       setDestination(rule.destination);
+      setOpenSections((prev) => ({ ...prev, destination: true }));
     }
   };
 
@@ -173,49 +177,63 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     }
   };
 
+  const handleDestinationChange = (value: string) => {
+    setDestination(value);
+
+    if (value.trim()) {
+      setOpenSections((prev) => ({ ...prev, destination: true }));
+    }
+  };
+
   const renderPresets = (items: string[], onSelect: (value: string) => void) => {
     if (!items.length) return null;
 
     return (
-      <div style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "8px",
-        marginTop: "8px",
-      }}>
-        {items.map((item) => (
-          <button
-            key={item}
-            type="button"
-            onClick={() => onSelect(item)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: "999px",
-              border: "1px solid var(--border-color)",
-              backgroundColor: "var(--bg-body)",
-              color: "var(--text-main)",
-              fontSize: "13px",
-              cursor: "pointer",
-            }}
-          >
-            {item}
-          </button>
-        ))}
+      <div style={{ marginTop: "8px" }}>
+        <p style={{ margin: "0 0 6px", fontSize: "12px", color: "var(--text-muted)", fontWeight: 600 }}>
+          ⭐️ Dernières sélections
+        </p>
+        <div style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px",
+        }}>
+          {items.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => onSelect(item)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "999px",
+                border: "1px solid var(--border-color)",
+                backgroundColor: "var(--bg-body)",
+                color: "var(--text-main)",
+                fontSize: "13px",
+                cursor: "pointer",
+              }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
       </div>
     );
   };
 
-  const Section: React.FC<{ title: string; sectionKey: SectionKey; children: React.ReactNode }> = ({
+  const Section: React.FC<{ title: string; sectionKey: SectionKey; summary?: React.ReactNode; children: React.ReactNode }> = ({
     title,
     sectionKey,
+    summary,
     children,
   }) => (
     <div
       style={{
         border: "1px solid var(--border-color)",
         borderRadius: "12px",
-        background: "var(--bg-body)",
+        background: "var(--bg-card)",
         padding: "10px 12px",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
       }}
     >
       <button
@@ -235,7 +253,14 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
           cursor: "pointer",
         }}
       >
-        <span>{title}</span>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "2px" }}>
+          <span>{title}</span>
+          {summary && (
+            <span style={{ fontSize: "12px", color: "var(--text-muted)", fontWeight: 500 }}>
+              {summary}
+            </span>
+          )}
+        </div>
         <span>{openSections[sectionKey] ? "▲" : "▼"}</span>
       </button>
 
@@ -397,6 +422,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       setDestination("");
       setIncomeType("");
       setDate(todayISO());
+      resetSections();
       
       // Recharger les comptes pour avoir la liste à jour
       setRevenueAccounts(loadRevenueAccounts());
@@ -508,6 +534,30 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     }
   }, [amount, cryptoQuantity, isCryptoMethod, isStablecoinMethod]);
 
+  const baseSummary = [
+    source && `Source : ${source}`,
+    amount && `Montant : ${amount}`,
+    value && `Devise : ${value}`,
+  ].filter(Boolean).join(" • ") || "Champs principaux";
+
+  const cryptoSummary = (() => {
+    if (!method.trim()) return "Méthode / crypto";
+    if (!isCryptoMethod) return "Méthode non crypto";
+
+    const currencyLabel = methodCurrency || "Crypto";
+    const parts = [currencyLabel];
+    if (cryptoQuantity.trim()) parts.push(`Qty ${cryptoQuantity}`);
+    if (rate.trim()) parts.push(`Tx ${rate}`);
+    return parts.join(" • ");
+  })();
+
+  const destinationSummary = (() => {
+    const parts: string[] = [];
+    if (destination.trim()) parts.push(destination);
+    if (incomeType.trim()) parts.push(`Type ${incomeType}`);
+    return parts.join(" • ") || "Destination facultative";
+  })();
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -520,7 +570,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         borderRadius: "12px",
       }}
     >
-      <Section title="Base" sectionKey="base">
+      <Section title="Base" sectionKey="base" summary={baseSummary}>
         <div>
           <label htmlFor="date" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
             📅 Date
@@ -624,7 +674,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         </div>
       </Section>
 
-      <Section title="Crypto" sectionKey="crypto">
+      <Section title="Crypto" sectionKey="crypto" summary={cryptoSummary}>
         <div>
           <label htmlFor="method" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
             💳 Méthode (optionnel)
@@ -724,7 +774,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         </div>
       </Section>
 
-      <Section title="Destination" sectionKey="destination">
+      <Section title="Destination" sectionKey="destination" summary={destinationSummary}>
         <div>
           <label htmlFor="destination" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
             🏦 Compte de destination (optionnel)
@@ -734,7 +784,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
             type="text"
             list="spending-accounts-list"
             value={destination}
-            onChange={(e) => setDestination(e.target.value)}
+            onChange={(e) => handleDestinationChange(e.target.value)}
             placeholder="Sélectionner ou saisir un compte..."
             style={{
               width: "100%",
