@@ -17,6 +17,44 @@ const formatDateForGoogleSheets = (isoDate: string): string => {
   return `${day}/${month}/${year}`;
 };
 
+const RECENT_SOURCES_KEY = "recentRevenueSources";
+const RECENT_METHODS_KEY = "recentRevenueMethods";
+
+const loadRecentItems = (key: string): string[] => {
+  if (typeof localStorage === "undefined") return [];
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("❌ Impossible de charger les presets :", error);
+    return [];
+  }
+};
+
+const saveRecentItems = (key: string, items: string[]) => {
+  if (typeof localStorage === "undefined") return;
+
+  try {
+    localStorage.setItem(key, JSON.stringify(items));
+  } catch (error) {
+    console.warn("❌ Impossible de sauvegarder les presets :", error);
+  }
+};
+
+const updateRecents = (current: string[], value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return current;
+
+  const filtered = current.filter(
+    (item) => item.toLowerCase() !== trimmed.toLowerCase()
+  );
+
+  return [trimmed, ...filtered].slice(0, 5);
+};
+
 const RevenueForm: React.FC<RevenueFormProps> = ({
   prefill,
   onClearPrefill,
@@ -39,6 +77,18 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   // ✅ États pour les comptes (rechargeable)
   const [revenueAccounts, setRevenueAccounts] = useState(loadRevenueAccounts());
   const [spendingAccounts, setSpendingAccounts] = useState(loadAccounts());
+  const [recentSources, setRecentSources] = useState<string[]>(() => loadRecentItems(RECENT_SOURCES_KEY));
+  const [recentMethods, setRecentMethods] = useState<string[]>(() => loadRecentItems(RECENT_METHODS_KEY));
+  type SectionKey = "base" | "crypto" | "destination";
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
+    base: true,
+    crypto: false,
+    destination: false,
+  });
+
+  const toggleSection = (section: SectionKey) => {
+    setOpenSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
 
   useEffect(() => {
     if (!prefill) return;
@@ -79,6 +129,16 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     onClearPrefill?.();
   }, [prefill, onClearPrefill, revenueAccounts]);
 
+  useEffect(() => {
+    if (!prefill) return;
+
+    setOpenSections((prev) => ({
+      ...prev,
+      crypto: !!prefill.method || prev.crypto,
+      destination: !!prefill.destination || prev.destination,
+    }));
+  }, [prefill]);
+
   const handleSourceChange = (value: string) => {
     setSource(value);
 
@@ -104,6 +164,88 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       setDestination(rule.destination);
     }
   };
+
+  const handleMethodChange = (value: string) => {
+    setMethod(value);
+
+    if (value.trim()) {
+      setOpenSections((prev) => ({ ...prev, crypto: true }));
+    }
+  };
+
+  const renderPresets = (items: string[], onSelect: (value: string) => void) => {
+    if (!items.length) return null;
+
+    return (
+      <div style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "8px",
+        marginTop: "8px",
+      }}>
+        {items.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => onSelect(item)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: "999px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "13px",
+              cursor: "pointer",
+            }}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  const Section: React.FC<{ title: string; sectionKey: SectionKey; children: React.ReactNode }> = ({
+    title,
+    sectionKey,
+    children,
+  }) => (
+    <div
+      style={{
+        border: "1px solid var(--border-color)",
+        borderRadius: "12px",
+        background: "var(--bg-body)",
+        padding: "10px 12px",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => toggleSection(sectionKey)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          background: "transparent",
+          border: "none",
+          color: "var(--text-main)",
+          fontSize: "15px",
+          fontWeight: 700,
+          padding: "4px 0",
+          cursor: "pointer",
+        }}
+      >
+        <span>{title}</span>
+        <span>{openSections[sectionKey] ? "▲" : "▼"}</span>
+      </button>
+
+      {openSections[sectionKey] && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px", paddingTop: "8px" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
 
   // ✅ Auto-ajout du compte de revenu (Source)
   const ensureRevenueAccountExists = (sourceName: string) => {
@@ -232,6 +374,16 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         incomeType,
       });
 
+      const updatedSources = updateRecents(recentSources, source);
+      setRecentSources(updatedSources);
+      saveRecentItems(RECENT_SOURCES_KEY, updatedSources);
+
+      if (method.trim()) {
+        const updatedMethods = updateRecents(recentMethods, method);
+        setRecentMethods(updatedMethods);
+        saveRecentItems(RECENT_METHODS_KEY, updatedMethods);
+      }
+
       setMessage("✅ Revenu enregistré avec succès");
       
       // Reset form
@@ -339,267 +491,297 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     }
   };
 
+  const methodCurrency = extractCurrencyFromMethod(method);
+  const isCryptoMethod = Boolean(methodCurrency);
+  const isStablecoinMethod = methodCurrency === "USDT" || methodCurrency === "USDC";
+
+  useEffect(() => {
+    const trimmedAmount = amount.trim();
+
+    if (isStablecoinMethod && trimmedAmount && cryptoQuantity !== trimmedAmount) {
+      setCryptoQuantity(trimmedAmount);
+      return;
+    }
+
+    if (!isCryptoMethod && cryptoQuantity) {
+      setCryptoQuantity("");
+    }
+  }, [amount, cryptoQuantity, isCryptoMethod, isStablecoinMethod]);
+
   return (
     <form
       onSubmit={handleSubmit}
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: "16px",
+        gap: "12px",
         padding: "16px",
         backgroundColor: "var(--bg-card)",
         borderRadius: "12px",
       }}
     >
-      <div>
-        <label htmlFor="date" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          📅 Date
-        </label>
-        <input
-          id="date"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
+      <Section title="Base" sectionKey="base">
+        <div>
+          <label htmlFor="date" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            📅 Date
+          </label>
+          <input
+            id="date"
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
 
-      {/* ✅ Source avec datalist (Comptes de revenus) */}
-      <div>
-        <label htmlFor="source" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          💰 Source de revenu
-        </label>
-        <input
-          id="source"
-          type="text"
-          list="revenue-accounts-list"
-          value={source}
-          onChange={(e) => handleSourceChange(e.target.value)}
-          placeholder="Sélectionner ou saisir une source..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-        <datalist id="revenue-accounts-list">
-          {revenueAccounts.map(acc => (
-            <option key={acc.id} value={acc.name}>
-              {acc.icon} {acc.name} {acc.type && `(${acc.type})`}
-            </option>
-          ))}
-        </datalist>
-        {revenueAccounts.length > 0 && (
-          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-            💡 Tapez pour créer une nouvelle source ou sélectionnez-en une existante
+        <div>
+          <label htmlFor="source" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            💰 Source de revenu
+          </label>
+          <input
+            id="source"
+            type="text"
+            list="revenue-accounts-list"
+            value={source}
+            onChange={(e) => handleSourceChange(e.target.value)}
+            placeholder="Sélectionner ou saisir une source..."
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+          <datalist id="revenue-accounts-list">
+            {revenueAccounts.map(acc => (
+              <option key={acc.id} value={acc.name}>
+                {acc.icon} {acc.name} {acc.type && `(${acc.type})`}
+              </option>
+            ))}
+          </datalist>
+          {renderPresets(recentSources, handleSourceChange)}
+          {revenueAccounts.length > 0 && (
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+              💡 Tapez pour créer une nouvelle source ou sélectionnez-en une existante
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label htmlFor="amount" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            💵 Montant (EUR)
+          </label>
+          <input
+            id="amount"
+            type="text"
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="ex: 1500"
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="value" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            💱 Devise
+          </label>
+          <input
+            id="value"
+            type="text"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="ex: USD, EUR, BTC..."
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+      </Section>
+
+      <Section title="Crypto" sectionKey="crypto">
+        <div>
+          <label htmlFor="method" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            💳 Méthode (optionnel)
+          </label>
+          <input
+            id="method"
+            type="text"
+            value={method}
+            onChange={(e) => handleMethodChange(e.target.value)}
+            placeholder="ex: USDC_ETH, Virement..."
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+          {renderPresets(recentMethods, handleMethodChange)}
+        </div>
+
+        <div>
+          <label htmlFor="rate" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            📊 Taux de change (optionnel)
+          </label>
+          <input
+            id="rate"
+            type="text"
+            inputMode="decimal"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+            placeholder="Auto si vide + crypto détectée"
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+
+        {isCryptoMethod && (
+          <div>
+            <label htmlFor="cryptoQuantity" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+              🪙 Quantité Crypto (détectée)
+            </label>
+            <input
+              id="cryptoQuantity"
+              type="text"
+              inputMode="decimal"
+              value={cryptoQuantity}
+              onChange={(e) => setCryptoQuantity(e.target.value)}
+              placeholder="ex: 0.05"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-color)",
+                backgroundColor: "var(--bg-body)",
+                color: "var(--text-main)",
+                fontSize: "14px",
+              }}
+            />
+          </div>
+        )}
+        {!isCryptoMethod && method.trim() && (
+          <p style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+            ⚠️ Méthode non crypto détectée : la quantité crypto reste masquée.
           </p>
         )}
-      </div>
 
-      <div>
-        <label htmlFor="amount" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          💵 Montant (EUR)
-        </label>
-        <input
-          id="amount"
-          type="text"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="ex: 1500"
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
+        <div>
+          <label htmlFor="cryptoAddress" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            🔐 Adresse Crypto (optionnel)
+          </label>
+          <input
+            id="cryptoAddress"
+            type="text"
+            value={cryptoAddress}
+            onChange={(e) => setCryptoAddress(e.target.value)}
+            placeholder="ex: 0x..."
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+      </Section>
 
-      <div>
-        <label htmlFor="value" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          💱 Devise
-        </label>
-        <input
-          id="value"
-          type="text"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="ex: USD, EUR, BTC..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
+      <Section title="Destination" sectionKey="destination">
+        <div>
+          <label htmlFor="destination" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            🏦 Compte de destination (optionnel)
+          </label>
+          <input
+            id="destination"
+            type="text"
+            list="spending-accounts-list"
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            placeholder="Sélectionner ou saisir un compte..."
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+          <datalist id="spending-accounts-list">
+            {spendingAccounts.map(acc => (
+              <option key={acc.id} value={acc.name}>
+                {acc.icon} {acc.name}
+              </option>
+            ))}
+          </datalist>
+          {spendingAccounts.length > 0 && (
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+              💡 Tapez pour créer un nouveau compte ou sélectionnez-en un existant
+            </p>
+          )}
+        </div>
 
-      <div>
-        <label htmlFor="cryptoQuantity" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          🪙 Quantité Crypto (optionnel)
-        </label>
-        <input
-          id="cryptoQuantity"
-          type="text"
-          inputMode="decimal"
-          value={cryptoQuantity}
-          onChange={(e) => setCryptoQuantity(e.target.value)}
-          placeholder="ex: 0.05"
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
-
-      <div>
-        <label htmlFor="method" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          💳 Méthode (optionnel)
-        </label>
-        <input
-          id="method"
-          type="text"
-          value={method}
-          onChange={(e) => setMethod(e.target.value)}
-          placeholder="ex: USDC_ETH, Virement..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
-
-      <div>
-        <label htmlFor="rate" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          📊 Taux de change (optionnel)
-        </label>
-        <input
-          id="rate"
-          type="text"
-          inputMode="decimal"
-          value={rate}
-          onChange={(e) => setRate(e.target.value)}
-          placeholder="Auto si vide + crypto détectée"
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
-
-      <div>
-        <label htmlFor="cryptoAddress" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          🔐 Adresse Crypto (optionnel)
-        </label>
-        <input
-          id="cryptoAddress"
-          type="text"
-          value={cryptoAddress}
-          onChange={(e) => setCryptoAddress(e.target.value)}
-          placeholder="ex: 0x..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
-
-      {/* ✅ Destination avec datalist (Comptes de dépenses) */}
-      <div>
-        <label htmlFor="destination" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          🏦 Compte de destination (optionnel)
-        </label>
-        <input
-          id="destination"
-          type="text"
-          list="spending-accounts-list"
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          placeholder="Sélectionner ou saisir un compte..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-        <datalist id="spending-accounts-list">
-          {spendingAccounts.map(acc => (
-            <option key={acc.id} value={acc.name}>
-              {acc.icon} {acc.name}
-            </option>
-          ))}
-        </datalist>
-        {spendingAccounts.length > 0 && (
-          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
-            💡 Tapez pour créer un nouveau compte ou sélectionnez-en un existant
-          </p>
-        )}
-      </div>
-
-      <div>
-        <label htmlFor="incomeType" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          📋 Type de revenu (optionnel)
-        </label>
-        <input
-          id="incomeType"
-          type="text"
-          value={incomeType}
-          onChange={(e) => setIncomeType(e.target.value)}
-          placeholder="ex: Salaire, Freelance, Crypto..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
-        />
-      </div>
+        <div>
+          <label htmlFor="incomeType" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+            📋 Type de revenu (optionnel)
+          </label>
+          <input
+            id="incomeType"
+            type="text"
+            value={incomeType}
+            onChange={(e) => setIncomeType(e.target.value)}
+            placeholder="ex: Salaire, Freelance, Crypto..."
+            style={{
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: "8px",
+              border: "1px solid var(--border-color)",
+              backgroundColor: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+            }}
+          />
+        </div>
+      </Section>
 
       {appliedRule && (
         <div style={{
