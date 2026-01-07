@@ -106,6 +106,8 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const [editingRevenueTransaction, setEditingRevenueTransaction] = useState<Transaction | null>(null);
   const [editingRevenueIndex, setEditingRevenueIndex] = useState<number | null>(null);
   const [reviewFilter, setReviewFilter] = useState<"all" | "duplicates">("all");
+  const [userSelectedType, setUserSelectedType] = useState(false);
+  const [userSelectedAccount, setUserSelectedAccount] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -113,10 +115,11 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     const savedAccount = localStorage.getItem(LAST_ACCOUNT_KEY);
     if (savedType) {
       setTransactionType(savedType);
-      setStep("upload");
+      setUserSelectedType(true);
     }
     if (savedAccount) {
       setDefaultAccount(savedAccount);
+      setUserSelectedAccount(true);
     }
   }, []);
 
@@ -284,7 +287,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       setColumnMappings(data.structure.suggestedMappings);
 
       const detectedType = detectTransactionTypeFromStructure(data.structure.headers, data.structure.rows);
-      if (detectedType) {
+      if (detectedType && !userSelectedType) {
         setTransactionType(detectedType);
       }
       const detectedAccount = detectDefaultAccountFromStructure(
@@ -292,7 +295,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         data.structure.rows,
         detectedType || transactionType
       );
-      if (detectedAccount) {
+      if (detectedAccount && !userSelectedAccount && !defaultAccount) {
         setDefaultAccount(detectedAccount);
       }
       
@@ -750,6 +753,8 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     setStep("selectType");
     setTransactionType(null);
     setDefaultAccount("");
+    setUserSelectedType(false);
+    setUserSelectedAccount(false);
   };
 
   const importWithoutDuplicates = async () => {
@@ -837,6 +842,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <button
             onClick={() => {
               setTransactionType("spending");
+              setUserSelectedType(true);
               setStep("upload");
             }}
             style={{
@@ -881,6 +887,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <button
             onClick={() => {
               setTransactionType("revenue");
+              setUserSelectedType(true);
               setStep("upload");
             }}
             style={{
@@ -1029,6 +1036,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               setFile(null);
               setFileFormat(null);
               setError(null);
+              setTransactionType(null);
+              setDefaultAccount("");
+              setUserSelectedType(false);
+              setUserSelectedAccount(false);
             }}
             style={{
               padding: "8px 16px",
@@ -1118,9 +1129,12 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               {accounts.map((account) => (
                 <button
                   key={account.name}
-                  onClick={() => setDefaultAccount(account.name)}
-                  style={{
-                    padding: "16px 12px",
+            onClick={() => {
+              setDefaultAccount(account.name);
+              setUserSelectedAccount(true);
+            }}
+            style={{
+              padding: "16px 12px",
                     borderRadius: "12px",
                     border: defaultAccount === account.name
                       ? "2px solid var(--jar-nec)"
@@ -1171,7 +1185,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                 {sources.map((source: any) => (
                   <button
                     key={source.id}
-                    onClick={() => setDefaultAccount(source.name)}
+                    onClick={() => {
+                      setDefaultAccount(source.name);
+                      setUserSelectedAccount(true);
+                    }}
                     style={{
                       padding: "16px 12px",
                       borderRadius: "12px",
