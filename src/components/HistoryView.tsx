@@ -1,5 +1,5 @@
 // src/components/HistoryView.tsx - VERSION MOBILE OPTIMISÉE
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { searchSpendings, searchRevenues, fetchTotals } from "../api";
 import { SearchSpendingResult, SearchRevenueResult } from "../types";
 
@@ -43,9 +43,12 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [jarFilter, setJarFilter] = useState<string>("all");
   const [accountFilter, setAccountFilter] = useState<string>("all");
+  const [groupByDay, setGroupByDay] = useState(false);
 
   // ✅ NOUVEAU : État pour card expanded
-  const [expandedCard, setExpandedCard] = useState<number | null>(null);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchCurrentXRef = useRef<number>(0);
 
   // Charger les vrais totaux depuis l'API
   useEffect(() => {
@@ -153,6 +156,48 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const uniqueMethods = Array.from(new Set(revenues.map((r) => r.method).filter(Boolean)));
   const uniqueJars = Array.from(new Set(spendings.map((s) => s.jar).filter(Boolean)));
   const uniqueAccounts = Array.from(new Set(spendings.map((s) => s.account).filter(Boolean)));
+
+  const sortByDateDesc = <T extends { date: string }>(items: T[]) =>
+    [...items].sort((a, b) => {
+      const da = parseDate(a.date)?.getTime() ?? 0;
+      const db = parseDate(b.date)?.getTime() ?? 0;
+      return db - da;
+    });
+
+  const groupByDate = <T extends { date: string }>(items: T[]) => {
+    const map = new Map<string, T[]>();
+    items.forEach((item) => {
+      const list = map.get(item.date) || [];
+      list.push(item);
+      map.set(item.date, list);
+    });
+    return Array.from(map.entries()).map(([date, rows]) => ({ date, rows }));
+  };
+
+  const sortedSpendings = sortByDateDesc(filteredSpendings);
+  const sortedRevenues = sortByDateDesc(filteredRevenues);
+  const spendingGroups = groupByDate(sortedSpendings);
+  const revenueGroups = groupByDate(sortedRevenues);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartXRef.current = touch.clientX;
+    touchCurrentXRef.current = touch.clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchCurrentXRef.current = touch.clientX;
+  };
+
+  const handleTouchEnd = (onUse: () => void) => {
+    if (touchStartXRef.current == null) return;
+    const deltaX = touchCurrentXRef.current - touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (deltaX > 80) {
+      onUse();
+    }
+  };
 
   return (
     <main className="history-main">
@@ -264,6 +309,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
 
         <button
           type="button"
+          className={`group-toggle ${groupByDay ? "active" : ""}`}
+          onClick={() => setGroupByDay((prev) => !prev)}
+        >
+          {groupByDay ? "Affichage liste" : "Groupé par jour"}
+        </button>
+
+        <button
+          type="button"
           className="search-btn"
           onClick={handleSearch}
           disabled={loading}
@@ -304,97 +357,142 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
 
         {/* ✅ CARDS DÉPENSES (Mobile-First) */}
         {mode === "spending" && filteredSpendings.length > 0 && (
-          <div className="history-cards">
-            {filteredSpendings.map((row, i) => (
-              <div key={`${row.date}-${row.description}-${i}`} className="history-card">
-                <div className="history-card-header">
-                  <div className="history-card-main">
-                    <span className="history-card-date">{row.date}</span>
-                    <span className="history-card-description">{row.description}</span>
-                  </div>
-                  <span className="history-card-amount">-{formatAmount(row.amount)} €</span>
-                </div>
-                <div className="history-card-meta">
-                  <span className="history-card-badge">{row.jar}</span>
-                  <span className="history-card-badge">{row.account}</span>
-                </div>
-                <button
-                  type="button"
-                  className="history-card-action-btn"
-                  onClick={() => handleUseSpendingRow(row)}
-                  disabled={!onUseEntry}
+          <div className="history-cards-wrapper">
+            {(groupByDay ? spendingGroups : [{ date: "", rows: sortedSpendings }]).map(
+              ({ date, rows }) => (
+                <section
+                  key={date || "flat-spendings"}
+                  className="history-day-section"
+                  aria-label={date ? `Transactions du ${date}` : undefined}
                 >
-                  ↻ Utiliser
-                </button>
-              </div>
-            ))}
+                  {date && <div className="history-day-header">{date}</div>}
+                  <div className="history-cards">
+                    {rows.map((row, i) => (
+                      <div
+                        key={`${row.date}-${row.description}-${i}`}
+                        className="history-card swipeable"
+                        onTouchStart={handleTouchStart}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={() => handleTouchEnd(() => handleUseSpendingRow(row))}
+                        onTouchCancel={() => (touchStartXRef.current = null)}
+                      >
+                        <div className="history-card-header">
+                          <div className="history-card-main">
+                            <span className="history-card-date">{row.date}</span>
+                            <span className="history-card-description">{row.description}</span>
+                          </div>
+                          <span className="history-card-amount">-{formatAmount(row.amount)} €</span>
+                        </div>
+                        <div className="history-card-meta">
+                          <span className="history-card-badge accent">{row.jar}</span>
+                          <span className="history-card-badge secondary">{row.account}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="history-card-action-btn full-width"
+                          onClick={() => handleUseSpendingRow(row)}
+                          disabled={!onUseEntry}
+                        >
+                          ↻ Utiliser
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )
+            )}
           </div>
         )}
 
         {/* ✅ CARDS REVENUS (Mobile-First) */}
         {mode === "revenue" && filteredRevenues.length > 0 && (
-          <div className="history-cards">
-            {filteredRevenues.map((row, i) => {
-              const isExpanded = expandedCard === i;
-              return (
-                <div key={`${row.date}-${row.source}-${i}`} className="history-card">
-                  <div className="history-card-header">
-                    <div className="history-card-main">
-                      <span className="history-card-date">{row.date}</span>
-                      <span className="history-card-description">{row.source}</span>
-                    </div>
-                    <span className="history-card-amount revenue">+{formatAmount(row.amount)} {row.value}</span>
-                  </div>
-                  
-                  <div className="history-card-meta">
-                    <span className="history-card-badge">{row.method}</span>
-                    {row.destination && <span className="history-card-badge">{row.destination}</span>}
-                  </div>
+          <div className="history-cards-wrapper">
+            {(groupByDay ? revenueGroups : [{ date: "", rows: sortedRevenues }]).map(
+              ({ date, rows }) => (
+                <section
+                  key={date || "flat-revenues"}
+                  className="history-day-section"
+                  aria-label={date ? `Revenus du ${date}` : undefined}
+                >
+                  {date && <div className="history-day-header">{date}</div>}
+                  <div className="history-cards">
+                    {rows.map((row, i) => {
+                      const cardKey = `${date}-${row.date}-${row.source}-${i}`;
+                      const isExpanded = expandedCard === cardKey;
+                      return (
+                        <div
+                          key={cardKey}
+                          className="history-card swipeable"
+                          onTouchStart={handleTouchStart}
+                          onTouchMove={handleTouchMove}
+                          onTouchEnd={() => handleTouchEnd(() => handleUseRevenueRow(row))}
+                          onTouchCancel={() => (touchStartXRef.current = null)}
+                        >
+                          <div className="history-card-header">
+                            <div className="history-card-main">
+                              <span className="history-card-date">{row.date}</span>
+                              <span className="history-card-description">{row.source}</span>
+                            </div>
+                            <span className="history-card-amount revenue">
+                              +{formatAmount(row.amount)} {row.value}
+                            </span>
+                          </div>
+                          
+                          <div className="history-card-meta">
+                            <span className="history-card-badge accent">{row.method}</span>
+                            {row.destination && (
+                              <span className="history-card-badge secondary">{row.destination}</span>
+                            )}
+                          </div>
 
-                  {/* DétailsExpandableUTF */}
-                  {isExpanded && (
-                    <div className="history-card-details">
-                      {row.cryptoQuantity && (
-                        <div className="history-card-detail-row">
-                          <span>Crypto:</span>
-                          <span>{formatAmount(row.cryptoQuantity)}</span>
-                        </div>
-                      )}
-                      {row.rate && (
-                        <div className="history-card-detail-row">
-                          <span>Taux:</span>
-                          <span>{formatAmount(row.rate)}</span>
-                        </div>
-                      )}
-                      {row.incomeType && (
-                        <div className="history-card-detail-row">
-                          <span>Type:</span>
-                          <span>{row.incomeType}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                          {/* DétailsExpandableUTF */}
+                          {isExpanded && (
+                            <div className="history-card-details">
+                              {row.cryptoQuantity && (
+                                <div className="history-card-detail-row">
+                                  <span>Crypto:</span>
+                                  <span>{formatAmount(row.cryptoQuantity)}</span>
+                                </div>
+                              )}
+                              {row.rate && (
+                                <div className="history-card-detail-row">
+                                  <span>Taux:</span>
+                                  <span>{formatAmount(row.rate)}</span>
+                                </div>
+                              )}
+                              {row.incomeType && (
+                                <div className="history-card-detail-row">
+                                  <span>Type:</span>
+                                  <span>{row.incomeType}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
-                  <div className="history-card-actions">
-                    <button
-                      type="button"
-                      className="history-card-toggle-btn"
-                      onClick={() => setExpandedCard(isExpanded ? null : i)}
-                    >
-                      {isExpanded ? "▲ Moins" : "▼ Plus"}
-                    </button>
-                    <button
-                      type="button"
-                      className="history-card-action-btn primary"
-                      onClick={() => handleUseRevenueRow(row)}
-                      disabled={!onUseEntry}
-                    >
-                      ↻ Utiliser
-                    </button>
+                          <div className="history-card-actions">
+                            <button
+                              type="button"
+                              className="history-card-toggle-btn"
+                              onClick={() => setExpandedCard(isExpanded ? null : cardKey)}
+                            >
+                              {isExpanded ? "▲ Moins" : "▼ Plus"}
+                            </button>
+                            <button
+                              type="button"
+                              className="history-card-action-btn primary full-width"
+                              onClick={() => handleUseRevenueRow(row)}
+                              disabled={!onUseEntry}
+                            >
+                              ↻ Utiliser
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              );
-            })}
+                </section>
+              )
+            )}
           </div>
         )}
 
