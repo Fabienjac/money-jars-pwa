@@ -1,5 +1,5 @@
 // src/components/UniversalImporter.tsx - VERSION AVEC NOUVEAU MAPPING INVERSÉ
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { JarKey } from "../types";
 import { NewColumnMappingStep } from "./NewColumnMappingStep";
 import { TransactionEditor } from "./TransactionEditor";
@@ -72,6 +72,9 @@ interface UniversalImporterProps {
 type FileFormat = "pdf" | "csv" | "xlsx";
 type TransactionType = "spending" | "revenue";
 
+const LAST_TRANSACTION_TYPE_KEY = "universalImporter:lastTransactionType";
+const LAST_ACCOUNT_KEY = "universalImporter:lastDefaultAccount";
+
 export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   onImport,
   accounts = [],
@@ -83,7 +86,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [step, setStep] = useState<"selectType" | "upload" | "mapping" | "review">("selectType");
+  const [step, setStep] = useState<"selectType" | "upload" | "mapping" | "summary" | "review">("selectType");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
@@ -102,6 +105,123 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   // États pour l'édition de transactions de revenus
   const [editingRevenueTransaction, setEditingRevenueTransaction] = useState<Transaction | null>(null);
   const [editingRevenueIndex, setEditingRevenueIndex] = useState<number | null>(null);
+  const [reviewFilter, setReviewFilter] = useState<"all" | "duplicates">("all");
+  const [userSelectedType, setUserSelectedType] = useState(false);
+  const [userSelectedAccount, setUserSelectedAccount] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const savedType = localStorage.getItem(LAST_TRANSACTION_TYPE_KEY) as TransactionType | null;
+    const savedAccount = localStorage.getItem(LAST_ACCOUNT_KEY);
+    if (savedType) {
+      setTransactionType(savedType);
+      setUserSelectedType(true);
+    }
+    if (savedAccount) {
+      setDefaultAccount(savedAccount);
+      setUserSelectedAccount(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (transactionType) {
+      localStorage.setItem(LAST_TRANSACTION_TYPE_KEY, transactionType);
+    }
+  }, [transactionType]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (defaultAccount) {
+      localStorage.setItem(LAST_ACCOUNT_KEY, defaultAccount);
+    }
+  }, [defaultAccount]);
+
+  const detectTransactionTypeFromStructure = (headers: string[], rows: any[]): TransactionType | null => {
+    const lowerHeaders = headers.map(h => h.toLowerCase());
+    const hasRevenueHints = lowerHeaders.some(h =>
+      h.includes("source") ||
+      h.includes("revenu") ||
+      h.includes("revenue") ||
+      h.includes("income") ||
+      h.includes("employeur") ||
+      h.includes("client") ||
+      h.includes("vente") ||
+      h.includes("quantité crypto") ||
+      h.includes("quantite crypto") ||
+      h.includes("crypto")
+    );
+    const hasSpendingHints = lowerHeaders.some(h =>
+      h.includes("jar") ||
+      h.includes("categorie") ||
+      h.includes("catégorie") ||
+      h.includes("category") ||
+      h.includes("compte") ||
+      h.includes("account") ||
+      h.includes("card") ||
+      h.includes("carte")
+    );
+
+    if (hasRevenueHints && !hasSpendingHints) return "revenue";
+    if (hasSpendingHints && !hasRevenueHints) return "spending";
+
+    const amountCandidates = rows
+      .map(row => {
+        const value = row.Amount ?? row.Montant ?? row.amount ?? row.montant;
+        return value !== undefined ? parseFloat(value) : undefined;
+      })
+      .filter(value => value !== undefined && !Number.isNaN(value)) as number[];
+
+    if (amountCandidates.length > 0) {
+      const positives = amountCandidates.filter(v => v >= 0).length;
+      const negatives = amountCandidates.filter(v => v < 0).length;
+      if (positives > negatives * 1.5) return "revenue";
+      if (negatives > positives * 1.5) return "spending";
+    }
+
+    return null;
+  };
+
+  const detectDefaultAccountFromStructure = (headers: string[], rows: any[], type: TransactionType | null): string | null => {
+    if (!rows || rows.length === 0) return null;
+    const lowerHeaders = headers.map(h => h.toLowerCase());
+
+    const revenueKeywords = ["source", "revenu", "revenue", "income", "employeur", "client"];
+    const spendingKeywords = ["compte", "account", "card", "carte", "iban", "produit", "wallet"];
+    const keywords = type === "revenue" ? revenueKeywords : spendingKeywords;
+
+    const matchedHeaderIndex = lowerHeaders.findIndex(h => keywords.some(keyword => h.includes(keyword)));
+    if (matchedHeaderIndex === -1) return null;
+
+    const matchedHeader = headers[matchedHeaderIndex];
+    const occurrences: Record<string, number> = {};
+
+    rows.forEach(row => {
+      const value = row[matchedHeader];
+      if (value) {
+        occurrences[value] = (occurrences[value] || 0) + 1;
+      }
+    });
+
+    const candidates = Object.entries(occurrences).sort((a, b) => b[1] - a[1]);
+    return candidates.length > 0 ? candidates[0][0] : null;
+  };
+
+  const buildSummary = (txns: Transaction[]) => {
+    const duplicateTxns = txns.filter(t => t.isDuplicate);
+    const nonDuplicateTxns = txns.filter(t => !t.isDuplicate);
+    const sum = (items: Transaction[]) => items.reduce((acc, t) => acc + (t.amount || 0), 0);
+
+    return {
+      total: txns.length,
+      duplicateCount: duplicateTxns.length,
+      nonDuplicateCount: nonDuplicateTxns.length,
+      totalAmount: sum(txns),
+      duplicateAmount: sum(duplicateTxns),
+      nonDuplicateAmount: sum(nonDuplicateTxns),
+      selectedCount: txns.filter(t => t.selected).length,
+    };
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -165,6 +285,19 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       setRawData(data.structure.rows);
       setHeaders(data.structure.headers);
       setColumnMappings(data.structure.suggestedMappings);
+
+      const detectedType = detectTransactionTypeFromStructure(data.structure.headers, data.structure.rows);
+      if (detectedType && !userSelectedType) {
+        setTransactionType(detectedType);
+      }
+      const detectedAccount = detectDefaultAccountFromStructure(
+        data.structure.headers,
+        data.structure.rows,
+        detectedType || transactionType
+      );
+      if (detectedAccount && !userSelectedAccount && !defaultAccount) {
+        setDefaultAccount(detectedAccount);
+      }
       
       // Passer à l'étape de mapping
       setStep("mapping");
@@ -265,7 +398,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       console.log(`❌ ${deselectedCount} doublons désélectionnés`);
       
       setTransactions(withSelection);
-      setStep("review");
+      setStep("summary");
       
     } catch (err: any) {
       console.error("❌ Erreur mapping:", err);
@@ -372,7 +505,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       console.log(`✅ ${selectedCount} nouvelles transactions sélectionnées`);
       
       setTransactions(withSelection);
-      setStep("review");
+      setStep("summary");
       
     } catch (err: any) {
       console.error("❌ Erreur mapping:", err);
@@ -587,8 +720,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   };
 
   // Importer les transactions sélectionnées
-  const handleImport = async () => {
-    const selectedTransactions = transactions.filter(t => t.selected);
+  const handleImport = async (overrideTransactions?: Transaction[]) => {
+    setError(null);
+    const workingTransactions = overrideTransactions || transactions;
+    const selectedTransactions = workingTransactions.filter(t => t.selected);
     
     if (selectedTransactions.length === 0) {
       setError("Aucune transaction sélectionnée");
@@ -614,9 +749,21 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     setRawData([]);
     setHeaders([]);
     setColumnMappings([]);
+    setReviewFilter("all");
     setStep("selectType");
     setTransactionType(null);
     setDefaultAccount("");
+    setUserSelectedType(false);
+    setUserSelectedAccount(false);
+  };
+
+  const importWithoutDuplicates = async () => {
+    const sanitizedTransactions = transactions.map(t => ({
+      ...t,
+      selected: !t.isDuplicate,
+    }));
+    setTransactions(sanitizedTransactions);
+    await handleImport(sanitizedTransactions);
   };
 
   const updateTransaction = (index: number, field: keyof Transaction, value: any) => {
@@ -658,11 +805,13 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     setTransactions(prev => prev.map(t => ({ ...t, selected: !allSelected })));
   };
 
-  const filteredTransactions = transactions.filter(t =>
-    t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.date.includes(searchQuery) ||
-    t.amount.toString().includes(searchQuery)
-  );
+  const filteredTransactions = transactions
+    .filter(t => reviewFilter === "duplicates" ? t.isDuplicate : true)
+    .filter(t =>
+      (t.description || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.date || "").includes(searchQuery) ||
+      (t.amount ?? "").toString().includes(searchQuery)
+    );
 
   // ÉTAPE 1 : Sélection du type
   if (step === "selectType") {
@@ -693,6 +842,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <button
             onClick={() => {
               setTransactionType("spending");
+              setUserSelectedType(true);
               setStep("upload");
             }}
             style={{
@@ -737,6 +887,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <button
             onClick={() => {
               setTransactionType("revenue");
+              setUserSelectedType(true);
               setStep("upload");
             }}
             style={{
@@ -810,6 +961,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     );
   }
 
+  if (step === "summary") {
+    return renderSummaryStep();
+  }
+
   // ÉTAPE 4 : Révision des transactions
   if (step === "review") {
     return (
@@ -881,6 +1036,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               setFile(null);
               setFileFormat(null);
               setError(null);
+              setTransactionType(null);
+              setDefaultAccount("");
+              setUserSelectedType(false);
+              setUserSelectedAccount(false);
             }}
             style={{
               padding: "8px 16px",
@@ -970,9 +1129,12 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               {accounts.map((account) => (
                 <button
                   key={account.name}
-                  onClick={() => setDefaultAccount(account.name)}
-                  style={{
-                    padding: "16px 12px",
+            onClick={() => {
+              setDefaultAccount(account.name);
+              setUserSelectedAccount(true);
+            }}
+            style={{
+              padding: "16px 12px",
                     borderRadius: "12px",
                     border: defaultAccount === account.name
                       ? "2px solid var(--jar-nec)"
@@ -1023,7 +1185,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                 {sources.map((source: any) => (
                   <button
                     key={source.id}
-                    onClick={() => setDefaultAccount(source.name)}
+                    onClick={() => {
+                      setDefaultAccount(source.name);
+                      setUserSelectedAccount(true);
+                    }}
                     style={{
                       padding: "16px 12px",
                       borderRadius: "12px",
@@ -1117,6 +1282,153 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     );
   }
 
+  function renderSummaryStep() {
+    const summary = buildSummary(transactions);
+
+    return (
+      <div style={{
+        backgroundColor: "var(--bg-card)",
+        borderRadius: "20px",
+        padding: "24px",
+        boxShadow: "var(--shadow-md)",
+      }}>
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "20px",
+        }}>
+          <div>
+            <h3 style={{
+              margin: 0,
+              fontSize: "24px",
+              fontWeight: "700",
+              color: "var(--text-main)",
+            }}>
+              📊 Synthèse avant import
+            </h3>
+            <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "14px" }}>
+              {summary.total} lignes détectées • {summary.duplicateCount} doublon(s)
+            </p>
+          </div>
+          <button
+            onClick={() => setStep("mapping")}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "12px",
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            ← Retour au mapping
+          </button>
+        </div>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "12px",
+          marginBottom: "16px",
+        }}>
+          <div style={{
+            padding: "16px",
+            borderRadius: "12px",
+            background: "linear-gradient(135deg, rgba(0,122,255,0.08) 0%, rgba(0,122,255,0.15) 100%)",
+            border: "1px solid var(--border-color)",
+          }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Total</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "var(--text-main)" }}>{summary.total}</div>
+            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>{summary.totalAmount.toFixed(2)} EUR</div>
+          </div>
+
+          <div style={{
+            padding: "16px",
+            borderRadius: "12px",
+            background: "linear-gradient(135deg, rgba(52,199,89,0.08) 0%, rgba(52,199,89,0.15) 100%)",
+            border: "1px solid var(--border-color)",
+          }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Nouvelles lignes</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "var(--text-main)" }}>{summary.nonDuplicateCount}</div>
+            <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>{summary.nonDuplicateAmount.toFixed(2)} EUR</div>
+          </div>
+
+          <div style={{
+            padding: "16px",
+            borderRadius: "12px",
+            background: "linear-gradient(135deg, rgba(255,59,48,0.08) 0%, rgba(255,149,0,0.15) 100%)",
+            border: "1px solid var(--border-color)",
+          }}>
+            <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>Doublons</div>
+            <div style={{ fontSize: "22px", fontWeight: "800", color: "#FF3B30" }}>{summary.duplicateCount}</div>
+            <div style={{ fontSize: "13px", color: "#FF3B30" }}>{summary.duplicateAmount.toFixed(2)} EUR</div>
+          </div>
+        </div>
+
+        {summary.duplicateCount > 0 && (
+          <div style={{
+            marginBottom: "16px",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            backgroundColor: "rgba(255,149,0,0.1)",
+            border: "1px dashed rgba(255,149,0,0.4)",
+            color: "#b45309",
+            fontSize: "14px",
+          }}>
+            ⚠️ {summary.duplicateCount} doublon(s) ont été détectés. Ils sont désélectionnés par défaut.
+          </div>
+        )}
+
+        <div style={{
+          display: "flex",
+          gap: "12px",
+          marginTop: "12px",
+          flexWrap: "wrap",
+        }}>
+          <button
+            onClick={() => setStep("review")}
+            style={{
+              flex: 1,
+              minWidth: "180px",
+              padding: "14px",
+              borderRadius: "12px",
+              border: "1px solid var(--border-color)",
+              background: "var(--bg-body)",
+              color: "var(--text-main)",
+              fontSize: "15px",
+              fontWeight: "600",
+              cursor: "pointer",
+            }}
+          >
+            Revoir en détail
+          </button>
+          <button
+            onClick={importWithoutDuplicates}
+            disabled={summary.nonDuplicateCount === 0 || importing}
+            style={{
+              flex: 1,
+              minWidth: "220px",
+              padding: "14px",
+              borderRadius: "12px",
+              border: "none",
+              background: summary.nonDuplicateCount === 0 || importing
+                ? "var(--border-color)"
+                : "linear-gradient(135deg, #34C759 0%, #28a745 100%)",
+              color: "white",
+              fontSize: "15px",
+              fontWeight: "700",
+              cursor: summary.nonDuplicateCount === 0 || importing ? "not-allowed" : "pointer",
+            }}
+          >
+            Importer tout sauf doublons
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Fonction pour rendre l'étape de révision
   function renderReviewStep() {
     const selectedCount = transactions.filter(t => t.selected).length;
@@ -1171,8 +1483,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         {/* Recherche et actions */}
         <div style={{
           display: "flex",
-          gap: "12px",
+          gap: "8px",
           marginBottom: "16px",
+          flexWrap: "wrap",
+          alignItems: "center",
         }}>
           <input
             type="text"
@@ -1181,6 +1495,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             onChange={e => setSearchQuery(e.target.value)}
             style={{
               flex: 1,
+              minWidth: "220px",
               padding: "10px 16px",
               borderRadius: "10px",
               border: "1px solid var(--border-color)",
@@ -1189,22 +1504,56 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               fontSize: "14px",
             }}
           />
-          <button
-            onClick={toggleAll}
-            style={{
-              padding: "10px 16px",
-              borderRadius: "10px",
-              border: "1px solid var(--border-color)",
-              background: "var(--bg-body)",
-              color: "var(--text-main)",
-              fontSize: "14px",
-              fontWeight: "600",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {transactions.every(t => t.selected) ? "Tout désélectionner" : "Tout sélectionner"}
-          </button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              onClick={() => setReviewFilter("all")}
+              style={{
+                padding: "10px 12px",
+                borderRadius: "10px",
+                border: "1px solid var(--border-color)",
+                background: reviewFilter === "all" ? "rgba(0,122,255,0.1)" : "var(--bg-body)",
+                color: "var(--text-main)",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Tous
+            </button>
+            <button
+              onClick={() => setReviewFilter("duplicates")}
+              style={{
+                padding: "10px 12px",
+                borderRadius: "10px",
+                border: reviewFilter === "duplicates" ? "2px solid #FF3B30" : "1px solid var(--border-color)",
+                background: reviewFilter === "duplicates" ? "rgba(255,59,48,0.12)" : "var(--bg-body)",
+                color: "#FF3B30",
+                fontSize: "13px",
+                fontWeight: "700",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Doublons ({duplicateCount})
+            </button>
+            <button
+              onClick={toggleAll}
+              style={{
+                padding: "10px 16px",
+                borderRadius: "10px",
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-body)",
+                color: "var(--text-main)",
+                fontSize: "14px",
+                fontWeight: "600",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {transactions.every(t => t.selected) ? "Tout désélectionner" : "Tout sélectionner"}
+            </button>
+          </div>
         </div>
 
         {/* Liste des transactions */}
