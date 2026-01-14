@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { appendRevenue } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
@@ -31,6 +31,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   const [cryptoAddress, setCryptoAddress] = useState<string>("");
   const [destination, setDestination] = useState<string>("");
   const [incomeType, setIncomeType] = useState<string>("");
+  const [destinationSearch, setDestinationSearch] = useState<string>("");
 
   const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
   const [loading, setLoading] = useState(false);
@@ -243,6 +244,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       setRate("");
       setCryptoAddress("");
       setDestination("");
+      setDestinationSearch("");
       setIncomeType("");
       setDate(todayISO());
       
@@ -338,6 +340,16 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       return null;
     }
   };
+
+  const filteredSpendingAccounts = useMemo(() => {
+    const query = (destinationSearch || destination).trim().toLowerCase();
+    if (!query) return spendingAccounts;
+    return spendingAccounts.filter((acc) =>
+      acc.name.toLowerCase().includes(query)
+    );
+  }, [destination, destinationSearch, spendingAccounts]);
+
+  const showDestinationSearch = spendingAccounts.length > 6;
 
   return (
     <form
@@ -577,6 +589,88 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
             💡 Tapez pour créer un nouveau compte ou sélectionnez-en un existant
           </p>
         )}
+        {showDestinationSearch && (
+          <div style={{ marginTop: "8px" }}>
+            <input
+              type="search"
+              placeholder="Filtrer les comptes de destination..."
+              value={destinationSearch}
+              onChange={(e) => setDestinationSearch(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: "10px",
+                border: "1px solid var(--border-color)",
+                fontSize: "13px",
+              }}
+            />
+          </div>
+        )}
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            overflowX: "auto",
+            padding: "10px 0 4px",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {filteredSpendingAccounts.map((acc) => (
+            <button
+              key={acc.id}
+              type="button"
+              onClick={() => {
+                setDestination(acc.name);
+                setDestinationSearch("");
+              }}
+              style={{
+                minWidth: "120px",
+                width: "130px",
+                maxWidth: "140px",
+                padding: "12px 10px",
+                borderRadius: "14px",
+                border: destination === acc.name ? "2px solid #34C759" : "1px solid var(--border-color)",
+                background: destination === acc.name ? "rgba(52, 199, 89, 0.1)" : "var(--bg-card)",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                gap: "6px",
+                textAlign: "left",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
+                transition: "transform 0.1s ease, border-color 0.1s ease",
+              }}
+            >
+              <span style={{ fontSize: "24px" }}>{acc.icon || "💳"}</span>
+              <span
+                style={{
+                  fontSize: "13px",
+                  fontWeight: "700",
+                  color: destination === acc.name ? "#34C759" : "var(--text-main)",
+                  lineHeight: "1.3",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {acc.name}
+              </span>
+            </button>
+          ))}
+          {filteredSpendingAccounts.length === 0 && (
+            <div
+              style={{
+                minWidth: "120px",
+                color: "var(--text-muted)",
+                fontSize: "13px",
+                padding: "10px 0",
+              }}
+            >
+              Aucun compte trouvé
+            </div>
+          )}
+        </div>
       </div>
 
       <div>
