@@ -1,6 +1,7 @@
 // src/components/QuickSpendingForm.tsx
 // FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { appendSpending, searchSpendings } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
@@ -233,6 +234,8 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       fetchRecents();
     }
   }, [offline.isOnline]);
+    fetchRecents();
+  }, [offline]);
 
   // Mettre à jour la devise et le taux
   useEffect(() => {
