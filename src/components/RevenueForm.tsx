@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { appendRevenue } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
@@ -69,6 +69,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   const [cryptoAddress, setCryptoAddress] = useState<string>("");
   const [destination, setDestination] = useState<string>("");
   const [incomeType, setIncomeType] = useState<string>("");
+  const [destinationSearch, setDestinationSearch] = useState<string>("");
 
   const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
   const [loading, setLoading] = useState(false);
@@ -420,6 +421,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       setRate("");
       setCryptoAddress("");
       setDestination("");
+      setDestinationSearch("");
       setIncomeType("");
       setDate(todayISO());
       resetSections();
