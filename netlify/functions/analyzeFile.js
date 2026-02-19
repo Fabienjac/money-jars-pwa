@@ -155,7 +155,7 @@ async function analyzePDF(buffer) {
 
   // Patterns de détection
   const datePattern = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),\s+(\d{4})/;
-  const amountWithCurrencyPattern = /(-?\d{1,3}(?:[,]\d{3})*(?:\.\d{2}))\s+(EUR|USD|AUD|GBP|CAD|CHF|THB|CNY|JPY)/;
+  const amountWithCurrencyPattern = /(-?\d[\d,]*\.\d{2})\s+([A-Z]{3})/;
 
   const dataLines = [];
   
@@ -205,7 +205,7 @@ async function analyzePDF(buffer) {
 
     const amountText = amountMatch[1];
     const currency = amountMatch[2];
-    const amountWithSign = parseFloat(amountText.replace(",", "")); // Conserver le signe
+    const amountWithSign = parseFloat(amountText.replace(/,/g, "")); // Conserver le signe
     const amount = Math.abs(amountWithSign);
 
     // Extraire la description
