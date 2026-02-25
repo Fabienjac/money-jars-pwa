@@ -3,7 +3,7 @@ import React from "react";
 import { JarKey } from "../types";
 
 export interface AdvancedFilterState {
-  period: "all" | "30d" | "90d" | "year" | "custom";
+  period: "all" | "30d" | "90d" | "6m" | "year" | "custom";
   customStartDate: string;
   customEndDate: string;
   minAmount: string;
@@ -144,6 +144,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                 { value: "all", label: "Tout" },
                 { value: "30d", label: "30 jours" },
                 { value: "90d", label: "90 jours" },
+                { value: "6m", label: "6 mois" },
                 { value: "year", label: "1 an" },
                 { value: "custom", label: "Personnalisé" },
               ].map(option => (

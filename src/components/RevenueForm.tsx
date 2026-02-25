@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { appendRevenue } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
-import { loadRevenueAccounts } from "../revenueAccountsUtils";
+import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
+import { loadAccounts, saveAccounts } from "../accountsUtils";
 
 interface RevenueFormProps {
   prefill?: any | null;
@@ -10,7 +11,6 @@ interface RevenueFormProps {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-// ✅ Fonction pour convertir YYYY-MM-DD en DD/MM/YYYY
 const formatDateForGoogleSheets = (isoDate: string): string => {
   if (!isoDate) return "";
   const [year, month, day] = isoDate.split('-');
@@ -36,28 +36,26 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   
-  const [revenueAccounts] = useState(loadRevenueAccounts());
+  // ✅ États pour les comptes (rechargeable)
+  const [revenueAccounts, setRevenueAccounts] = useState(loadRevenueAccounts());
+  const [spendingAccounts, setSpendingAccounts] = useState(loadAccounts());
 
-  // === Pré-remplissage depuis l'historique ===
   useEffect(() => {
     if (!prefill) return;
 
     if (prefill.date) setDate(prefill.date);
     
-    // 🔧 AMÉLIORATION : Normaliser la source et auto-remplir le type
     if (prefill.source) {
       console.log("📍 Source du prefill:", `"${prefill.source}"`);
       
-      // Chercher une correspondance exacte ou normalisée
       const matchedAccount = revenueAccounts.find(
         acc => acc.name.trim().toLowerCase() === prefill.source.trim().toLowerCase()
       );
       
       if (matchedAccount) {
         console.log("✅ Source trouvée:", matchedAccount.name);
-        setSource(matchedAccount.name);  // Utiliser le nom exact du compte
+        setSource(matchedAccount.name);
         
-        // Auto-remplir le type si disponible
         if (matchedAccount.type && !prefill.incomeType) {
           setIncomeType(matchedAccount.type);
           console.log("✅ Type auto-rempli:", matchedAccount.type);
@@ -81,7 +79,6 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     onClearPrefill?.();
   }, [prefill, onClearPrefill, revenueAccounts]);
 
-  // === Application automatique des règles sur la source ===
   const handleSourceChange = (value: string) => {
     setSource(value);
 
@@ -108,6 +105,79 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     }
   };
 
+  // ✅ Auto-ajout du compte de revenu (Source)
+  const ensureRevenueAccountExists = (sourceName: string) => {
+    if (!sourceName.trim()) {
+      console.log("⚠️ Source vide, pas d'ajout");
+      return;
+    }
+
+    console.log(`🔍 Vérification de la source: "${sourceName}"`);
+
+    const exists = revenueAccounts.some(
+      acc => acc.name.trim().toLowerCase() === sourceName.trim().toLowerCase()
+    );
+
+    if (exists) {
+      console.log(`✅ Source "${sourceName}" existe déjà`);
+      return;
+    }
+
+    console.log(`➕ Ajout automatique du compte de revenu: "${sourceName}"`);
+    
+    const newAccount = {
+      id: `revaccount_${Date.now()}`,
+      name: sourceName.trim(),
+      icon: "💰",
+      type: incomeType.trim() || "",
+    };
+
+    const updatedAccounts = [...revenueAccounts, newAccount];
+    saveRevenueAccounts(updatedAccounts);
+    setRevenueAccounts(updatedAccounts);
+    
+    // Dispatcher event pour notifier SettingsView
+    window.dispatchEvent(new CustomEvent('revenueAccountsUpdated'));
+    
+    console.log(`✅ Compte de revenu "${sourceName}" ajouté avec succès`);
+  };
+
+  // ✅ NOUVEAU : Auto-ajout du compte de dépense (Destination)
+  const ensureSpendingAccountExists = (accountName: string) => {
+    if (!accountName.trim()) {
+      console.log("⚠️ Destination vide, pas d'ajout");
+      return;
+    }
+
+    console.log(`🔍 Vérification de la destination: "${accountName}"`);
+
+    const exists = spendingAccounts.some(
+      acc => acc.name.trim().toLowerCase() === accountName.trim().toLowerCase()
+    );
+
+    if (exists) {
+      console.log(`✅ Destination "${accountName}" existe déjà`);
+      return;
+    }
+
+    console.log(`➕ Ajout automatique du compte de dépense: "${accountName}"`);
+    
+    const newAccount = {
+      id: `account_${Date.now()}`,
+      name: accountName.trim(),
+      icon: "💳", // Icône par défaut
+    };
+
+    const updatedAccounts = [...spendingAccounts, newAccount];
+    saveAccounts(updatedAccounts);
+    setSpendingAccounts(updatedAccounts);
+    
+    // Dispatcher event pour notifier SettingsView
+    window.dispatchEvent(new CustomEvent('spendingAccountsUpdated'));
+    
+    console.log(`✅ Compte de dépense "${accountName}" ajouté avec succès`);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -124,7 +194,17 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
     try {
       setLoading(true);
       
-      // ✅ CALCUL AUTO du taux si vide et méthode contient une crypto
+      console.log(`📤 Soumission - Source: "${source}", Destination: "${destination}"`);
+      
+      // ✅ AUTO-AJOUTER la source si elle n'existe pas
+      ensureRevenueAccountExists(source);
+      
+      // ✅ AUTO-AJOUTER la destination si elle n'existe pas ET n'est pas vide
+      if (destination.trim()) {
+        ensureSpendingAccountExists(destination);
+      }
+      
+      // CALCUL AUTO du taux
       if (!numRate && method) {
         const currency = extractCurrencyFromMethod(method);
         
@@ -140,7 +220,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       }
       
       await appendRevenue({
-        date: formatDateForGoogleSheets(date), // ✅ Convertir la date
+        date: formatDateForGoogleSheets(date),
         source,
         amount: numAmount,
         value,
@@ -152,7 +232,9 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         incomeType,
       });
 
-      setMessage("Revenu enregistré ✅");
+      setMessage("✅ Revenu enregistré avec succès");
+      
+      // Reset form
       setSource("");
       setAmount("");
       setValue("USD");
@@ -163,40 +245,44 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       setDestination("");
       setIncomeType("");
       setDate(todayISO());
+      
+      // Recharger les comptes pour avoir la liste à jour
+      setRevenueAccounts(loadRevenueAccounts());
+      setSpendingAccounts(loadAccounts());
+      
     } catch (err: any) {
-      console.error(err);
-      setMessage("Erreur : " + (err.message || String(err)));
+      console.error("❌ Erreur lors de l'enregistrement:", err);
+      setMessage("❌ Erreur : " + (err.message || String(err)));
     } finally {
       setLoading(false);
     }
   };
 
-  // Fonction pour extraire la devise de la méthode
   const extractCurrencyFromMethod = (method: string): string | null => {
     if (!method) return null;
-    
+    const knownCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'XRP', 'ADA', 'SOL', 'DOGE', 'DOT', 'MATIC', 'LTC', 'BCH'];
+    // Méthode "USDC_ETH" ou "USDT_TRC20" → la devise est la partie avant "_" (l'actif, pas le réseau)
+    if (method.includes('_')) {
+      const firstToken = method.split('_')[0].trim().toUpperCase();
+      if (knownCurrencies.includes(firstToken)) return firstToken;
+    }
     const currencyPatterns = [
       /BTC/i, /ETH/i, /USDT/i, /USDC/i, /XRP/i,
       /ADA/i, /SOL/i, /DOGE/i, /DOT/i, /MATIC/i,
       /LTC/i, /BCH/i,
     ];
-    
     for (const pattern of currencyPatterns) {
       if (pattern.test(method)) {
         return method.match(pattern)![0].toUpperCase();
       }
     }
-    
     return null;
   };
 
-  // Fonction pour récupérer le taux historique
   const getHistoricalRate = async (fromCurrency: string, dateStr: string): Promise<number | null> => {
     try {
-      // Convertir la date ISO en format YYYY-MM-DD
-      const isoDate = dateStr; // Déjà au format ISO depuis l'input date
+      const isoDate = dateStr;
       
-      // Cryptomonnaies : utiliser CoinGecko
       const cryptoIds: { [key: string]: string } = {
         'BTC': 'bitcoin',
         'ETH': 'ethereum',
@@ -213,13 +299,11 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       };
       
       if (cryptoIds[fromCurrency]) {
-        // Crypto : utiliser CoinGecko
         const coinId = cryptoIds[fromCurrency];
         const [year, month, day] = isoDate.split('-');
-        const dateFormatted = `${day}-${month}-${year}`; // DD-MM-YYYY pour CoinGecko
+        const dateFormatted = `${day}-${month}-${year}`;
         
         const url = `https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${dateFormatted}`;
-        console.log(`🔄 Fetching crypto rate ${fromCurrency}→EUR for ${dateFormatted} via CoinGecko`);
         
         const response = await fetch(url);
         
@@ -231,27 +315,22 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         const data = await response.json();
         
         if (!data.market_data || !data.market_data.current_price || !data.market_data.current_price.eur) {
-          console.error(`❌ No rate found for ${fromCurrency}→EUR`);
           return null;
         }
         
         return data.market_data.current_price.eur;
       } else {
-        // Devise fiat : utiliser Frankfurter
         const url = `https://api.frankfurter.app/${isoDate}?from=${fromCurrency}&to=EUR`;
-        console.log(`🔄 Fetching fiat rate ${fromCurrency}→EUR for ${isoDate} via Frankfurter`);
         
         const response = await fetch(url);
         
         if (!response.ok) {
-          console.error(`❌ Frankfurter API returned ${response.status}`);
           return null;
         }
         
         const data = await response.json();
         
         if (!data.rates || !data.rates.EUR) {
-          console.error(`❌ No rate found for ${fromCurrency}→EUR`);
           return null;
         }
         
@@ -262,7 +341,6 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       return null;
     }
   };
-
 
   return (
     <form
@@ -276,17 +354,8 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         borderRadius: "12px",
       }}
     >
-      {/* Date */}
       <div>
-        <label
-          htmlFor="date"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
+        <label htmlFor="date" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
           📅 Date
         </label>
         <input
@@ -306,25 +375,18 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         />
       </div>
 
-      {/* Source */}
+      {/* ✅ Source avec datalist (Comptes de revenus) */}
       <div>
-        <label
-          htmlFor="source"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
+        <label htmlFor="source" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
           💰 Source de revenu
         </label>
         <input
           id="source"
           type="text"
+          list="revenue-accounts-list"
           value={source}
           onChange={(e) => handleSourceChange(e.target.value)}
-          placeholder="ex: Salaire, Freelance..."
+          placeholder="Sélectionner ou saisir une source..."
           style={{
             width: "100%",
             padding: "10px 12px",
@@ -335,20 +397,23 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
             fontSize: "14px",
           }}
         />
+        <datalist id="revenue-accounts-list">
+          {revenueAccounts.map(acc => (
+            <option key={acc.id} value={acc.name}>
+              {acc.icon} {acc.name} {acc.type && `(${acc.type})`}
+            </option>
+          ))}
+        </datalist>
+        {revenueAccounts.length > 0 && (
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+            💡 Tapez pour créer une nouvelle source ou sélectionnez-en une existante
+          </p>
+        )}
       </div>
 
-      {/* Montant */}
       <div>
-        <label
-          htmlFor="amount"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
-          💵 Montant (EUR)
+        <label htmlFor="amount" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          💵 Montant
         </label>
         <input
           id="amount"
@@ -369,17 +434,8 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         />
       </div>
 
-      {/* Valeur (devise) */}
       <div>
-        <label
-          htmlFor="value"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
+        <label htmlFor="value" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
           💱 Devise
         </label>
         <input
@@ -387,7 +443,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder="USD, EUR, GBP..."
+          placeholder="ex: USD, EUR, BTC..."
           style={{
             width: "100%",
             padding: "10px 12px",
@@ -400,18 +456,9 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         />
       </div>
 
-      {/* Quantité Crypto */}
       <div>
-        <label
-          htmlFor="cryptoQuantity"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
-          🪙 Quantité Crypto
+        <label htmlFor="cryptoQuantity" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          🪙 Quantité Crypto (optionnel)
         </label>
         <input
           id="cryptoQuantity"
@@ -432,25 +479,16 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         />
       </div>
 
-      {/* Méthode */}
       <div>
-        <label
-          htmlFor="method"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
-          🔗 Méthode
+        <label htmlFor="method" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          💳 Méthode (optionnel)
         </label>
         <input
           id="method"
           type="text"
           value={method}
           onChange={(e) => setMethod(e.target.value)}
-          placeholder="ex: USDT(TRC20), Bitcoin..."
+          placeholder="ex: USDC_ETH, Virement..."
           style={{
             width: "100%",
             padding: "10px 12px",
@@ -463,18 +501,9 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         />
       </div>
 
-      {/* Taux USD/EUR */}
       <div>
-        <label
-          htmlFor="rate"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
-          💱 Taux USD/EUR
+        <label htmlFor="rate" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          📊 Taux de change (optionnel)
         </label>
         <input
           id="rate"
@@ -482,7 +511,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
           inputMode="decimal"
           value={rate}
           onChange={(e) => setRate(e.target.value)}
-          placeholder="ex: 0.85"
+          placeholder="Auto si vide + crypto détectée"
           style={{
             width: "100%",
             padding: "10px 12px",
@@ -495,18 +524,9 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         />
       </div>
 
-      {/* Adresse Crypto */}
       <div>
-        <label
-          htmlFor="cryptoAddress"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
-          🔑 Adresse Crypto
+        <label htmlFor="cryptoAddress" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          🔐 Adresse Crypto (optionnel)
         </label>
         <input
           id="cryptoAddress"
@@ -522,30 +542,22 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
             backgroundColor: "var(--bg-body)",
             color: "var(--text-main)",
             fontSize: "14px",
-            fontFamily: "monospace",
           }}
         />
       </div>
 
-      {/* Compte de destination */}
+      {/* ✅ Destination avec datalist (Comptes de dépenses) */}
       <div>
-        <label
-          htmlFor="destination"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
-          💳 Compte de destination
+        <label htmlFor="destination" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          🏦 Compte de destination (optionnel)
         </label>
         <input
           id="destination"
           type="text"
+          list="spending-accounts-list"
           value={destination}
           onChange={(e) => setDestination(e.target.value)}
-          placeholder="ex: Keystone, Binance..."
+          placeholder="Sélectionner ou saisir un compte..."
           style={{
             width: "100%",
             padding: "10px 12px",
@@ -556,27 +568,30 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
             fontSize: "14px",
           }}
         />
+        <datalist id="spending-accounts-list">
+          {spendingAccounts.map(acc => (
+            <option key={acc.id} value={acc.name}>
+              {acc.icon} {acc.name}
+            </option>
+          ))}
+        </datalist>
+        {spendingAccounts.length > 0 && (
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+            💡 Tapez pour créer un nouveau compte ou sélectionnez-en un existant
+          </p>
+        )}
       </div>
 
-      {/* Type de revenu */}
       <div>
-        <label
-          htmlFor="incomeType"
-          style={{
-            display: "block",
-            marginBottom: "6px",
-            fontWeight: "600",
-            fontSize: "14px",
-          }}
-        >
-          🏷️ Type de revenu
+        <label htmlFor="incomeType" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          📋 Type de revenu (optionnel)
         </label>
         <input
           id="incomeType"
           type="text"
           value={incomeType}
           onChange={(e) => setIncomeType(e.target.value)}
-          placeholder="ex: Passive Income..."
+          placeholder="ex: Salaire, Freelance, Crypto..."
           style={{
             width: "100%",
             padding: "10px 12px",
@@ -589,63 +604,49 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         />
       </div>
 
-      {/* Règle appliquée */}
       {appliedRule && (
-        <div
-          style={{
-            padding: "12px",
-            backgroundColor: "rgba(52, 199, 89, 0.1)",
-            border: "1px solid rgba(52, 199, 89, 0.3)",
-            borderRadius: "8px",
-            fontSize: "13px",
-          }}
-        >
-          ✅ Règle appliquée : <strong>{appliedRule.name}</strong>
+        <div style={{
+          padding: "10px",
+          borderRadius: "8px",
+          backgroundColor: "rgba(52, 199, 89, 0.1)",
+          border: "1px solid rgba(52, 199, 89, 0.3)",
+          fontSize: "13px",
+          color: "var(--text-main)",
+        }}>
+          ✅ Règle appliquée : "{appliedRule.keyword}"
+          {appliedRule.destination && ` → ${appliedRule.destination}`}
         </div>
       )}
 
-      {/* Message */}
       {message && (
-        <div
-          style={{
-            padding: "12px",
-            backgroundColor: message.includes("Erreur")
-              ? "rgba(255, 59, 48, 0.1)"
-              : "rgba(52, 199, 89, 0.1)",
-            border: message.includes("Erreur")
-              ? "1px solid rgba(255, 59, 48, 0.3)"
-              : "1px solid rgba(52, 199, 89, 0.3)",
-            borderRadius: "8px",
-            fontSize: "13px",
-            color: "var(--text-main)",
-          }}
-        >
+        <div style={{
+          padding: "10px",
+          borderRadius: "8px",
+          backgroundColor: message.includes("✅") ? "rgba(52, 199, 89, 0.1)" : "rgba(255, 59, 48, 0.1)",
+          color: message.includes("✅") ? "#34C759" : "#FF3B30",
+          fontSize: "14px",
+          fontWeight: "600",
+        }}>
           {message}
         </div>
       )}
 
-      {/* Bouton */}
       <button
         type="submit"
         disabled={loading}
         style={{
-          padding: "14px",
-          borderRadius: "12px",
+          padding: "12px",
+          borderRadius: "10px",
           border: "none",
-          backgroundColor: loading
-            ? "var(--border-color)"
-            : "linear-gradient(135deg, #34C759 0%, #30D158 100%)",
-          background: loading
-            ? "var(--border-color)"
-            : "linear-gradient(135deg, #34C759 0%, #30D158 100%)",
+          background: loading ? "#999" : "linear-gradient(135deg, #34C759 0%, #30B350 100%)",
           color: "white",
           fontSize: "16px",
           fontWeight: "700",
           cursor: loading ? "not-allowed" : "pointer",
-          transition: "all 0.2s",
+          boxShadow: "0 2px 8px rgba(52, 199, 89, 0.3)",
         }}
       >
-        {loading ? "⏳ Enregistrement..." : "💾 Enregistrer le revenu"}
+        {loading ? "Enregistrement..." : "Enregistrer le revenu"}
       </button>
     </form>
   );

@@ -45,21 +45,35 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
         "Date",
         "Description",
         "Montant",
+        "Devise",
         "Compte",
         "Jar",
         "Tags"
       ];
 
-  // État initial : toutes les colonnes en mode "empty", sauf Source si defaultSource est fourni
+  // État initial : colonnes pré-remplies avec la valeur fixe du compte/source sélectionné à l'étape précédente
   const initialMappings: ColumnMapping[] = googleSheetColumns.map(col => {
-    // Si c'est "Source" et qu'on a une defaultSource, la pré-remplir
+    // Revenus : "Source" = source sélectionnée
     if (col === "Source" && defaultSource) {
       return {
         googleSheetColumn: col,
         option: { type: "fixed", value: defaultSource }
       };
     }
-    // Sinon, laisser vide
+    // Dépenses : "Compte" = compte de dépense sélectionné
+    if (col === "Compte" && defaultSource) {
+      return {
+        googleSheetColumn: col,
+        option: { type: "fixed", value: defaultSource }
+      };
+    }
+    // Dépenses : "Devise" = auto-suggestion si le fichier a une colonne Currency (ex. PDF)
+    if (col === "Devise" && detectedColumns.includes("Currency")) {
+      return {
+        googleSheetColumn: col,
+        option: { type: "column", value: "Currency" }
+      };
+    }
     return {
       googleSheetColumn: col,
       option: { type: "empty" }

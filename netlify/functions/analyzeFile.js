@@ -155,8 +155,7 @@ async function analyzePDF(buffer) {
 
   // Patterns de détection
   const datePattern = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),\s+(\d{4})/;
-  const amountWithCurrencyPattern = /(-?\d{1,3}(?:[,]\d{3})*(?:\.\d{2}))\s+(EUR|USD|AUD|GBP|CAD|CHF|THB|CNY|JPY)/;
-
+  const amountWithCurrencyPattern = /(?:([A-Z]{3})\s+(-?\d{1,3}(?:[ ,]\d{3})*(?:\.\d{1,3})?)|(-?\d{1,3}(?:[ ,]\d{3})*(?:\.\d{1,3})?)\s+([A-Z]{3}))/
   const dataLines = [];
   
   // Stratégie 1 : Chercher les lignes qui ont TOUS les éléments (date, description, montant)
@@ -203,9 +202,13 @@ async function analyzePDF(buffer) {
       continue;
     }
 
-    const amountText = amountMatch[1];
-    const currency = amountMatch[2];
-    const amountWithSign = parseFloat(amountText.replace(",", "")); // Conserver le signe
+    const currency = amountMatch[1] || amountMatch[4]
+    const amountText = amountMatch[2] || amountMatch[3]
+    const normalizedAmount = amountText
+      .replace(/ /g, "")   // supprime espaces milliers
+      .replace(/,/g, "")   // supprime virgules milliers
+  
+    const amountWithSign = parseFloat(normalizedAmount)
     const amount = Math.abs(amountWithSign);
 
     // Extraire la description

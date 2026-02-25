@@ -97,29 +97,22 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
   // Fonction pour extraire la devise de la méthode (BTC, USDT, etc.)
   const extractCurrencyFromMethod = (method: string): string | null => {
     if (!method) return null;
-    
-    // Patterns courants de devises crypto
+    const knownCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'XRP', 'ADA', 'SOL', 'DOGE', 'DOT', 'MATIC', 'LTC', 'BCH'];
+    // "USDC_ETH" ou "USDT_TRC20" → devise = partie avant "_" (actif, pas le réseau)
+    if (method.includes('_')) {
+      const firstToken = method.split('_')[0].trim().toUpperCase();
+      if (knownCurrencies.includes(firstToken)) return firstToken;
+    }
     const currencyPatterns = [
-      /BTC/i,
-      /ETH/i,
-      /USDT/i,
-      /USDC/i,
-      /XRP/i,
-      /ADA/i,
-      /SOL/i,
-      /DOGE/i,
-      /DOT/i,
-      /MATIC/i,
-      /LTC/i,
-      /BCH/i,
+      /BTC/i, /ETH/i, /USDT/i, /USDC/i, /XRP/i,
+      /ADA/i, /SOL/i, /DOGE/i, /DOT/i, /MATIC/i,
+      /LTC/i, /BCH/i,
     ];
-    
     for (const pattern of currencyPatterns) {
       if (pattern.test(method)) {
         return method.match(pattern)![0].toUpperCase();
       }
     }
-    
     return null;
   };
 

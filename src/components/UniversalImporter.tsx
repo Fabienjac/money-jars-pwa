@@ -1,5 +1,5 @@
 // src/components/UniversalImporter.tsx - VERSION AVEC NOUVEAU MAPPING INVERSÉ
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { JarKey } from "../types";
 import { NewColumnMappingStep } from "./NewColumnMappingStep";
 import { TransactionEditor } from "./TransactionEditor";
@@ -95,6 +95,22 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const [columnMappings, setColumnMappings] = useState<Array<{sourceColumn: string, targetColumn: string, confidence: number}>>([]);
   const [newColumnMappings, setNewColumnMappings] = useState<ColumnMapping[]>([]);
 
+  // Cache des taux de change par (devise, date) pour éviter des appels répétés au proxy
+  const rateCacheRef = useRef<Map<string, number>>(new Map());
+
+  // Sources de revenu (chargées au montage et à chaque revenueAccountsUpdated)
+  const [revenueSources, setRevenueSources] = useState<any[]>([]);
+
+  useEffect(() => {
+    setRevenueSources(loadRevenueSources());
+  }, []);
+
+  useEffect(() => {
+    const reload = () => setRevenueSources(loadRevenueSources());
+    window.addEventListener("revenueAccountsUpdated", reload);
+    return () => window.removeEventListener("revenueAccountsUpdated", reload);
+  }, []);
+
   // États pour l'édition de transactions
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -151,7 +167,11 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Erreur API:", errorText);
-        throw new Error("Erreur lors de l'analyse du fichier");
+        const is404 = response.status === 404;
+        const hint = is404 && typeof window !== "undefined" && window.location.port === "5173"
+          ? " Lancez « npm run dev » (Netlify Dev) et ouvrez http://localhost:8888 pour activer l'import de fichiers."
+          : "";
+        throw new Error("Erreur lors de l'analyse du fichier." + hint);
       }
 
       const data = await response.json();
@@ -203,7 +223,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         // Adapter au format Transaction
         const transaction: Transaction = {
           date: mapped.Date || "",
-          description: mapped.Description || defaultAccount || "Transaction",
+          description: String(mapped.Description ?? defaultAccount ?? "Transaction"),
           amount: parseFloat(mapped.Amount || mapped.Montant || "0"),
           suggestedAccount: transactionType === "spending" ? defaultAccount || mapped.Account || "" : "",
           suggestedSource: transactionType === "revenue" ? defaultAccount : undefined,
@@ -303,10 +323,16 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         
         console.log("📊 Transaction mappée:", transaction);
         
+        // Devise : dépenses = colonne Devise (ex. PDF Currency), revenus = Valeur (normaliser en majuscules pour l'API)
+        const rawCurrency = transactionType === "spending"
+          ? (transaction.Devise || "EUR")
+          : (transaction.Valeur || "EUR");
+        const currencyFromFile = (rawCurrency && String(rawCurrency).trim().toUpperCase()) || "EUR";
+
         // Adapter au format Transaction complet
         const finalTransaction: Transaction = {
           date: transaction.Date || "",
-          description: transaction.Description || transaction.Source || defaultAccount || "Transaction",
+          description: String(transaction.Description ?? transaction.Source ?? defaultAccount ?? "Transaction"),
           amount: parseFloat(transaction.Montant || "0"),
           
           // Pour spending
@@ -322,9 +348,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             ? (transaction.Source || defaultAccount)
             : undefined,
           
-          // Champs communs
-          currency: transaction.Valeur || "EUR",
-          originalCurrency: transaction.Valeur || "EUR",
+          // Champs communs (devise détectée pour conversion en EUR selon la date)
+          currency: currencyFromFile,
+          originalCurrency: currencyFromFile,
           originalAmount: parseFloat(transaction.Montant || "0"),
           selected: true,
           tags: transaction.Tags || undefined,
@@ -384,8 +410,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
   // Convertir les devises en EUR
   const convertCurrenciesToEUR = async (txns: Transaction[]): Promise<Transaction[]> => {
+    rateCacheRef.current.clear(); // un cache par session de conversion
     const converted: Transaction[] = [];
-    
+
     for (const txn of txns) {
       // Pour les REVENUS : ne pas convertir le montant, juste récupérer le taux
       if (transactionType === "revenue") {
@@ -455,67 +482,40 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     return converted;
   };
 
-  // Récupérer le taux de change historique
+  // Récupérer le taux de change historique via notre proxy (cache par devise+date pour limiter les appels)
   const getHistoricalRate = async (fromCurrency: string, toCurrency: string, date: string): Promise<number> => {
-    // ✅ Convertir la date en format ISO (YYYY-MM-DD)
     const isoDate = convertToISODate(date);
-    
-    // Cryptomonnaies : utiliser CoinGecko
-    const cryptoIds: { [key: string]: string } = {
-      'BTC': 'bitcoin',
-      'ETH': 'ethereum',
-      'USDT': 'tether',
-      'USDC': 'usd-coin',
-      'XRP': 'ripple',
-      'ADA': 'cardano',
-      'SOL': 'solana',
-      'DOGE': 'dogecoin',
-      'DOT': 'polkadot',
-      'MATIC': 'matic-network',
-      'LTC': 'litecoin',
-      'BCH': 'bitcoin-cash',
-    };
-    
-    if (cryptoIds[fromCurrency] && toCurrency === 'EUR') {
-      // Crypto : utiliser CoinGecko
-      const coinId = cryptoIds[fromCurrency];
-      const [year, month, day] = isoDate.split('-');
-      const dateFormatted = `${day}-${month}-${year}`; // DD-MM-YYYY pour CoinGecko
-      
-      const url = `https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${dateFormatted}`;
-      console.log(`🔄 Fetching crypto rate ${fromCurrency}→${toCurrency} for ${date} (${dateFormatted}) via CoinGecko`);
-      
-      const response = await fetch(url);
-      
+    const cacheKey = `${fromCurrency}-${toCurrency}-${isoDate}`;
+    const cached = rateCacheRef.current.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const url = `/.netlify/functions/getExchangeRate?from=${encodeURIComponent(fromCurrency)}&to=${encodeURIComponent(toCurrency)}&date=${encodeURIComponent(isoDate)}`;
+    console.log(`🔄 Fetching rate ${fromCurrency}→${toCurrency} for ${date} via proxy`);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 s max
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (!response.ok) {
-        throw new Error(`CoinGecko API returned ${response.status}`);
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.message || `Taux indisponible (${response.status})`);
       }
-      
       const data = await response.json();
-      
-      if (!data.market_data || !data.market_data.current_price || !data.market_data.current_price.eur) {
-        throw new Error(`No rate found for ${fromCurrency} → ${toCurrency}`);
+      if (typeof data.rate !== "number") {
+        throw new Error("No rate in response");
       }
-      
-      return data.market_data.current_price.eur;
-    } else {
-      // Devise fiat : utiliser Frankfurter
-      const url = `https://api.frankfurter.app/${isoDate}?from=${fromCurrency}&to=${toCurrency}`;
-      console.log(`🔄 Fetching fiat rate ${fromCurrency}→${toCurrency} for ${date} (${isoDate}) via Frankfurter`);
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Frankfurter API returned ${response.status}`);
+      rateCacheRef.current.set(cacheKey, data.rate);
+      return data.rate;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("Délai dépassé pour récupérer le taux");
       }
-      
-      const data = await response.json();
-      
-      if (!data.rates || !data.rates[toCurrency]) {
-        throw new Error(`No rate found for ${fromCurrency} → ${toCurrency}`);
-      }
-      
-      return data.rates[toCurrency];
+      throw err;
     }
   };
 
@@ -658,11 +658,13 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     setTransactions(prev => prev.map(t => ({ ...t, selected: !allSelected })));
   };
 
-  const filteredTransactions = transactions.filter(t =>
-    t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    t.date.includes(searchQuery) ||
-    t.amount.toString().includes(searchQuery)
-  );
+  const filteredTransactions = transactions.filter(t => {
+    const desc = t.description != null ? String(t.description) : "";
+    const date = t.date != null ? String(t.date) : "";
+    return desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      date.includes(searchQuery) ||
+      String(t.amount ?? "").includes(searchQuery);
+  });
 
   // ÉTAPE 1 : Sélection du type
   if (step === "selectType") {
@@ -798,11 +800,24 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         height: "80vh",
         display: "flex",
         flexDirection: "column",
+        position: "relative",
       }}>
+        {loading && (
+          <div className="import-mapping-loading-overlay">
+            <div className="import-mapping-spinner" />
+            <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "var(--text-main)" }}>
+              Chargement des données…
+            </p>
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
+              Application du mapping, conversion des devises et vérification des doublons
+            </p>
+          </div>
+        )}
         <NewColumnMappingStep
+          key={`mapping-${transactionType}-${defaultAccount}`}
           detectedColumns={headers}
           transactionType={transactionType || "spending"}
-          defaultSource={defaultAccount}  // ✅ Passer la source sélectionnée
+          defaultSource={defaultAccount}
           onBack={() => setStep("upload")}
           onContinue={applyNewMapping}
         />
@@ -1002,67 +1017,64 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         )}
 
         {/* Sélection de la source de revenu pour les revenus */}
-        {file && transactionType === "revenue" && (() => {
-          const sources = loadRevenueSources();
-          return sources.length > 0 ? (
-            <div style={{ marginBottom: "20px" }}>
-              <label style={{
-                display: "block",
-                fontSize: "16px",
-                fontWeight: "700",
-                color: "var(--text-main)",
-                marginBottom: "16px",
-              }}>
-                💰 Sélectionnez la source de revenu
-              </label>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-                gap: "12px",
-              }}>
-                {sources.map((source: any) => (
-                  <button
-                    key={source.id}
-                    onClick={() => setDefaultAccount(source.name)}
-                    style={{
-                      padding: "16px 12px",
-                      borderRadius: "12px",
-                      border: defaultAccount === source.name
-                        ? "2px solid #34C759"
-                        : "1px solid var(--border-color)",
-                      background: defaultAccount === source.name
-                        ? "rgba(52, 199, 89, 0.1)"
-                        : "var(--bg-body)",
-                      cursor: "pointer",
-                      transition: "all 0.2s",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div style={{ fontSize: "36px", marginBottom: "8px" }}>
-                      {source.icon}
-                    </div>
+        {file && transactionType === "revenue" && revenueSources.length > 0 && (
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "16px",
+              fontWeight: "700",
+              color: "var(--text-main)",
+              marginBottom: "16px",
+            }}>
+              💰 Sélectionnez la source de revenu
+            </label>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+              gap: "12px",
+            }}>
+              {revenueSources.map((source: any) => (
+                <button
+                  key={source.id}
+                  onClick={() => setDefaultAccount(source.name)}
+                  style={{
+                    padding: "16px 12px",
+                    borderRadius: "12px",
+                    border: defaultAccount === source.name
+                      ? "2px solid #34C759"
+                      : "1px solid var(--border-color)",
+                    background: defaultAccount === source.name
+                      ? "rgba(52, 199, 89, 0.1)"
+                      : "var(--bg-body)",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: "36px", marginBottom: "8px" }}>
+                    {source.icon}
+                  </div>
+                  <div style={{
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    color: "var(--text-main)",
+                  }}>
+                    {source.name}
+                  </div>
+                  {source.category && (
                     <div style={{
-                      fontSize: "13px",
-                      fontWeight: "600",
-                      color: "var(--text-main)",
+                      fontSize: "11px",
+                      color: "var(--text-muted)",
+                      marginTop: "4px",
                     }}>
-                      {source.name}
+                      {source.category}
                     </div>
-                    {source.category && (
-                      <div style={{
-                        fontSize: "11px",
-                        color: "var(--text-muted)",
-                        marginTop: "4px",
-                      }}>
-                        {source.category}
-                      </div>
-                    )}
-                  </button>
-                ))}
-              </div>
+                  )}
+                </button>
+              ))}
             </div>
-          ) : null;
-        })()}
+          </div>
+        )}
 
         {error && (
           <div style={{
@@ -1276,7 +1288,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                   )}
                 </div>
 
-                {/* Montant avec devise */}
+                {/* Montant (toujours en EUR après conversion) */}
                 <div style={{
                   textAlign: "right",
                 }}>
@@ -1287,9 +1299,18 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                   }}>
                     {transactionType === "revenue" 
                       ? `${transaction.amount.toFixed(2)} ${transaction.valeur || transaction.currency || "EUR"}`
-                      : `${transaction.amount.toFixed(2)}€`
+                      : `${transaction.amount.toFixed(2)} €`
                     }
                   </div>
+                  {transactionType === "spending" && transaction.conversionNote && (
+                    <div style={{
+                      fontSize: "11px",
+                      color: "var(--text-muted)",
+                      marginTop: "2px",
+                    }}>
+                      {transaction.conversionNote}
+                    </div>
+                  )}
                 </div>
 
                 {/* Jar badge (uniquement pour spending) */}

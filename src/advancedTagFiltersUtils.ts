@@ -30,9 +30,9 @@ export function applyAdvancedFilters(
 }
 
 /**
- * Vérifier si la date correspond au filtre de période
+ * Vérifier si la date correspond au filtre de période (exporté pour réutilisation)
  */
-function matchesPeriodFilter(dateStr: string, filters: AdvancedFilterState): boolean {
+export function matchesPeriodFilter(dateStr: string, filters: AdvancedFilterState): boolean {
   if (filters.period === "all") return true;
 
   const transactionDate = new Date(dateStr);
@@ -54,6 +54,8 @@ function matchesPeriodFilter(dateStr: string, filters: AdvancedFilterState): boo
       return diffDays <= 30;
     case "90d":
       return diffDays <= 90;
+    case "6m":
+      return diffDays <= 180;
     case "year":
       return diffDays <= 365;
     default:

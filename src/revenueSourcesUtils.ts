@@ -1,5 +1,8 @@
 // src/revenueSourcesUtils.ts
 
+// Même clé que revenueAccountsUtils pour que l'importateur voie les comptes ajoutés dans Réglages
+const REVENUE_ACCOUNTS_KEY = "mjars:revenueAccounts";
+
 export interface RevenueSource {
   id: string;
   name: string;
@@ -14,12 +17,11 @@ export interface RevenueSource {
  */
 export function loadRevenueSources(): RevenueSource[] {
   try {
-    // La clé utilisée par revenueAccountsUtils
-    const stored = localStorage.getItem('revenueAccounts');
+    const stored = localStorage.getItem(REVENUE_ACCOUNTS_KEY);
     
     if (stored) {
       const accounts = JSON.parse(stored);
-      console.log('✅ Sources de revenus chargées depuis localStorage.revenueAccounts:', accounts);
+      console.log('✅ Sources de revenus chargées depuis localStorage (' + REVENUE_ACCOUNTS_KEY + '):', accounts);
       
       if (Array.isArray(accounts)) {
         return accounts.map((acc: any) => ({
@@ -32,7 +34,7 @@ export function loadRevenueSources(): RevenueSource[] {
       }
     }
     
-    console.log('⚠️ Aucune source trouvée dans localStorage.revenueAccounts, utilisation des sources par défaut');
+    console.log('⚠️ Aucune source trouvée dans localStorage (clé: ' + REVENUE_ACCOUNTS_KEY + '), utilisation des sources par défaut');
   } catch (error) {
     console.error('❌ Erreur chargement sources revenus:', error);
   }
@@ -98,8 +100,8 @@ export function saveRevenueSources(sources: RevenueSource[]): void {
       type: s.type || s.category,
     }));
     
-    localStorage.setItem('revenueAccounts', JSON.stringify(accounts));
-    console.log('✅ Sources sauvegardées dans localStorage.revenueAccounts');
+    localStorage.setItem(REVENUE_ACCOUNTS_KEY, JSON.stringify(accounts));
+    console.log('✅ Sources sauvegardées dans localStorage (' + REVENUE_ACCOUNTS_KEY + ')');
   } catch (error) {
     console.error('❌ Erreur sauvegarde sources revenus:', error);
   }

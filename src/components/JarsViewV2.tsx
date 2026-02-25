@@ -1,6 +1,6 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { fetchTotals } from "../api";
 import { TotalsResponse, JarKey } from "../types";
 
@@ -72,8 +72,6 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   const [error, setError] = useState<string | null>(null);
   const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(null);
   
-  // Pour le swipe horizontal des jars
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const loadData = async () => {
     try {
@@ -173,7 +171,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           {loading && <div className="mini-spinner"></div>}
         </div>
 
-        <div className="jars-v2-scroll-container" ref={scrollContainerRef}>
+        <div className="jars-v2-grid">
           {jarKeys.map((key) => {
             const jar = totals.jars[key];
             const backendSplit = totals.split?.[key];
@@ -236,8 +234,6 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             );
           })}
         </div>
-
-        <div className="jars-v2-scroll-hint">← swipe →</div>
       </section>
 
       {/* 📊 BILAN RAPIDE - COMPACT */}

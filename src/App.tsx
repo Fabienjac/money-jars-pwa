@@ -1,4 +1,4 @@
-// src/App.tsx - VERSION V2 avec JarsViewV2 et QuickSpendingForm
+// src/App.tsx - VERSION V3 FINALE avec "Utiliser" qui fonctionne
 import React, { useState, useEffect } from "react";
 import SpendingForm from "./components/SpendingForm";
 import RevenueForm from "./components/RevenueForm";
@@ -35,7 +35,7 @@ function App() {
   const [showQuickSpending, setShowQuickSpending] = useState(false);
   const [showQuickRevenue, setShowQuickRevenue] = useState(false);
   
-  // ✅ AJOUT : Toggle pour activer/désactiver la V2 (optionnel - pour A/B test)
+  // ✅ AJOUT : Toggle pour activer/désactiver la V2
   const [useV2, setUseV2] = useState(() => {
     try {
       const stored = localStorage.getItem("use_jars_v2");
@@ -67,10 +67,16 @@ function App() {
     } catch {}
   }, []);
 
-  // Charger les comptes au démarrage
+  // Charger les comptes au démarrage et quand ils changent (ex. ajout dans Réglages)
   useEffect(() => {
     const loadedAccounts = loadAccounts();
     setAccounts(loadedAccounts);
+  }, []);
+
+  useEffect(() => {
+    const reload = () => setAccounts(loadAccounts());
+    window.addEventListener("spendingAccountsUpdated", reload);
+    return () => window.removeEventListener("spendingAccountsUpdated", reload);
   }, []);
 
   useEffect(() => {
@@ -93,12 +99,24 @@ function App() {
     setEntryOpen(false);
   };
 
-  // Quand on clique "Utiliser" depuis l'historique
+  // ✅ NOUVEAU : Gérer "Utiliser" avec la V2
   const handleUseEntry = (entry: HistoryUseEntry) => {
-    if (entry.kind === "spending") {
-      openEntry("spending", entry.row);
+    if (useV2) {
+      // Mode V2 : ouvrir les nouveaux modals
+      if (entry.kind === "spending") {
+        setPrefillSpending(entry.row);
+        setShowQuickSpending(true);
+      } else {
+        setPrefillRevenue(entry.row);
+        setShowQuickRevenue(true);
+      }
     } else {
-      openEntry("revenue", entry.row);
+      // Mode V1 : ancien comportement
+      if (entry.kind === "spending") {
+        openEntry("spending", entry.row);
+      } else {
+        openEntry("revenue", entry.row);
+      }
     }
   };
 
@@ -106,35 +124,35 @@ function App() {
   const handleImportTransactions = async (transactions: any[], type: "spending" | "revenue" = "spending") => {
     console.log(`📦 Importing ${transactions.length} ${type === "revenue" ? "revenues" : "transactions"}...`);
     
-    // Fonction pour convertir la date au format DD/MM/YYYY
+    // Fonction pour convertir la date au format DD/MM/YYYY (attendu par le Google Sheet)
     const formatDateForGoogleSheets = (dateStr: string) => {
       if (!dateStr) return "";
-      
-      // Nettoyer les espaces
-      const cleaned = dateStr.replace(/\s*:\s*/g, ':').replace(/\s*,\s*/g, ', ');
-      
-      // Map des mois
-      const months: { [key: string]: string } = {
-        'January': '01', 'February': '02', 'March': '03', 'April': '04',
-        'May': '05', 'June': '06', 'July': '07', 'August': '08',
-        'September': '09', 'October': '10', 'November': '11', 'December': '12'
-      };
-      
-      // Parser "04 September 2025, 12:00pm" → "04/09/2025"
-      const match = cleaned.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
-      
-      if (match) {
-        const day = match[1].padStart(2, '0');
-        const monthName = match[2];
-        const year = match[3];
-        const month = months[monthName];
-        
-        if (month) {
-          return `${day}/${month}/${year}`;
-        }
+
+      const cleaned = dateStr.replace(/\s*:\s*/g, ":").replace(/\s*,\s*/g, ", ");
+
+      // Déjà au format ISO (YYYY-MM-DD) → convertir en DD/MM/YYYY
+      const isoMatch = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        const [, year, month, day] = isoMatch;
+        return `${day}/${month}/${year}`;
       }
-      
-      // Si le parsing échoue, retourner la date nettoyée
+
+      // Parser "04 September 2025, 12:00pm" → "04/09/2025"
+      const months: { [key: string]: string } = {
+        January: "01", February: "02", March: "03", April: "04",
+        May: "05", June: "06", July: "07", August: "08",
+        September: "09", October: "10", November: "11", December: "12",
+      };
+      const match = cleaned.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
+      if (match) {
+        const day = match[1].padStart(2, "0");
+        const month = months[match[2]];
+        if (month) return `${day}/${month}/${match[3]}`;
+      }
+
+      // Déjà DD/MM/YYYY
+      if (cleaned.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) return cleaned;
+
       console.warn(`⚠️ Could not parse date: ${dateStr}, using cleaned version`);
       return cleaned;
     };
@@ -151,19 +169,22 @@ function App() {
       // Fonction pour extraire la devise de la méthode
       const extractCurrencyFromMethod = (method: string): string | null => {
         if (!method) return null;
-        
+        const knownCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'XRP', 'ADA', 'SOL', 'DOGE', 'DOT', 'MATIC', 'LTC', 'BCH'];
+        // "USDC_ETH" ou "USDT_TRC20" → devise = partie avant "_" (actif, pas le réseau)
+        if (method.includes('_')) {
+          const firstToken = method.split('_')[0].trim().toUpperCase();
+          if (knownCurrencies.includes(firstToken)) return firstToken;
+        }
         const currencyPatterns = [
           /BTC/i, /ETH/i, /USDT/i, /USDC/i, /XRP/i,
           /ADA/i, /SOL/i, /DOGE/i, /DOT/i, /MATIC/i,
           /LTC/i, /BCH/i,
         ];
-        
         for (const pattern of currencyPatterns) {
           if (pattern.test(method)) {
             return method.match(pattern)![0].toUpperCase();
           }
         }
-        
         return null;
       };
 
@@ -256,7 +277,17 @@ function App() {
       };
 
       // Importer chaque transaction individuellement
-      for (const t of transactions) {
+      const logImportFailure = (index: number, t: any, reason: string) => {
+        console.error(
+          `❌ Échec import #${index + 1}:`,
+          `${String(t?.date ?? "")} | ${String(t?.description ?? t?.suggestedSource ?? "")} | ${t?.amount ?? ""} €`,
+          "→",
+          reason
+        );
+      };
+
+      for (let i = 0; i < transactions.length; i++) {
+        const t = transactions[i];
         try {
           // Pour les REVENUS : calculer automatiquement le taux si nécessaire
           if (type === "revenue" && (!t.usdEurRate || t.usdEurRate === 0)) {
@@ -315,26 +346,30 @@ function App() {
             });
 
             const responseText = await response.text();
-            console.log(`📥 Réponse: ${responseText}`);
+            const isHtml = /^\s*<!DOCTYPE/i.test(responseText) || /^\s*<html/i.test(responseText);
+            if (responseText.length < 500) console.log(`📥 Réponse: ${responseText}`);
+            else console.log(`📥 Réponse: ${responseText.slice(0, 200)}...`);
 
             if (!response.ok) {
-              console.error(`❌ Failed to import: ${t.description}`, responseText);
+              logImportFailure(i, t, `HTTP ${response.status}: ${responseText.slice(0, 150)}`);
+              errorCount++;
+            } else if (isHtml) {
+              logImportFailure(i, t, "Réponse invalide (page HTML). Le script Google a peut-être renvoyé une erreur ou le lien du script est incorrect.");
               errorCount++;
             } else {
-              // Vérifier que la réponse contient un succès
               try {
                 const responseData = JSON.parse(responseText);
                 if (responseData.ok === false || responseData.error) {
-                  console.error(`❌ Server error for: ${t.description}`, responseData);
+                  const msg = responseData.error || responseData.message || JSON.stringify(responseData);
+                  logImportFailure(i, t, msg);
                   errorCount++;
                 } else {
-                  console.log(`✅ Imported: ${t.description || t.suggestedSource}`);
+                  console.log(`✅ Imported #${i + 1}: ${t.description || t.suggestedSource}`);
                   successCount++;
                 }
               } catch (e) {
-                // Si pas de JSON, considérer comme succès si status 200
-                console.log(`✅ Imported: ${t.description || t.suggestedSource}`);
-                successCount++;
+                logImportFailure(i, t, "Réponse non-JSON (parser error). Vérifiez que le script Google renvoie bien du JSON.");
+                errorCount++;
               }
             }
 
@@ -348,12 +383,16 @@ function App() {
           }
 
         } catch (error: any) {
-          console.error(`❌ Error importing ${t.description || t.suggestedSource}:`, error);
+          logImportFailure(i, t, error?.message || String(error));
           errorCount++;
         }
       }
 
-      console.log(`✅ Import terminé: ${successCount} réussie(s), ${errorCount} échouée(s)`);
+      if (errorCount > 0) {
+        console.warn(`⚠️ Import terminé: ${successCount} réussie(s), ${errorCount} échouée(s). Voir les lignes "❌ Échec import #N" ci-dessus pour le détail.`);
+      } else {
+        console.log(`✅ Import terminé: ${successCount} réussie(s), ${errorCount} échouée(s)`);
+      }
       
       // Message différent selon le mode
       if (!offline.isOnline && successCount > 0) {
@@ -382,18 +421,43 @@ function App() {
             <p className="home-kicker">Système des 6 Jars</p>
             <h1 className="home-title">Mes Finances</h1>
           </div>
-          <button
-            type="button"
-            className="theme-toggle"
-            onClick={() => setDarkMode((v) => !v)}
-            aria-label={darkMode ? "Passer en mode clair" : "Passer en mode sombre"}
-          >
-            {darkMode ? "☀️" : "🌙"}
-          </button>
+          
+          {/* Boutons d'action */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={() => setImporterOpen(true)}
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '12px',
+                border: 'none',
+                background: 'linear-gradient(135deg, #34C759 0%, #30B350 100%)',
+                color: 'white',
+                fontSize: '20px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(52, 199, 89, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="Importer des transactions"
+            >
+              📂
+            </button>
+            
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => setDarkMode((v) => !v)}
+            >
+              {darkMode ? "☀️" : "🌙"}
+            </button>
+          </div>
         </header>
 
         <main className="app-content">
-          {/* ✅ MODIFICATION : Utiliser JarsViewV2 à la place de JarsView */}
+          {/* ✅ MODIFICATION : Utiliser JarsViewV2 */}
           {section === "home" && (
             <>
               {useV2 ? (
@@ -415,6 +479,7 @@ function App() {
 
       {/* Bottom navigation - Icônes modernes */}
       <nav className="bottom-nav">
+        {/* ... navigation inchangée ... */}
         <button
           type="button"
           className={`bottom-nav-btn ${section === "home" ? "active" : ""}`}
@@ -532,7 +597,7 @@ function App() {
         </button>
       </nav>
 
-      {/* ✅ MODIFICATION : Boutons flottants UNIQUEMENT si V1 activée */}
+      {/* ✅ MODIFICATION : Boutons flottants UNIQUEMENT si V1 */}
       {!useV2 && (
         <>
           {/* Floating Action Button - Principal (violet) */}
@@ -553,7 +618,7 @@ function App() {
             +
           </button>
 
-          {/* Bouton Import (vert) - Au-dessus du bouton violet */}
+          {/* Bouton Import (vert) */}
           <button
             type="button"
             onClick={() => setImporterOpen(true)}
@@ -585,21 +650,26 @@ function App() {
         </>
       )}
 
-      {/* ✅ AJOUT : Modal QuickSpendingForm (V2) */}
+      {/* ✅ AJOUT : Modal QuickSpendingForm avec prefill */}
       {showQuickSpending && (
         <QuickSpendingForm
-          onClose={() => setShowQuickSpending(false)}
+          prefill={prefillSpending}
+          onClose={() => {
+            setShowQuickSpending(false);
+            setPrefillSpending(null); // Réinitialiser
+          }}
           onSuccess={() => {
             console.log("✅ Dépense enregistrée avec succès");
-            // Recharger les données (optionnel)
-            // window.location.reload();
           }}
         />
       )}
 
-      {/* ✅ AJOUT : Modal RevenueForm (V2 - réutilise l'existant) */}
+      {/* ✅ AJOUT : Modal RevenueForm avec prefill */}
       {showQuickRevenue && (
-        <div className="entry-sheet-backdrop" onClick={() => setShowQuickRevenue(false)}>
+        <div className="entry-sheet-backdrop" onClick={() => {
+          setShowQuickRevenue(false);
+          setPrefillRevenue(null);
+        }}>
           <div className="entry-sheet" onClick={(e) => e.stopPropagation()}>
             <header className="entry-sheet-header">
               <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700" }}>
@@ -608,7 +678,10 @@ function App() {
               <button
                 type="button"
                 className="entry-close-btn"
-                onClick={() => setShowQuickRevenue(false)}
+                onClick={() => {
+                  setShowQuickRevenue(false);
+                  setPrefillRevenue(null);
+                }}
               >
                 ×
               </button>

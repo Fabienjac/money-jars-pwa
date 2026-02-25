@@ -1,7 +1,7 @@
 // src/components/TagStatsView.tsx
 import React, { useState, useEffect } from "react";
-import { searchSpendings } from "../api";
-import { SearchSpendingResult } from "../types";
+import { searchSpendings, searchRevenues } from "../api";
+import { SearchSpendingResult, SearchRevenueResult } from "../types";
 import { TagFilter } from "./TagFilter";
 import { TagPieChart } from "./TagPieChart";
 import { AdvancedTagFilters, AdvancedFilterState } from "./AdvancedTagFilters";
@@ -10,37 +10,39 @@ import { ExportButton } from "./ExportButton";
 import { calculateTagStats, filterByTags } from "../tagStatsUtils";
 import { applyAdvancedFilters, DEFAULT_ADVANCED_FILTERS } from "../advancedTagFiltersUtils";
 import { getTagById } from "../tagsUtils";
+import { loadAccounts } from "../accountsUtils";
+import {
+  computeReceivedByAccount,
+  computeSpentByAccountByTag,
+  getAccountNames,
+  type AccountTagStats,
+} from "../accountStatsUtils";
 
 const TagStatsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [allTransactions, setAllTransactions] = useState<SearchSpendingResult[]>([]);
+  const [allRevenues, setAllRevenues] = useState<SearchRevenueResult[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>(DEFAULT_ADVANCED_FILTERS);
   const [showAdvancedStats, setShowAdvancedStats] = useState(false);
 
-  // Charger toutes les transactions au montage
-
   useEffect(() => {
-    const loadTransactions = async () => {
+    const load = async () => {
       setLoading(true);
       try {
-        const res = await searchSpendings("", 500);
-      
-        // ← AJOUTER CE LOG
-        console.log("🔥 DEBUG Frontend:", {
-          total: res.rows?.length,
-          premier: res.rows?.[0],
-          tags: res.rows?.[0]?.tags
-        });
-      
-        setAllTransactions(res.rows || []);
+        const [spendRes, revRes] = await Promise.all([
+          searchSpendings("", 500),
+          searchRevenues("", 500),
+        ]);
+        setAllTransactions(spendRes.rows || []);
+        setAllRevenues(revRes.rows || []);
       } catch (err) {
-        console.error("Erreur:", err);
+        console.error("Erreur chargement données:", err);
       } finally {
         setLoading(false);
       }
     };
-    loadTransactions();
+    load();
   }, []);
 
 
@@ -49,7 +51,7 @@ const TagStatsView: React.FC = () => {
   // Filtrer les transactions selon les tags sélectionnés
   const tagFilteredTransactions = filterByTags(allTransactions, selectedTags);
   
-  // Appliquer les filtres avancés
+  // Appliquer les filtres avancés (période 30j / 90j / 6m / personnalisé, montant, jarres)
   const filteredTransactions = applyAdvancedFilters(tagFilteredTransactions, advancedFilters);
 
   // Calculer les stats sur les transactions filtrées
@@ -57,6 +59,24 @@ const TagStatsView: React.FC = () => {
 
   // Total de toutes les dépenses filtrées
   const totalAmount = filteredTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  // --- Par compte de dépense : reçus (revenus → destination) et dépensés par tag ---
+  const receivedByAccount = computeReceivedByAccount(allRevenues, advancedFilters);
+  const accountStatsList = computeSpentByAccountByTag(filteredTransactions);
+  const accountStatsByKey = Object.fromEntries(
+    accountStatsList.map((a) => [a.accountName, a])
+  ) as Record<string, AccountTagStats>;
+  const accountNames = getAccountNames(
+    loadAccounts(),
+    allTransactions,
+    Object.keys(receivedByAccount)
+  );
+  const accountReportRows = accountNames.map((name) => ({
+    accountName: name,
+    totalReceived: receivedByAccount[name] ?? 0,
+    totalSpent: accountStatsByKey[name]?.totalSpent ?? 0,
+    tagStats: accountStatsByKey[name]?.tagStats ?? [],
+  }));
 
   if (loading) {
     return (
@@ -140,6 +160,105 @@ const TagStatsView: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Par compte de dépense : reçus + dépensés par tag (période = filtre ci‑dessus) */}
+      <div style={{
+        marginTop: "20px",
+        padding: "20px",
+        borderRadius: "12px",
+        border: "1px solid var(--border-color)",
+        background: "var(--bg-card)",
+      }}>
+        <h3 style={{
+          fontSize: "16px",
+          fontWeight: "700",
+          marginBottom: "8px",
+          color: "var(--text-main)",
+        }}>
+          🏦 Par compte de dépense
+        </h3>
+        <p style={{
+          fontSize: "12px",
+          color: "var(--text-muted)",
+          marginBottom: "16px",
+        }}>
+          Montant reçu (revenus → compte) et montant dépensé par tag. Période : même filtre que ci‑dessus (30 j, 90 j, 6 mois ou personnalisé).
+        </p>
+        {accountReportRows.length === 0 ? (
+          <p style={{ fontSize: "13px", color: "var(--text-muted)", fontStyle: "italic" }}>
+            Aucun compte avec des données sur la période.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            {accountReportRows.map((row) => (
+              <div
+                key={row.accountName}
+                style={{
+                  padding: "16px",
+                  borderRadius: "12px",
+                  border: "1px solid var(--border-color)",
+                  background: "var(--bg-body)",
+                }}
+              >
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "12px",
+                  marginBottom: "12px",
+                }}>
+                  <span style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)" }}>
+                    {row.accountName}
+                  </span>
+                  <div style={{ display: "flex", gap: "16px", alignItems: "baseline" }}>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Reçu</div>
+                      <div style={{ fontSize: "18px", fontWeight: "700", color: "#34C759" }}>
+                        {row.totalReceived.toFixed(2)} €
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Dépensé</div>
+                      <div style={{ fontSize: "18px", fontWeight: "700", color: "#FF3B30" }}>
+                        {row.totalSpent.toFixed(2)} €
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {row.tagStats.length > 0 && (
+                  <div style={{
+                    borderTop: "1px solid var(--border-color)",
+                    paddingTop: "12px",
+                  }}>
+                    <div style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "8px" }}>
+                      Détail par tag
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      {row.tagStats.map((t) => (
+                        <span
+                          key={t.tagId}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: "8px",
+                            background: `${t.color}18`,
+                            border: `1px solid ${t.color}40`,
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            color: t.color,
+                          }}
+                        >
+                          {t.emoji} {t.tagName} · {t.totalAmount.toFixed(2)} €
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Graphique en camembert */}

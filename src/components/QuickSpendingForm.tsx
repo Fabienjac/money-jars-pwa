@@ -1,10 +1,10 @@
 // src/components/QuickSpendingForm.tsx
 // FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
 import React, { useState, useEffect } from "react";
-import { appendSpending } from "../api";
+import { appendSpending, searchSpendings } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
-import { tagsToString } from "../tagsUtils";
+import { tagsToString, tagsFromString } from "../tagsUtils";
 
 interface RecentTransaction {
   description: string;
@@ -12,6 +12,7 @@ interface RecentTransaction {
   jar: JarKey;
   account: string;
   date: string;
+  tags?: string;
 }
 
 const JAR_LABELS: Record<JarKey, { label: string; emoji: string }> = {
@@ -24,12 +25,12 @@ const JAR_LABELS: Record<JarKey, { label: string; emoji: string }> = {
 };
 
 const TAG_PRESETS = [
-  { id: "vie_quotidienne", emoji: "🛒", label: "Courses" },
-  { id: "sante_corps", emoji: "🧘", label: "Santé" },
+  { id: "vie_quotidienne", emoji: "🛒", label: "Vie quotidienne" },
+  { id: "sante_corps", emoji: "🧘", label: "Santé & corps" },
   { id: "transport", emoji: "🚗", label: "Transport" },
   { id: "habitat", emoji: "🏠", label: "Habitat" },
   { id: "loisirs", emoji: "🎉", label: "Loisirs" },
-  { id: "don_cadeau", emoji: "🎁", label: "Cadeau" },
+  { id: "don_cadeau", emoji: "🎁", label: "Don / Cadeau" },
 ];
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -37,9 +38,11 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 interface QuickSpendingFormProps {
   onClose: () => void;
   onSuccess?: () => void;
+  prefill?: any | null; // ✅ Ajouté pour pré-remplir depuis historique
 }
 
-const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess }) => {
+const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess, prefill }) => {
+  const [date, setDate] = useState<string>(todayISO());
   const [amount, setAmount] = useState("");
   const [jar, setJar] = useState<JarKey>("NEC");
   const [account, setAccount] = useState("Cash");
@@ -48,13 +51,72 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   
-  // Transactions récentes (simulées - à remplacer par un fetch réel)
-  const [recentTransactions] = useState<RecentTransaction[]>([
-    { description: "chez Jeremy", amount: 52.50, jar: "NEC", account: "Cash", date: "2025-12-31" },
-    { description: "Satoriz", amount: 51.33, jar: "NEC", account: "Cash", date: "2025-12-21" },
-  ]);
+  // Les 2 dernières dépenses (chargées depuis le Google Sheet)
+  const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRecentLoading(true);
+    searchSpendings("", 10)
+      .then((res) => {
+        if (cancelled || !res.rows?.length) return;
+        const rows = res.rows as Array<{ date: string; description: string; amount: number; jar: string; account: string; tags?: string }>;
+        const sorted = [...rows].sort((a, b) => {
+          const dA = parseSheetDate(a.date);
+          const dB = parseSheetDate(b.date);
+          return dB.getTime() - dA.getTime();
+        });
+        const two: RecentTransaction[] = sorted.slice(0, 2).map((r) => ({
+          description: r.description || "",
+          amount: Number(r.amount) || 0,
+          jar: (r.jar as JarKey) || "NEC",
+          account: r.account || "Cash",
+          date: toInputDate(r.date),
+          tags: r.tags,
+        }));
+        setRecentTransactions(two);
+      })
+      .catch(() => setRecentTransactions([]))
+      .finally(() => { if (!cancelled) setRecentLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  function parseSheetDate(s: string): Date {
+    if (!s) return new Date(0);
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
+    const dmy = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+    return new Date(s);
+  }
+
+  function toInputDate(s: string): string {
+    if (!s) return todayISO();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return s.slice(0, 10);
+    const dmy = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+    return todayISO();
+  }
 
   const accounts = loadAccounts();
+
+  // ✅ Gérer le prefill depuis l'historique
+  useEffect(() => {
+    if (prefill) {
+      if (prefill.date) setDate(prefill.date);
+      if (prefill.jar) setJar(prefill.jar);
+      if (prefill.account) setAccount(prefill.account);
+      if (prefill.amount != null) setAmount(String(prefill.amount));
+      if (prefill.description) setDescription(prefill.description);
+      // Tags : à parser si présents
+      if (prefill.tags && typeof prefill.tags === "string") {
+        const tagIds = prefill.tags.split(",").map((t: string) => t.trim()).filter(Boolean);
+        setSelectedTags(tagIds);
+      }
+    }
+  }, [prefill]);
 
   // Auto-dismiss message
   useEffect(() => {
@@ -82,6 +144,8 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     setAmount(recent.amount.toString());
     setJar(recent.jar);
     setAccount(recent.account);
+    setDate(recent.date);
+    setSelectedTags(recent.tags ? tagsFromString(recent.tags) : []);
   };
 
   const toggleTag = (tagId: string) => {
@@ -104,7 +168,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
       
       await appendSpending({
-        date: todayISO(),
+        date, // ✅ Utiliser la date du state
         jar,
         account,
         amount: parseFloat(amount),
@@ -116,6 +180,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       
       // Reset form
       setTimeout(() => {
+        setDate(todayISO()); // ✅ Réinitialiser à aujourd'hui
         setAmount("");
         setDescription("");
         setSelectedTags([]);
@@ -148,25 +213,42 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           </button>
         </div>
 
-        {/* Récentes */}
-        {recentTransactions.length > 0 && (
-          <div className="quick-recent-section">
-            <p className="quick-recent-label">📝 Récentes</p>
+        {/* Les 2 dernières dépenses (cliquables pour pré-remplir) */}
+        <div className="quick-recent-section">
+          <p className="quick-recent-label">📝 Récentes</p>
+          {recentLoading ? (
+            <p className="quick-recent-loading">Chargement...</p>
+          ) : recentTransactions.length > 0 ? (
             <div className="quick-recent-list">
               {recentTransactions.map((r, idx) => (
                 <button
-                  key={idx}
+                  key={`${r.date}-${r.description}-${idx}`}
                   type="button"
                   className="quick-recent-item"
                   onClick={() => handleRecentClick(r)}
                 >
-                  <span className="quick-recent-desc">{r.description}</span>
-                  <span className="quick-recent-amount">{r.amount.toFixed(2)}€</span>
+                  <span className="quick-recent-desc">{r.description || "Sans description"}</span>
+                  <span className="quick-recent-amount">{r.amount.toFixed(2)} €</span>
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="quick-recent-empty">Aucune dépense récente</p>
+          )}
+        </div>
+
+        {/* Date */}
+        <div className="quick-date-section">
+          <label className="quick-date-label">
+            📅
+            <input
+              type="date"
+              className="quick-date-input"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </label>
+        </div>
 
         {/* Montant */}
         <div className="quick-amount-section">

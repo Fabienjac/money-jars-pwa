@@ -63,9 +63,24 @@ exports.handler = async (event) => {
     }
 
     const text = await response.text();
-    const contentType =
-      response.headers.get("content-type") || "application/json";
+    const isHtml = /^\s*<!DOCTYPE/i.test(text) || /^\s*<html/i.test(text);
 
+    if (isHtml) {
+      console.error("Google returned HTML instead of JSON (script error or wrong URL):", text.slice(0, 200));
+      return {
+        statusCode: 502,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+        body: JSON.stringify({
+          error: "google_script_error",
+          message: "Le script Google a renvoyé une page d'erreur. Vérifiez l'URL du déploiement (GSCRIPT_URL) et que le script renvoie du JSON.",
+        }),
+      };
+    }
+
+    const contentType = response.headers.get("content-type") || "application/json";
     return {
       statusCode: response.status,
       headers: {

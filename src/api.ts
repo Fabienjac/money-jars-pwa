@@ -80,7 +80,9 @@ export async function searchRevenues(q: string, max = 50) {
 // --------- TOTALS : ON UTILISE UN GET (COMME TON TEST SAFARI) ---------
 
 export async function fetchTotals() {
-  // Exemple final en prod :
+  
+  console.log('FETCH TOTALS URL =', (import.meta.env.VITE_API_URL || '' ) + '/totals');
+// Exemple final en prod :
   // https://willowy-nougat-51e2a4.netlify.app/.netlify/functions/gsheetProxy?action=totals&key=...
   const url = `${API_URL}?action=totals&key=${encodeURIComponent(API_KEY)}`;
 
