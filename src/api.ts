@@ -5,6 +5,8 @@ import {
   TotalsResponse,
   SearchSpendingResult,
   SearchRevenueResult,
+  Account,
+  RevenueAccount,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL as string;
@@ -96,7 +98,38 @@ export async function fetchTotals() {
   return res.json() as Promise<TotalsResponse>;
 }
 
-// Ajoutez cette fonction à api.ts après fetchTotals()
+// --------- COMPTES (Accounts / RevenueAccounts) - GET ---------
+export async function getAccounts(): Promise<Account[]> {
+  const url = `${API_URL}?action=getAccounts&key=${encodeURIComponent(API_KEY)}`;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) throw new Error(`API getAccounts (${res.status}): ${await res.text()}`);
+  const data = (await res.json()) as { accounts?: Account[]; rows?: Account[] };
+  return data.accounts ?? data.rows ?? [];
+}
+
+export async function getRevenueAccounts(): Promise<RevenueAccount[]> {
+  const url = `${API_URL}?action=getRevenueAccounts&key=${encodeURIComponent(API_KEY)}`;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) throw new Error(`API getRevenueAccounts (${res.status}): ${await res.text()}`);
+  const data = (await res.json()) as { accounts?: RevenueAccount[]; rows?: RevenueAccount[] };
+  return data.accounts ?? data.rows ?? [];
+}
+
+// --------- COMPTES - POST (sauvegarde vers le Sheet) ---------
+export async function setAccounts(accounts: Account[]): Promise<{ ok: boolean; error?: string }> {
+  if (!API_URL) {
+    console.error("setAccounts: VITE_API_URL manquant, impossible d’envoyer au Sheet");
+    throw new Error("VITE_API_URL manquant");
+  }
+  console.log("setAccounts: envoi de", accounts.length, "compte(s) vers", API_URL.replace(/\?.*$/, ""));
+  return callApi({ action: "setAccounts", accounts });
+}
+
+export async function setRevenueAccounts(accounts: RevenueAccount[]): Promise<{ ok: boolean; error?: string }> {
+  return callApi({ action: "setRevenueAccounts", accounts });
+}
+
+// --------- ANALYTICS ---------
 
 export interface AnalyticsResponse {
   monthlyData: Array<{

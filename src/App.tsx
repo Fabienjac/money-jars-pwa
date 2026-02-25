@@ -16,6 +16,7 @@ import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { useOffline } from "./hooks/useOffline";
 import { loadAccounts } from "./accountsUtils";
+import { getAccounts } from "./api";
 import "./style.css";
 
 type Section = "home" | "history" | "settings" | "tags";
@@ -67,14 +68,17 @@ function App() {
     } catch {}
   }, []);
 
-  // Charger les comptes au démarrage et quand ils changent (ex. ajout dans Réglages)
+  // Charger les comptes depuis le Sheet (synchro Mac / iPhone)
   useEffect(() => {
-    const loadedAccounts = loadAccounts();
-    setAccounts(loadedAccounts);
+    getAccounts()
+      .then(setAccounts)
+      .catch(() => setAccounts(loadAccounts()));
   }, []);
 
   useEffect(() => {
-    const reload = () => setAccounts(loadAccounts());
+    const reload = () => {
+      getAccounts().then(setAccounts).catch(() => setAccounts(loadAccounts()));
+    };
     window.addEventListener("spendingAccountsUpdated", reload);
     return () => window.removeEventListener("spendingAccountsUpdated", reload);
   }, []);

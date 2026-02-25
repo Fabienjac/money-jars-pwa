@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { appendRevenue } from "../api";
+import { appendRevenue, getAccounts, getRevenueAccounts } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
@@ -36,9 +36,21 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   
-  // ✅ États pour les comptes (rechargeable)
+  // ✅ États pour les comptes (chargés depuis le Sheet pour synchro Mac / iPhone)
   const [revenueAccounts, setRevenueAccounts] = useState(loadRevenueAccounts());
   const [spendingAccounts, setSpendingAccounts] = useState(loadAccounts());
+
+  useEffect(() => {
+    getRevenueAccounts().then(setRevenueAccounts).catch(() => setRevenueAccounts(loadRevenueAccounts()));
+  }, []);
+  useEffect(() => {
+    const reload = () => getRevenueAccounts().then(setRevenueAccounts).catch(() => setRevenueAccounts(loadRevenueAccounts()));
+    window.addEventListener("revenueAccountsUpdated", reload);
+    return () => window.removeEventListener("revenueAccountsUpdated", reload);
+  }, []);
+  useEffect(() => {
+    getAccounts().then(setSpendingAccounts).catch(() => setSpendingAccounts(loadAccounts()));
+  }, []);
 
   useEffect(() => {
     if (!prefill) return;

@@ -59,3 +59,18 @@ export interface SearchRevenueResult {
   incomeType: string;
   tags?: string;
 }
+
+export interface Account {
+  id: string;
+  name: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface RevenueAccount {
+  id: string;
+  name: string;
+  type?: string;
+  icon?: string;
+  color?: string;
+}

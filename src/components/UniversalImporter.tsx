@@ -5,6 +5,7 @@ import { NewColumnMappingStep } from "./NewColumnMappingStep";
 import { TransactionEditor } from "./TransactionEditor";
 import { RevenueTransactionEditor } from "./RevenueTransactionEditor";
 import { loadRevenueSources } from "../revenueSourcesUtils";
+import { getRevenueAccounts } from "../api";
 
 interface MatchDetails {
   dateMatch: string;
@@ -102,11 +103,16 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const [revenueSources, setRevenueSources] = useState<any[]>([]);
 
   useEffect(() => {
-    setRevenueSources(loadRevenueSources());
+    getRevenueAccounts()
+      .then((list) => setRevenueSources(Array.isArray(list) ? list : loadRevenueSources()))
+      .catch(() => setRevenueSources(loadRevenueSources()));
   }, []);
 
   useEffect(() => {
-    const reload = () => setRevenueSources(loadRevenueSources());
+    const reload = () =>
+      getRevenueAccounts()
+        .then((list) => setRevenueSources(Array.isArray(list) ? list : loadRevenueSources()))
+        .catch(() => setRevenueSources(loadRevenueSources()));
     window.addEventListener("revenueAccountsUpdated", reload);
     return () => window.removeEventListener("revenueAccountsUpdated", reload);
   }, []);
@@ -453,7 +459,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         } else {
           // Conversion nécessaire
           try {
-            const rate = await getHistoricalRate(txn.currency, "EUR", txn.date);
+            const rate = await getHistoricalRate(txn.currency ?? "USD", "EUR", txn.date);
             const convertedAmount = txn.amount * rate;
             
             console.log(`💱 ${txn.amount} ${txn.currency} → ${convertedAmount.toFixed(2)} EUR (rate: ${rate})`);

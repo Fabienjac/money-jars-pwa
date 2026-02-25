@@ -5,6 +5,7 @@ import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import { loadTags } from "../tagsUtils";
+import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi } from "../api";
 
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: "Nécessités",
@@ -79,9 +80,26 @@ function saveRules(rules: AutoRule[]) {
 const SettingsView: React.FC = () => {
   const [jarSettings, setJarSettings] = useState<JarSetting[]>(loadSettings());
   const [rules, setRules] = useState<AutoRule[]>(loadAutoRules());
-  const [accounts, setAccounts] = useState<Account[]>(loadAccounts());
-  const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>(loadRevenueAccounts());
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([]);
   const [tags] = useState(loadTags());
+  const [accountsLoading, setAccountsLoading] = useState(true);
+
+  // Charger comptes de dépenses et revenus depuis le Sheet (synchro Mac / iPhone)
+  useEffect(() => {
+    let cancelled = false;
+    setAccountsLoading(true);
+    Promise.all([
+      getAccounts().catch(() => loadAccounts()),
+      getRevenueAccounts().catch(() => loadRevenueAccounts()),
+    ]).then(([accs, revAccs]) => {
+      if (!cancelled) {
+        setAccounts(Array.isArray(accs) ? accs : loadAccounts());
+        setRevenueAccounts(Array.isArray(revAccs) ? revAccs : loadRevenueAccounts());
+      }
+    }).finally(() => { if (!cancelled) setAccountsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showRevenueAccountForm, setShowRevenueAccountForm] = useState(false);
@@ -209,12 +227,19 @@ const SettingsView: React.FC = () => {
     const updated = [...accounts, newAccount];
     setAccounts(updated);
     saveAccounts(updated);
+    setAccountsApi(updated)
+      .then(() => {
+        setMessage("✅ Compte ajouté et synchronisé avec le Sheet");
+        setTimeout(() => setMessage(null), 3000);
+      })
+      .catch((e) => {
+        setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur"));
+        setTimeout(() => setMessage(null), 5000);
+      });
     window.dispatchEvent(new CustomEvent("spendingAccountsUpdated"));
     setNewAccountName("");
     setNewAccountIcon("💳");
     setShowAccountForm(false);
-    setMessage("✅ Compte ajouté");
-    setTimeout(() => setMessage(null), 2000);
   };
 
   const handleEditAccount = (id: string) => {
@@ -222,7 +247,7 @@ const SettingsView: React.FC = () => {
     if (!account) return;
     setEditingAccountId(id);
     setEditingAccountName(account.name);
-    setEditingAccountIcon(account.icon);
+    setEditingAccountIcon(account.icon ?? "💳");
   };
 
   const handleCancelEditAccount = () => {
@@ -245,6 +270,7 @@ const SettingsView: React.FC = () => {
     );
     setAccounts(updated);
     saveAccounts(updated);
+    setAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("spendingAccountsUpdated"));
     setEditingAccountId(null);
     setMessage("✅ Compte mis à jour");
@@ -256,6 +282,7 @@ const SettingsView: React.FC = () => {
     const updated = accounts.filter((a) => a.id !== id);
     setAccounts(updated);
     saveAccounts(updated);
+    setAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("spendingAccountsUpdated"));
     setMessage("✅ Compte supprimé");
     setTimeout(() => setMessage(null), 2000);
@@ -277,7 +304,7 @@ const SettingsView: React.FC = () => {
     const updated = [...revenueAccounts, newAccount];
     setRevenueAccounts(updated);
     saveRevenueAccounts(updated);
-    // Notifier les autres composants (comme l'importateur) qu'une source de revenu a changé
+    setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("revenueAccountsUpdated"));
     setNewRevenueAccountName("");
     setNewRevenueAccountIcon("💰");
@@ -292,7 +319,7 @@ const SettingsView: React.FC = () => {
     if (!account) return;
     setEditingRevenueAccountId(id);
     setEditingRevenueAccountName(account.name);
-    setEditingRevenueAccountIcon(account.icon);
+    setEditingRevenueAccountIcon(account.icon ?? "💰");
   };
 
   const handleCancelEditRevenueAccount = () => {
@@ -319,6 +346,7 @@ const SettingsView: React.FC = () => {
     );
     setRevenueAccounts(updated);
     saveRevenueAccounts(updated);
+    setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("revenueAccountsUpdated"));
     setEditingRevenueAccountId(null);
     setMessage("✅ Compte de revenu mis à jour");
@@ -330,7 +358,7 @@ const SettingsView: React.FC = () => {
     const updated = revenueAccounts.filter((a) => a.id !== id);
     setRevenueAccounts(updated);
     saveRevenueAccounts(updated);
-    // Notifier les autres composants (comme l'importateur) qu'une source de revenu a changé
+    setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("revenueAccountsUpdated"));
     setMessage("✅ Compte de revenu supprimé");
     setTimeout(() => setMessage(null), 2000);
@@ -567,6 +595,9 @@ const SettingsView: React.FC = () => {
       {/* Section: Comptes de dépenses */}
       <section className="settings-section">
         <h3 className="settings-section-title">💳 Comptes de dépenses</h3>
+        {accountsLoading && (
+          <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>Chargement…</p>
+        )}
 
         {accounts.length > 0 && (
           <div className="accounts-grid">

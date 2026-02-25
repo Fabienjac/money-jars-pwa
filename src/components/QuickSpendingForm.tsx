@@ -1,7 +1,7 @@
 // src/components/QuickSpendingForm.tsx
 // FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
 import React, { useState, useEffect } from "react";
-import { appendSpending, searchSpendings } from "../api";
+import { appendSpending, searchSpendings, getAccounts } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
 import { tagsToString, tagsFromString } from "../tagsUtils";
@@ -100,7 +100,15 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     return todayISO();
   }
 
-  const accounts = loadAccounts();
+  const [accounts, setAccountsState] = useState(loadAccounts());
+  useEffect(() => {
+    getAccounts().then(setAccountsState).catch(() => setAccountsState(loadAccounts()));
+  }, []);
+  useEffect(() => {
+    const reload = () => getAccounts().then(setAccountsState).catch(() => setAccountsState(loadAccounts()));
+    window.addEventListener("spendingAccountsUpdated", reload);
+    return () => window.removeEventListener("spendingAccountsUpdated", reload);
+  }, []);
 
   // ✅ Gérer le prefill depuis l'historique
   useEffect(() => {
