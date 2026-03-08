@@ -1136,6 +1136,50 @@ button, input, select, a {
   font-weight: 400;
 }
 
+.jars-v2-detail-link {
+  padding: 20px 20px 0;
+}
+
+.jars-v2-detail-btn {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-body);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.jars-v2-detail-btn:hover,
+.jars-v2-detail-btn:active {
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.jars-v2-loading-inline,
+.jars-v2-error-inline {
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.jars-v2-loading-inline .spinner {
+  margin: 0 auto 12px;
+}
+
+.jars-v2-loading-inline p,
+.jars-v2-error-inline p {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.jars-v2-error-inline p {
+  color: #FF3B30;
+}
+
 /* ========================================
    JARS SECTION - SWIPE HORIZONTAL
    ======================================== */
@@ -1277,7 +1321,7 @@ button, input, select, a {
 }
 
 .jar-amount {
-  font-size: 32px;
+  font-size: clamp(18px, 6.5vw, 32px);
   font-weight: 700;
   color: var(--text-main);
   margin: 0;
@@ -1285,10 +1329,12 @@ button, input, select, a {
   display: flex;
   align-items: baseline;
   gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .jar-currency {
-  font-size: 18px;
+  font-size: clamp(12px, 4vw, 18px);
   font-weight: 600;
   color: var(--text-muted);
 }
@@ -1370,6 +1416,8 @@ button, input, select, a {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .summary-balance {
@@ -1383,13 +1431,14 @@ button, input, select, a {
 }
 
 .summary-value {
-  font-size: 22px;
+  font-size: clamp(16px, 5vw, 22px);
   font-weight: 700;
   color: var(--text-main);
+  line-height: 1.2;
 }
 
 .summary-value--highlight {
-  font-size: 28px;
+  font-size: clamp(20px, 6.5vw, 28px);
   color: var(--jar-ffa);
 }
 
