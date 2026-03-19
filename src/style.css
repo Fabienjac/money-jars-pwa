@@ -1420,7 +1420,9 @@ button, input, select, a {
   overflow: hidden;
 }
 
-.summary-balance {
+.summary-balance,
+.summary-daily,
+.summary-rolling-30d {
   grid-column: 1 / -1;
 }
 

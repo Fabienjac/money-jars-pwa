@@ -153,9 +153,35 @@ async function analyzePDF(buffer) {
   console.log(`📄 Total lines: ${lines.length}`);
   console.log(`📄 First 20 lines:`, lines.slice(0, 20));
 
-  // Patterns de détection
-  const datePattern = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),\s+(\d{4})/;
-  const amountWithCurrencyPattern = /(?:([A-Z]{3})\s+(-?\d{1,3}(?:[ ,]\d{3})*(?:\.\d{1,3})?)|(-?\d{1,3}(?:[ ,]\d{3})*(?:\.\d{1,3})?)\s+([A-Z]{3}))/
+  // Tentative 0: format Revolut FR (relevé "DateDescriptionArgent sortantArgent entrantSolde")
+  const revolutRows = extractRevolutFrenchTransactions(lines);
+  if (revolutRows.length > 0) {
+    console.log(`✅ Revolut FR parser: ${revolutRows.length} transactions détectées`);
+    return buildPdfStructure(revolutRows);
+  }
+
+  // Patterns de détection (plus tolérants: Revolut, banques FR/EN, etc.)
+  const monthMap = {
+    Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+    Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
+    January: "01", February: "02", March: "03", April: "04", June: "06",
+    July: "07", August: "08", September: "09", October: "10", November: "11", December: "12",
+  };
+
+  // Exemples: "May 26, 2025", "26 May 2025", "26/05/2025", "2025-05-26"
+  const datePatterns = [
+    /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),\s*(\d{4})\b/i,
+    /\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})\b/i,
+    /\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})\b/,
+    /\b(\d{4})-(\d{2})-(\d{2})\b/,
+  ];
+
+  const amountCandidatesPatterns = [
+    // EUR -12.34 / USD 12.34 / 12.34 EUR
+    /(?:\b([A-Z]{3})\s*(-?\d{1,3}(?:[ ,]\d{3})*(?:[.,]\d{1,3})?)\b)|(?:\b(-?\d{1,3}(?:[ ,]\d{3})*(?:[.,]\d{1,3})?)\s*([A-Z]{3})\b)/,
+    // -€12.34 / € -12.34 / 12.34€ / (£12.34)
+    /(?:([-+()]?\s*)([€$£])\s*(\d{1,3}(?:[ ,]\d{3})*(?:[.,]\d{1,3})?))|(?:([-+()]?\s*)(\d{1,3}(?:[ ,]\d{3})*(?:[.,]\d{1,3})?)\s*([€$£]))/,
+  ];
   const dataLines = [];
   
   // Stratégie 1 : Chercher les lignes qui ont TOUS les éléments (date, description, montant)
@@ -170,45 +196,35 @@ async function analyzePDF(buffer) {
       continue;
     }
 
-    const dateMatch = line.match(datePattern);
-    if (!dateMatch) continue;
+    const parsedDate = parseDateFromLine(line, datePatterns, monthMap);
+    if (!parsedDate) continue;
+    const { dateStr, normalizedDate } = parsedDate;
 
-    const dateStr = dateMatch[0];
-
-    // Normaliser la date
-    const [month, day, year] = dateMatch.slice(1);
-    const monthMap = {
-      Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
-      Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
-    };
-    const normalizedDate = `${year}-${monthMap[month]}-${day.padStart(2, "0")}`;
-
-    // Chercher le montant dans cette ligne ou les 2 suivantes
-    const searchLines = [line, lines[i + 1] || "", lines[i + 2] || ""];
+    // Chercher le montant dans cette ligne ou les 4 suivantes
+    const searchLines = [line, lines[i + 1] || "", lines[i + 2] || "", lines[i + 3] || "", lines[i + 4] || ""];
     let amountMatch = null;
+    let amountParsed = null;
     let descriptionText = "";
     let lineOffset = 0;
 
     for (let j = 0; j < searchLines.length; j++) {
-      amountMatch = searchLines[j].match(amountWithCurrencyPattern);
-      if (amountMatch) {
+      const candidateLine = searchLines[j];
+      const candidateParsed = parseAmountFromLine(candidateLine, amountCandidatesPatterns);
+      if (candidateParsed) {
+        amountMatch = candidateLine;
+        amountParsed = candidateParsed;
         lineOffset = j;
         break;
       }
     }
 
-    if (!amountMatch) {
+    if (!amountParsed || !amountMatch) {
       console.log(`⚠️ No amount found for date ${dateStr}`);
       continue;
     }
 
-    const currency = amountMatch[1] || amountMatch[4]
-    const amountText = amountMatch[2] || amountMatch[3]
-    const normalizedAmount = amountText
-      .replace(/ /g, "")   // supprime espaces milliers
-      .replace(/,/g, "")   // supprime virgules milliers
-  
-    const amountWithSign = parseFloat(normalizedAmount)
+    const currency = amountParsed.currency;
+    const amountWithSign = amountParsed.amountWithSign;
     const amount = Math.abs(amountWithSign);
 
     // Extraire la description
@@ -216,13 +232,13 @@ async function analyzePDF(buffer) {
       // Tout sur la même ligne : Date Description Amount
       descriptionText = line
         .replace(dateStr, "")
-        .replace(amountMatch[0], "")
+        .replace(amountMatch, "")
         .trim()
         .replace(/\s+/g, " ");
     } else if (lineOffset === 1) {
       // Date sur ligne 1, Description+Amount sur ligne 2
       descriptionText = searchLines[1]
-        .replace(amountMatch[0], "")
+        .replace(amountMatch, "")
         .trim()
         .replace(/\s+/g, " ");
       i += 1;
@@ -246,9 +262,12 @@ async function analyzePDF(buffer) {
       console.log(`⚠️ Skipping page number: ${descriptionText}`);
       continue;
     }
+    if (/^(statement|balance|total|document number|statement period|card number)$/i.test(descriptionText)) {
+      continue;
+    }
 
-    // ✅ FILTRER LES REMBOURSEMENTS (montants positifs)
-    if (amountWithSign > 0) {
+    // ✅ FILTRER uniquement les crédits explicites (ex: +12.34, "credit"/"remboursement")
+    if (amountWithSign > 0 && /(^|\s)\+|\bcredit\b|\bcrédit\b|\bremboursement\b/i.test(line)) {
       console.log(`⏭️  Skipping refund (positive amount): ${normalizedDate} | ${descriptionText} | +${amount} ${currency}`);
       continue;
     }
@@ -271,17 +290,114 @@ async function analyzePDF(buffer) {
     throw new Error("Aucune transaction détectée dans le PDF. Le format pourrait ne pas être supporté.");
   }
 
-  // Construire la structure
-  const headers = ["Date", "Description", "Amount", "Currency"];
-  const rows = dataLines;
+  return buildPdfStructure(dataLines);
+}
 
+function parseDateFromLine(line, datePatterns, monthMap) {
+  for (const pattern of datePatterns) {
+    const match = line.match(pattern);
+    if (!match) continue;
+
+    const dateStr = match[0];
+    let year;
+    let month;
+    let day;
+
+    // May 26, 2025
+    if (pattern === datePatterns[0]) {
+      month = monthMap[capitalize(match[1])] || monthMap[match[1]];
+      day = match[2].padStart(2, "0");
+      year = match[3];
+    }
+    // 26 May 2025
+    else if (pattern === datePatterns[1]) {
+      day = match[1].padStart(2, "0");
+      month = monthMap[capitalize(match[2])] || monthMap[match[2]];
+      year = match[3];
+    }
+    // 26/05/2025
+    else if (pattern === datePatterns[2]) {
+      day = match[1].padStart(2, "0");
+      month = match[2].padStart(2, "0");
+      year = match[3];
+    }
+    // 2025-05-26
+    else {
+      year = match[1];
+      month = match[2];
+      day = match[3];
+    }
+
+    if (!year || !month || !day) continue;
+    return {
+      dateStr,
+      normalizedDate: `${year}-${month}-${day}`,
+    };
+  }
+  return null;
+}
+
+function parseAmountFromLine(line, patterns) {
+  for (const pattern of patterns) {
+    const match = line.match(pattern);
+    if (!match) continue;
+
+    // Pattern 1: code devise (EUR -12.34 / -12.34 EUR)
+    if (pattern === patterns[0]) {
+      const currency = match[1] || match[4];
+      const amountText = match[2] || match[3];
+      const amountWithSign = normalizeSignedAmount(amountText, line);
+      if (isNaN(amountWithSign)) continue;
+      return { currency, amountWithSign };
+    }
+
+    // Pattern 2: symbole devise
+    const symbol = match[2] || match[6];
+    const amountText = match[3] || match[5];
+    const currency = symbolToCurrency(symbol);
+    const amountWithSign = normalizeSignedAmount(amountText, line);
+    if (isNaN(amountWithSign)) continue;
+    return { currency, amountWithSign };
+  }
+  return null;
+}
+
+function normalizeSignedAmount(amountText, fullLine) {
+  const normalized = String(amountText).replace(/ /g, "").replace(/,/g, ".");
+  let value = parseFloat(normalized.replace(/[^\d.-]/g, ""));
+  if (isNaN(value)) return NaN;
+
+  // Détection signe sur la ligne complète
+  if (/\(\s*[-+€$£]?\s*[\d.,]+\s*\)/.test(fullLine) || /\bdebit\b/i.test(fullLine) || /\bcard payment\b/i.test(fullLine)) {
+    value = -Math.abs(value);
+  }
+  if (/-\s*[€$£]?\s*[\d.,]+/.test(fullLine)) {
+    value = -Math.abs(value);
+  }
+
+  return value;
+}
+
+function symbolToCurrency(symbol) {
+  if (symbol === "€") return "EUR";
+  if (symbol === "$") return "USD";
+  if (symbol === "£") return "GBP";
+  return "EUR";
+}
+
+function capitalize(value) {
+  if (!value || typeof value !== "string") return value;
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function buildPdfStructure(rows) {
+  const headers = ["Date", "Description", "Amount", "Currency"];
   const suggestedMappings = [
     { sourceColumn: "Date", targetColumn: "Date", confidence: 1.0 },
     { sourceColumn: "Description", targetColumn: "Description", confidence: 1.0 },
     { sourceColumn: "Amount", targetColumn: "Amount", confidence: 1.0 },
     { sourceColumn: "Currency", targetColumn: "Currency", confidence: 1.0 },
   ];
-
   return {
     headers,
     rows,
@@ -289,6 +405,83 @@ async function analyzePDF(buffer) {
     suggestedMappings,
     totalRows: rows.length,
   };
+}
+
+function extractRevolutFrenchTransactions(lines) {
+  const monthMapFr = {
+    janvier: "01",
+    fevrier: "02",
+    février: "02",
+    mars: "03",
+    avril: "04",
+    mai: "05",
+    juin: "06",
+    juillet: "07",
+    aout: "08",
+    août: "08",
+    septembre: "09",
+    octobre: "10",
+    novembre: "11",
+    decembre: "12",
+    décembre: "12",
+  };
+
+  const rows = [];
+  let inTransactionsSection = false;
+
+  for (const line of lines) {
+    if (/^Transactions du compte/i.test(line) || /DateDescriptionArgent sortantArgent entrantSolde/i.test(line)) {
+      inTransactionsSection = true;
+      continue;
+    }
+    if (!inTransactionsSection) continue;
+    if (/^IBAN$/i.test(line) || /^BIC$/i.test(line)) {
+      inTransactionsSection = false;
+      continue;
+    }
+    if (/^À :|^Carte :|^Référence :|^De :/i.test(line)) {
+      continue;
+    }
+
+    // Exemple: "3 mars 2026Carrefour52,55€3095,30€"
+    const m = line.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})(.+)$/);
+    if (!m) continue;
+
+    const day = m[1].padStart(2, "0");
+    const monthRaw = m[2].toLowerCase();
+    const year = m[3];
+    const rest = (m[4] || "").trim();
+    const month = monthMapFr[monthRaw];
+    if (!month || !rest) continue;
+
+    const amountRegex = /(\d{1,3}(?:[ \u00A0]\d{3})*,\d{2})€/g;
+    const amountMatches = Array.from(rest.matchAll(amountRegex));
+    if (amountMatches.length < 2) continue;
+
+    const firstAmount = amountMatches[0];
+    const description = rest.slice(0, firstAmount.index).trim().replace(/\s+/g, " ");
+    if (!description) continue;
+
+    const isIncoming = /\bVirement de\b/i.test(description);
+    if (isIncoming) {
+      // Import "dépenses": on ignore les crédits entrants
+      continue;
+    }
+
+    const amountText = firstAmount[1].replace(/[ \u00A0]/g, "").replace(",", ".");
+    const amount = parseFloat(amountText);
+    if (!isFinite(amount) || amount <= 0) continue;
+
+    rows.push({
+      Date: `${year}-${month}-${day}`,
+      Description: description,
+      Amount: amount,
+      Currency: "EUR",
+      OriginalAmount: -amount,
+    });
+  }
+
+  return rows;
 }
 
 /**

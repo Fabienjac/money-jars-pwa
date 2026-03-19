@@ -173,11 +173,18 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Erreur API:", errorText);
+        let backendMessage = "";
+        try {
+          const parsedError = JSON.parse(errorText);
+          backendMessage = parsedError?.message ? ` ${parsedError.message}` : "";
+        } catch {
+          backendMessage = "";
+        }
         const is404 = response.status === 404;
         const hint = is404 && typeof window !== "undefined" && window.location.port === "5173"
           ? " Lancez « npm run dev » (Netlify Dev) et ouvrez http://localhost:8888 pour activer l'import de fichiers."
           : "";
-        throw new Error("Erreur lors de l'analyse du fichier." + hint);
+        throw new Error("Erreur lors de l'analyse du fichier." + backendMessage + hint);
       }
 
       const data = await response.json();
