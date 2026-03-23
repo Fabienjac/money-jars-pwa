@@ -160,6 +160,13 @@ async function analyzePDF(buffer) {
     return buildPdfStructure(revolutRows);
   }
 
+  // Tentative 1: format compact "DateDescriptionTransaction Amount" (ex: Redotpay)
+  const compactRows = extractCompactInlineTransactions(lines);
+  if (compactRows.length > 0) {
+    console.log(`✅ Compact inline parser: ${compactRows.length} transactions détectées`);
+    return buildPdfStructure(compactRows);
+  }
+
   // Patterns de détection (plus tolérants: Revolut, banques FR/EN, etc.)
   const monthMap = {
     Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
@@ -211,7 +218,7 @@ async function analyzePDF(buffer) {
       const candidateLine = searchLines[j];
       const candidateParsed = parseAmountFromLine(candidateLine, amountCandidatesPatterns);
       if (candidateParsed) {
-        amountMatch = candidateLine;
+        amountMatch = candidateParsed.matchedText;
         amountParsed = candidateParsed;
         lineOffset = j;
         break;
@@ -348,7 +355,7 @@ function parseAmountFromLine(line, patterns) {
       const amountText = match[2] || match[3];
       const amountWithSign = normalizeSignedAmount(amountText, line);
       if (isNaN(amountWithSign)) continue;
-      return { currency, amountWithSign };
+      return { currency, amountWithSign, matchedText: match[0] };
     }
 
     // Pattern 2: symbole devise
@@ -357,7 +364,7 @@ function parseAmountFromLine(line, patterns) {
     const currency = symbolToCurrency(symbol);
     const amountWithSign = normalizeSignedAmount(amountText, line);
     if (isNaN(amountWithSign)) continue;
-    return { currency, amountWithSign };
+    return { currency, amountWithSign, matchedText: match[0] };
   }
   return null;
 }
@@ -478,6 +485,49 @@ function extractRevolutFrenchTransactions(lines) {
       Amount: amount,
       Currency: "EUR",
       OriginalAmount: -amount,
+    });
+  }
+
+  return rows;
+}
+
+function extractCompactInlineTransactions(lines) {
+  const monthMapEn = {
+    Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+    Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
+  };
+  const rows = [];
+
+  for (const line of lines) {
+    // Exemple: "Mar 22, 2026AMZN Mktp FR-82.90 EUR"
+    const m = line.match(/^([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{4})(.+?)([-+]?\d{1,3}(?:[ ,]\d{3})*(?:\.\d{1,2})?)\s*([A-Z]{3})$/);
+    if (!m) continue;
+
+    const month = monthMapEn[m[1]];
+    const day = String(m[2]).padStart(2, "0");
+    const year = m[3];
+    const rawDescription = (m[4] || "").trim();
+    const amountText = m[5];
+    const currency = m[6];
+
+    if (!month || !rawDescription || !amountText || !currency) continue;
+
+    const amountWithSign = parseFloat(String(amountText).replace(/ /g, "").replace(/,/g, ""));
+    if (!isFinite(amountWithSign)) continue;
+
+    const amount = Math.abs(amountWithSign);
+    if (amount <= 0) continue;
+
+    // On nettoie la description; ce format peut coller des segments sans espace.
+    const description = rawDescription.replace(/\s+/g, " ").trim();
+    if (!description || /^DateDescriptionTransaction Amount$/i.test(description)) continue;
+
+    rows.push({
+      Date: `${year}-${month}-${day}`,
+      Description: description,
+      Amount: amount,
+      Currency: currency,
+      OriginalAmount: amountWithSign,
     });
   }
 
