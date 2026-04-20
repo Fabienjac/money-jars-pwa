@@ -5,9 +5,9 @@ import { appendSpending, searchSpendings, getAccounts } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
 import { tagsToString, tagsFromString } from "../tagsUtils";
-import { CURRENCIES } from "../currencies";
-import { loadCurrencyFavorites, loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
-import { getHistoricalExchangeRate } from "../exchangeRate";
+import { loadPreferredCurrencies } from "../currencyUtils";
+import { useExchangeRate } from "../hooks/useExchangeRate";
+import CurrencySelector from "./CurrencySelector";
 
 interface RecentTransaction {
   description: string;
@@ -61,8 +61,12 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [account, setAccount] = useState("Cash");
   const [description, setDescription] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [currency, setCurrency] = useState("EUR");
+  const [preferredCurrencies, setPreferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date);
   
   // Les 2 dernières dépenses (chargées depuis le Google Sheet)
   const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
@@ -124,57 +128,10 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   }, []);
 
   useEffect(() => {
-    const onFav = () => setCurrencyFavorites(loadCurrencyFavorites());
-    window.addEventListener("currencySettingsUpdated", onFav);
-    return () => window.removeEventListener("currencySettingsUpdated", onFav);
+    const reload = () => setPreferredCurrencies(loadPreferredCurrencies());
+    window.addEventListener("preferredCurrenciesUpdated", reload);
+    return () => window.removeEventListener("preferredCurrenciesUpdated", reload);
   }, []);
-
-  const currencyOptions = useMemo(() => {
-    const favSet = new Set(currencyFavorites);
-    const favs = CURRENCIES.filter((c) => favSet.has(c.code) && c.code !== "EUR").sort((a, b) =>
-      a.code.localeCompare(b.code)
-    );
-    const rest = CURRENCIES.filter((c) => !favSet.has(c.code) && c.code !== "EUR").sort((a, b) =>
-      a.code.localeCompare(b.code)
-    );
-    return { favs, rest };
-  }, [currencyFavorites]);
-
-  useEffect(() => {
-    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-    const raw = parseFloat(amount.replace(",", "."));
-    if (!amount || !isFinite(raw) || raw <= 0) {
-      setEurPreview(null);
-      setEurPreviewError(null);
-      setRateLoading(false);
-      return;
-    }
-    if (currency === "EUR") {
-      setEurPreview(raw);
-      setEurPreviewError(null);
-      setRateLoading(false);
-      return;
-    }
-
-    setRateLoading(true);
-    setEurPreviewError(null);
-    previewTimerRef.current = setTimeout(() => {
-      getHistoricalExchangeRate(currency, "EUR", date)
-        .then((rate) => {
-          setEurPreview(raw * rate);
-          setEurPreviewError(null);
-        })
-        .catch((e: Error) => {
-          setEurPreview(null);
-          setEurPreviewError(e.message || "Taux indisponible");
-        })
-        .finally(() => setRateLoading(false));
-    }, 350);
-
-    return () => {
-      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-    };
-  }, [amount, currency, date]);
 
   // ✅ Gérer le prefill depuis l'historique
   useEffect(() => {
@@ -236,36 +193,28 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       setMessage("❌ Montant requis");
       return;
     }
+    if (currency !== "EUR" && !rate) {
+      setMessage("❌ Taux de change indisponible");
+      return;
+    }
 
     try {
       setLoading(true);
-      
-      const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
-      let amountEur = raw;
-      if (currency !== "EUR") {
-        try {
-          const rate = await getHistoricalExchangeRate(currency, "EUR", date);
-          amountEur = parseFloat((raw * rate).toFixed(2));
-        } catch (e: unknown) {
-          const msg = e instanceof Error ? e.message : "Conversion impossible";
-          setMessage(`❌ ${msg}`);
-          setLoading(false);
-          return;
-        }
-      }
 
+      const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
+      const originalAmount = parseFloat(amount);
+      const eurAmount = currency === "EUR" ? originalAmount : originalAmount * rate!;
       const baseDesc = description || `Dépense ${jar}`;
-      const withFx =
-        currency === "EUR"
-          ? baseDesc
-          : `${baseDesc} (${formatEur(raw)} ${currency})`;
+      const finalDescription = currency !== "EUR"
+        ? `${baseDesc} (${originalAmount} ${currency})`
+        : baseDesc;
 
       await appendSpending({
         date,
         jar,
         account,
-        amount: amountEur,
-        description: withFx,
+        amount: Math.round(eurAmount * 100) / 100,
+        description: finalDescription,
         tags: tagsString,
       });
 
@@ -345,52 +294,34 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           </label>
         </div>
 
-        {/* Montant + devise */}
+        {/* Devise */}
+        <div className="quick-currency-section">
+          <CurrencySelector
+            value={currency}
+            preferred={preferredCurrencies}
+            onChange={setCurrency}
+          />
+        </div>
+
+        {/* Montant */}
         <div className="quick-amount-section">
           <p className="quick-amount-label">💰 Montant</p>
           <div className="quick-amount-display">
             {amount || "0"}
-            <span className="quick-amount-currency">{currency === "EUR" ? "€" : ` ${currency}`}</span>
+            <span className="quick-amount-currency">{currency}</span>
           </div>
-          <div className="quick-currency-row">
-            <label className="quick-currency-label" htmlFor="quick-currency-select">
-              Devise
-            </label>
-            <select
-              id="quick-currency-select"
-              className="quick-currency-select"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-            >
-              <option value="EUR">EUR — Euro</option>
-              {currencyOptions.favs.length > 0 && (
-                <optgroup label="Favoris (réglages)">
-                  {currencyOptions.favs.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.code} — {c.name}
-                    </option>
-                  ))}
-                </optgroup>
+          {currency !== "EUR" && amount && parseFloat(amount) > 0 && (
+            <div className="quick-amount-eur-estimate">
+              {rateLoading && <span className="quick-rate-loading">⏳ Taux…</span>}
+              {!rateLoading && rate && (
+                <span className="quick-rate-result">
+                  ≈ {(parseFloat(amount) * rate).toFixed(2)} €
+                </span>
               )}
-              <optgroup label="Toutes les devises">
-                {currencyOptions.rest.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
-          {currency !== "EUR" && (
-            <p className="quick-eur-preview" role="status">
-              {rateLoading && "⏳ Conversion…"}
-              {!rateLoading && eurPreview != null && !eurPreviewError && (
-                <>≈ {formatEur(eurPreview)} € enregistré(s) en euros</>
+              {!rateLoading && rateError && (
+                <span className="quick-rate-error">⚠️ {rateError}</span>
               )}
-              {!rateLoading && eurPreviewError && (
-                <span className="quick-eur-preview--err">{eurPreviewError}</span>
-              )}
-            </p>
+            </div>
           )}
         </div>
 

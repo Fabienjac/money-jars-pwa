@@ -3,10 +3,12 @@ import { appendSpending } from "../api";
 import { JarKey, SpendingRow } from "../types";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadAccounts } from "../accountsUtils";
-// import { UniversalImporter } from "./UniversalImporter";
 import UniversalImporter from "./UniversalImporter";
 import { TagSelector } from "./TagSelector";
 import { tagsToString, tagsFromString } from "../tagsUtils";
+import { loadPreferredCurrencies } from "../currencyUtils";
+import { useExchangeRate } from "../hooks/useExchangeRate";
+import CurrencySelector from "./CurrencySelector";
 
 interface SpendingFormProps {
   prefill?: any | null;
@@ -27,10 +29,14 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
 
+  const [currency, setCurrency] = useState("EUR");
+  const [preferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [showImporter, setShowImporter] = useState(false);
   const [accounts] = useState(loadAccounts());
+
+  const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date);
 
   // Auto-dismiss message
   useEffect(() => {
@@ -130,20 +136,27 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
       setMessage("Merci de remplir tous les champs obligatoires.");
       return;
     }
+    if (currency !== "EUR" && !rate) {
+      setMessage("Taux de change indisponible, réessayez.");
+      return;
+    }
 
     try {
       setLoading(true);
-      
-      // Convertir les tags en string pour Google Sheets
+
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
-      
+      const eurAmount = currency === "EUR" ? numAmount : Math.round(numAmount * rate! * 100) / 100;
+      const finalDescription = currency !== "EUR"
+        ? `${description} (${numAmount} ${currency})`
+        : description;
+
       await appendSpending({
         date,
         jar,
         account,
-        amount: numAmount,
-        description,
-        tags: tagsString,  // Envoi vers Google Sheets
+        amount: eurAmount,
+        description: finalDescription,
+        tags: tagsString,
       });
       
       setMessage("Dépense enregistrée ✅");
@@ -286,11 +299,23 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
           {!account && <p style={{ fontSize: "11px", color: "#FF3B30", marginTop: "4px" }}>⚠️ Sélectionnez un compte</p>}
         </div>
 
+        {/* Devise */}
+        <div>
+          <label style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", display: "block", marginBottom: "6px" }}>
+            💱 Devise
+          </label>
+          <CurrencySelector
+            value={currency}
+            preferred={preferredCurrencies}
+            onChange={setCurrency}
+          />
+        </div>
+
         {/* Montant + Jarre */}
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "10px" }}>
           <div>
             <label style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
-              💶 Montant
+              💶 Montant {currency !== "EUR" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>({currency})</span>}
             </label>
             <input
               type="number"
@@ -308,6 +333,19 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
                 fontWeight: "600",
               }}
             />
+            {currency !== "EUR" && amount && parseFloat(amount) > 0 && (
+              <div style={{ marginTop: "6px", fontSize: "13px", fontWeight: "600" }}>
+                {rateLoading && <span style={{ color: "var(--text-muted)" }}>⏳ Taux en cours…</span>}
+                {!rateLoading && rate && (
+                  <span style={{ color: "#34C759" }}>
+                    ≈ {(parseFloat(amount.replace(",", ".")) * rate).toFixed(2)} €
+                  </span>
+                )}
+                {!rateLoading && rateError && (
+                  <span style={{ color: "#FF9500" }}>⚠️ {rateError}</span>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <label style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>

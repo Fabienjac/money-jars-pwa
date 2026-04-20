@@ -44,6 +44,7 @@ export interface SearchSpendingResult {
   amount: number;
   description: string;
   tags?: string;
+  rowIndex?: number;
 }
 
 export interface SearchRevenueResult {
@@ -58,6 +59,7 @@ export interface SearchRevenueResult {
   destination: string;
   incomeType: string;
   tags?: string;
+  rowIndex?: number;
 }
 
 export interface Account {

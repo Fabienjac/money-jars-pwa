@@ -1,7 +1,6 @@
 // src/components/NewColumnMappingStep.tsx
-import React, { useMemo, useState } from "react";
-import { JarKey } from "../types";
-import { loadTags, Tag } from "../tagsUtils";
+import React, { useState } from "react";
+import { loadTags } from "../tagsUtils";
 
 interface MappingOption {
   type: "empty" | "column" | "fixed";
@@ -75,12 +74,43 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
     });
   }, [googleSheetColumns, defaultSource, detectedColumns]);
 
-  const [mappings, setMappings] = useState<ColumnMapping[]>(initialMappings);
-  /** Tags : saisie libre si la valeur n’est pas un id prédéfini */
-  const [tagsFixedManual, setTagsFixedManual] = useState(() => {
-    const tagM = initialMappings.find((m) => m.googleSheetColumn === "Tags")?.option;
-    return !!(tagM?.type === "fixed" && tagM.value && !tagIds.has(tagM.value));
+  // Fingerprint des colonnes détectées pour mémoriser le mapping
+  const columnFingerprint = [...detectedColumns].sort().join(",");
+  const MAPPING_CACHE_KEY = `mjars:colmapping:${transactionType}:${columnFingerprint}`;
+
+  const [mappings, setMappings] = useState<ColumnMapping[]>(() => {
+    try {
+      const saved = localStorage.getItem(MAPPING_CACHE_KEY);
+      if (saved) {
+        const savedMappings: ColumnMapping[] = JSON.parse(saved);
+        // Restaurer uniquement si toutes les colonnes GSheets correspondent
+        if (savedMappings.length === googleSheetColumns.length &&
+            savedMappings.every((m, i) => m.googleSheetColumn === googleSheetColumns[i])) {
+          return savedMappings.map((saved, i) => {
+            // Vérifier que les colonnes référencées existent encore dans le fichier
+            if (saved.option.type === "column" && saved.option.value &&
+                !detectedColumns.includes(saved.option.value)) {
+              return initialMappings[i];
+            }
+            return saved;
+          });
+        }
+      }
+    } catch {}
+    return initialMappings;
   });
+  const [showFixedValueInput, setShowFixedValueInput] = useState<string | null>(null);
+
+  const availableTags = loadTags();
+
+  const JAR_OPTIONS = [
+    { key: "NEC", label: "🏺 NEC — Nécessités" },
+    { key: "FFA", label: "🌱 FFA — Liberté Financière" },
+    { key: "LTSS", label: "🏦 LTSS — Épargne Long Terme" },
+    { key: "PLAY", label: "🎮 PLAY — Fun / Play" },
+    { key: "EDUC", label: "📚 EDUC — Éducation" },
+    { key: "GIFT", label: "🎁 GIFT — Don / Gift" },
+  ];
 
   const updateMapping = (googleColumn: string, option: MappingOption) => {
     setMappings((prev) =>
@@ -213,99 +243,151 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
                   )}
                 </div>
 
-                <div className="import-mapping-controls">
-                  <div className="import-mapping-radios">
-                    <label className="import-mapping-radio">
-                      <input
-                        type="radio"
-                        name={`mapping-${googleColumn}`}
-                        checked={mapping.type === "empty"}
-                        onChange={() => {
-                          updateMapping(googleColumn, { type: "empty" });
-                          if (googleColumn === "Tags") setTagsFixedManual(false);
-                        }}
-                      />
-                      <span>Vide</span>
-                    </label>
-                    <label className="import-mapping-radio">
-                      <input
-                        type="radio"
-                        name={`mapping-${googleColumn}`}
-                        checked={mapping.type === "column"}
-                        onChange={() => {
-                          updateMapping(googleColumn, {
-                            type: "column",
-                            value: detectedColumns[0] || "",
-                          });
-                          if (googleColumn === "Tags") setTagsFixedManual(false);
-                        }}
-                      />
-                      <span>Colonne</span>
-                    </label>
-                    <label className="import-mapping-radio">
-                      <input
-                        type="radio"
-                        name={`mapping-${googleColumn}`}
-                        checked={mapping.type === "fixed"}
-                        onChange={() => {
-                          if (googleColumn === "Jar") {
-                            updateMapping(googleColumn, { type: "fixed", value: "NEC" });
-                          } else if (googleColumn === "Tags") {
-                            updateMapping(googleColumn, { type: "fixed", value: "" });
-                            setTagsFixedManual(false);
-                          } else {
-                            updateMapping(googleColumn, { type: "fixed", value: "" });
-                          }
-                        }}
-                      />
-                      <span>Fixe</span>
-                    </label>
+                {/* Dropdown pour sélectionner la colonne */}
+                {mapping.type === "column" && (
+                  <select
+                    value={mapping.value || ""}
+                    onChange={(e) =>
+                      updateMapping(googleColumn, {
+                        type: "column",
+                        value: e.target.value,
+                      })
+                    }
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-color)",
+                      backgroundColor: "var(--bg-body)",
+                      color: "var(--text-main)",
+                      fontSize: "14px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="">-- Sélectionnez une colonne --</option>
+                    {detectedColumns.map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Input pour valeur fixe — adapté selon la colonne */}
+                {mapping.type === "fixed" && googleColumn === "Jar" && (
+                  <select
+                    value={mapping.value || ""}
+                    onChange={(e) =>
+                      updateMapping(googleColumn, { type: "fixed", value: e.target.value })
+                    }
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-color)",
+                      backgroundColor: "var(--bg-body)",
+                      color: "var(--text-main)",
+                      fontSize: "14px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="">-- Choisir une jarre --</option>
+                    {JAR_OPTIONS.map((j) => (
+                      <option key={j.key} value={j.key}>{j.label}</option>
+                    ))}
+                  </select>
+                )}
+
+                {mapping.type === "fixed" && googleColumn === "Tags" && (
+                  <div style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "8px",
+                    padding: "10px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border-color)",
+                    backgroundColor: "var(--bg-body)",
+                  }}>
+                    {availableTags.map((tag) => {
+                      const selectedIds = (mapping.value || "").split(",").filter(Boolean);
+                      const isSelected = selectedIds.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => {
+                            const next = isSelected
+                              ? selectedIds.filter((id) => id !== tag.id)
+                              : [...selectedIds, tag.id];
+                            updateMapping(googleColumn, { type: "fixed", value: next.join(",") });
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            padding: "6px 12px",
+                            borderRadius: "20px",
+                            border: `2px solid ${isSelected ? tag.color : "var(--border-color)"}`,
+                            backgroundColor: isSelected ? `${tag.color}22` : "var(--bg-card)",
+                            color: isSelected ? tag.color : "var(--text-muted)",
+                            fontSize: "13px",
+                            fontWeight: isSelected ? "700" : "500",
+                            cursor: "pointer",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <span>{tag.emoji}</span>
+                          <span>{tag.name}</span>
+                        </button>
+                      );
+                    })}
                   </div>
+                )}
 
-                  {mapping.type === "column" && (
-                    <select
-                      className="import-mapping-select"
-                      value={mapping.value || ""}
-                      onChange={(e) =>
-                        updateMapping(googleColumn, {
-                          type: "column",
-                          value: e.target.value,
-                        })
-                      }
-                    >
-                      <option value="">— Colonne —</option>
-                      {detectedColumns.map((col) => (
-                        <option key={col} value={col}>
-                          {col}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                {mapping.type === "fixed" && googleColumn !== "Jar" && googleColumn !== "Tags" && (
+                  <input
+                    type="text"
+                    value={mapping.value || ""}
+                    onChange={(e) =>
+                      updateMapping(googleColumn, { type: "fixed", value: e.target.value })
+                    }
+                    placeholder={
+                      googleColumn === "Source" ? "Ex: LGMCorp Fabien"
+                      : googleColumn === "Valeur" ? "Ex: USD"
+                      : googleColumn === "Type" ? "Ex: Passive Income"
+                      : "Entrez une valeur..."
+                    }
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      border: "1px solid var(--border-color)",
+                      backgroundColor: "var(--bg-body)",
+                      color: "var(--text-main)",
+                      fontSize: "14px",
+                    }}
+                  />
+                )}
 
-                  {mapping.type === "fixed" && renderFixedControl(googleColumn, mapping)}
-
-                  {mapping.type === "column" && mapping.value && (
-                    <div className="import-mapping-hint import-mapping-hint--muted">
-                      → <strong>{mapping.value}</strong>
-                    </div>
-                  )}
-                  {mapping.type === "fixed" &&
-                    mapping.value &&
-                    googleColumn !== "Tags" &&
-                    googleColumn !== "Jar" && (
-                      <div className="import-mapping-hint import-mapping-hint--ok">
-                        ✓ « {mapping.value} »
-                      </div>
-                    )}
-                  {mapping.type === "fixed" && googleColumn === "Tags" && !tagsFixedManual && mapping.value && (
-                    <div className="import-mapping-hint import-mapping-hint--ok">
-                      ✓ Tag : {tags.find((t) => t.id === mapping.value)?.name ?? mapping.value}
-                    </div>
-                  )}
-                  {mapping.type === "fixed" && googleColumn === "Tags" && tagsFixedManual && mapping.value && (
-                    <div className="import-mapping-hint import-mapping-hint--ok">✓ {mapping.value}</div>
-                  )}
-                </div>
+                {/* Affichage de la valeur actuelle */}
+                {mapping.type === "column" && mapping.value && (
+                  <div
+                    style={{
+                      fontSize: "13px",
+                      color: "var(--text-muted)",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    ✓ Mappé sur : <strong>{mapping.value}</strong>
+                  </div>
+                )}
+                {mapping.type === "fixed" && mapping.value && googleColumn !== "Tags" && (
+                  <div style={{ fontSize: "13px", color: "#34C759", fontWeight: "500" }}>
+                    ✓ Valeur fixe : <strong>"{mapping.value}"</strong>
+                  </div>
+                )}
+                {mapping.type === "fixed" && googleColumn === "Tags" && mapping.value && (
+                  <div style={{ fontSize: "13px", color: "#34C759", fontWeight: "500" }}>
+                    ✓ {mapping.value.split(",").filter(Boolean).length} tag(s) sélectionné(s)
+                  </div>
+                )}
               </div>
             );
           })}
@@ -327,21 +409,65 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
               const dateMapping = getMappingForColumn("Date");
               const montantMapping = getMappingForColumn("Montant");
 
-              const isDateMapped = dateMapping.type !== "empty" && dateMapping.value;
-              const isMontantMapped = montantMapping.type !== "empty" && montantMapping.value;
+      {/* Buttons */}
+      <div
+        style={{
+          marginTop: "32px",
+          display: "flex",
+          gap: "16px",
+          justifyContent: "flex-end",
+        }}
+      >
+        <button
+          onClick={onBack}
+          style={{
+            padding: "14px 32px",
+            borderRadius: "12px",
+            border: "1px solid var(--border-color)",
+            backgroundColor: "var(--bg-body)",
+            color: "var(--text-main)",
+            fontSize: "15px",
+            fontWeight: "600",
+            cursor: "pointer",
+          }}
+        >
+          ← Retour
+        </button>
+        <button
+          onClick={() => {
+            const dateMapping = getMappingForColumn("Date");
+            const montantMapping = getMappingForColumn("Montant");
 
               if (!isDateMapped || !isMontantMapped) {
                 alert("⚠️ Les champs Date et Montant sont obligatoires !");
                 return;
               }
 
-              onContinue(mappings);
-            }}
-          >
-            Continuer →
-          </button>
-        </div>
-      </footer>
+            if (!isDateMapped || !isMontantMapped) {
+              alert("⚠️ Les champs Date et Montant sont obligatoires !");
+              return;
+            }
+
+            // Mémoriser le mapping pour la prochaine fois
+            try { localStorage.setItem(MAPPING_CACHE_KEY, JSON.stringify(mappings)); } catch {}
+
+            onContinue(mappings);
+          }}
+          style={{
+            padding: "14px 32px",
+            borderRadius: "12px",
+            border: "none",
+            background: "linear-gradient(135deg, #007AFF 0%, #0051D5 100%)",
+            color: "white",
+            fontSize: "15px",
+            fontWeight: "700",
+            cursor: "pointer",
+            boxShadow: "0 4px 12px rgba(0, 122, 255, 0.3)",
+          }}
+        >
+          Continuer →
+        </button>
+      </div>
     </div>
   );
 };

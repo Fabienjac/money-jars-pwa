@@ -156,11 +156,11 @@ async function analyzePDF(buffer) {
   // Tentative 0a: format Revolut "Relevé personnalisé" (nouveau format FR — avr./janv. etc.)
   const revolutPersonnaliseRows = extractRevolutPersonnaliseTransactions(lines);
   if (revolutPersonnaliseRows.length > 0) {
-    console.log(`✅ Revolut Relevé personnalisé: ${revolutPersonnaliseRows.length} transactions`);
+    console.log(`✅ Revolut Relevé personnalisé parser: ${revolutPersonnaliseRows.length} transactions`);
     return buildPdfStructure(revolutPersonnaliseRows);
   }
 
-  // Tentative 0b: format Revolut FR (relevé "DateDescriptionArgent sortantArgent entrantSolde")
+  // Tentative 0b: format Revolut FR (ancien relevé "DateDescriptionArgent sortantArgent entrantSolde")
   const revolutRows = extractRevolutFrenchTransactions(lines);
   if (revolutRows.length > 0) {
     console.log(`✅ Revolut FR parser: ${revolutRows.length} transactions détectées`);
@@ -301,7 +301,7 @@ async function analyzePDF(buffer) {
   console.log(`📊 PDF: ${dataLines.length} transactions détectées`);
 
   if (dataLines.length === 0) {
-    throw new Error("Aucune transaction détectée dans le PDF. Le format pourrait ne pas être supporté.");
+    throw new Error("DEBUG_LINES:" + JSON.stringify(lines.slice(0, 80)));
   }
 
   return buildPdfStructure(dataLines);
@@ -444,7 +444,7 @@ function extractRevolutPersonnaliseTransactions(lines) {
 
   const rows = [];
   let inSection = false;
-  const sectionLines = [];
+  let sectionLines = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -468,13 +468,13 @@ function extractRevolutPersonnaliseTransactions(lines) {
     const year = dateMatch[3];
     const monthRaw = dateMatch[2].toLowerCase();
     const month = FR_MONTHS[monthRaw] || FR_MONTHS[monthRaw.replace(/\.$/, '')] || FR_MONTHS[monthRaw + '.'];
-    if (!month) { console.log(`  ⛔ unknown month: "${monthRaw}"`); continue; }
+    if (!month) continue;
 
-    console.log(`  ✅ date: ${day}/${month}/${year}`);
+    console.log(`  ✅ date match: day=${dateMatch[1]} month=${dateMatch[2]} year=${dateMatch[3]}`);
     const rest = line.slice(dateMatch[0].length).trim();
     console.log(`  rest: "${rest}"`);
     const negAmountMatch = rest.match(/(-\s*\d[\d\s]*[.,]\d{2})\s*€/);
-    if (!negAmountMatch) { console.log(`  ⛔ no amount match`); continue; }
+    if (!negAmountMatch) { console.log(`  ⛔ no amount match in rest`); continue; }
 
     const amount = parseFloat(negAmountMatch[1].replace(/\s/g, '').replace(',', '.'));
     if (isNaN(amount) || amount >= 0) continue;
@@ -492,7 +492,7 @@ function extractRevolutPersonnaliseTransactions(lines) {
       OriginalAmount: amount,
     });
   }
-  console.log(`🔍 Revolut Personnalisé: ${rows.length} rows. First 30 section lines:`, sectionLines.slice(0, 30));
+  console.log(`🔍 Revolut Personnalisé: ${rows.length} rows found. First 30 section lines:`, sectionLines.slice(0, 30));
   return rows;
 }
 
