@@ -164,8 +164,13 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
       console.log("🔍 Analyse de la structure du fichier...");
 
-      // ✅ UTILISER analyzeFile au lieu de parseFile
-      const response = await fetch("/.netlify/functions/analyzeFile", {
+      // En dev (Vite seul), handler Node local — pas besoin de Netlify sur :8888
+      const analyzeUrl =
+        import.meta.env.DEV
+          ? "/__vite-local/analyzeFile"
+          : "/.netlify/functions/analyzeFile";
+
+      const response = await fetch(analyzeUrl, {
         method: "POST",
         body: formData,
       });
@@ -181,9 +186,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           backendMessage = "";
         }
         const is404 = response.status === 404;
-        const hint = is404 && typeof window !== "undefined" && window.location.port === "5173"
-          ? " Lancez « npm run dev » (Netlify Dev) et ouvrez http://localhost:8888 pour activer l'import de fichiers."
-          : "";
+        const hint =
+          is404 && typeof window !== "undefined" && window.location.port === "8888"
+            ? " Vérifiez que les fonctions Netlify sont déployées ou utilisez le build de préprod."
+            : "";
         throw new Error("Erreur lors de l'analyse du fichier." + backendMessage + hint);
       }
 
@@ -805,16 +811,22 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   // ÉTAPE 3 : Mapping des colonnes
   if (step === "mapping") {
     return (
-      <div style={{
+      <div
+        className="import-mapping-step-wrapper"
+        style={{
         backgroundColor: "var(--bg-card)",
         borderRadius: "20px",
         padding: 0,
         boxShadow: "var(--shadow-md)",
-        height: "80vh",
+        height: "min(85vh, 900px)",
+        maxHeight: "85vh",
+        minHeight: 0,
         display: "flex",
         flexDirection: "column",
         position: "relative",
-      }}>
+        overflow: "hidden",
+      }}
+      >
         {loading && (
           <div className="import-mapping-loading-overlay">
             <div className="import-mapping-spinner" />

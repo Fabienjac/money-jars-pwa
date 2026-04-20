@@ -3,13 +3,16 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# Ne pas mettre `publish = "dist"` ici : sinon Netlify Dev peut servir un build statique en parallèle
+# du proxy Vite et la redirection SPA casse le chargement de /src/*.tsx (MIME vide ou HTML à la place du JS).
 [dev]
+  framework = "vite"
   command = "vite"
   port = 8888
   targetPort = 5173
-  publish = "dist"
   autoLaunch = true
 
+# SPA en production uniquement via ce fichier (évite public/_redirects lu par Netlify Dev).
 [[redirects]]
   from = "/*"
   to = "/index.html"

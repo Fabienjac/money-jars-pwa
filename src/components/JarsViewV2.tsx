@@ -1,7 +1,7 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo } from "react";
-import { fetchTotals, fetchAnalytics, searchSpendings, AnalyticsResponse } from "../api";
+import { fetchTotals, searchSpendings } from "../api";
 import { TotalsResponse, JarKey, SearchSpendingResult } from "../types";
 
 const JAR_LABELS: Record<JarKey, string> = {
@@ -82,32 +82,15 @@ interface JarsViewV2Props {
   onOpenRevenue: () => void;
 }
 
-/** Dépenses totales depuis le 1er janv. de l'année en cours et nombre de jours écoulés */
-function getYtdSpendingsAndDays(analytics: AnalyticsResponse | null): { ytdSpendings: number; daysElapsed: number } {
+/** Nombre de jours écoulés depuis le 1er janvier (aujourd'hui inclus). */
+function getDaysElapsedSinceStartOfYear(): number {
   const now = new Date();
-  const year = now.getFullYear();
-  const currentMonthStr = `${year}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const startOfYear = new Date(year, 0, 1);
-  const daysElapsed = Math.max(1, Math.floor((now.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000)) + 1);
-
-  if (!analytics?.monthlyData?.length) {
-    return { ytdSpendings: 0, daysElapsed };
-  }
-
-  const yearMonths = analytics.monthlyData.filter(
-    (d) => d.month >= `${year}-01` && d.month <= currentMonthStr
-  );
-  let ytdSpendings = yearMonths.reduce((s, d) => s + (d.spendings || 0), 0);
-  const hasCurrentMonth = yearMonths.some((d) => d.month === currentMonthStr);
-  if (!hasCurrentMonth && analytics.trends?.spendings?.current != null) {
-    ytdSpendings += analytics.trends.spendings.current;
-  }
-  return { ytdSpendings, daysElapsed };
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  return Math.max(1, Math.floor((now.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000)) + 1);
 }
 
 const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }) => {
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
-  const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
   const [spendingRows, setSpendingRows] = useState<SearchSpendingResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,13 +101,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     try {
       setLoading(true);
       setError(null);
-      const [totalsData, analyticsData, spendingsData] = await Promise.all([
+      const [totalsData, spendingsData] = await Promise.all([
         fetchTotals(),
-        fetchAnalytics().catch(() => null),
         searchSpendings("", 1000).catch(() => ({ rows: [] as SearchSpendingResult[] })),
       ]);
       setTotals(totalsData);
-      setAnalytics(analyticsData ?? null);
       setSpendingRows(spendingsData?.rows || []);
     } catch (err: any) {
       console.error("Erreur chargement totals:", err);
@@ -149,11 +130,13 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   const totalBalance = totalRevenues - totalSpendings;
   const jarKeys = totals ? (Object.keys(totals.jars) as JarKey[]) : [];
 
+  /** Même base que « Dépenses » (somme des jarres) / jours depuis le 1er janv. — pas l’API analytics. */
   const averageDailySpending = useMemo(() => {
-    const { ytdSpendings, daysElapsed } = getYtdSpendingsAndDays(analytics);
-    if (daysElapsed <= 0) return null;
-    return ytdSpendings / daysElapsed;
-  }, [analytics]);
+    if (!totals) return null;
+    const days = getDaysElapsedSinceStartOfYear();
+    if (days <= 0) return null;
+    return totalSpendings / days;
+  }, [totals, totalSpendings]);
 
   const rolling30dAverageSpending = useMemo(() => {
     if (!spendingRows.length) return null;
@@ -303,7 +286,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                         </div>
                         <p className="jar-label">{JAR_LABELS[key]}</p>
                         <p className="jar-amount">
-                          {formatMoney(jar.net)}
+                          <span className="jar-amount-figures">{formatMoney(jar.net)}</span>
                           <span className="jar-currency">€</span>
                         </p>
                         <div className="jar-progress-wrapper">

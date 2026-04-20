@@ -1,10 +1,13 @@
 // src/components/QuickSpendingForm.tsx
 // FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { appendSpending, searchSpendings, getAccounts } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
 import { tagsToString, tagsFromString } from "../tagsUtils";
+import { CURRENCIES } from "../currencies";
+import { loadCurrencyFavorites, loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
+import { getHistoricalExchangeRate } from "../exchangeRate";
 
 interface RecentTransaction {
   description: string;
@@ -35,6 +38,10 @@ const TAG_PRESETS = [
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+function formatEur(value: number): string {
+  return value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 interface QuickSpendingFormProps {
   onClose: () => void;
   onSuccess?: () => void;
@@ -44,6 +51,12 @@ interface QuickSpendingFormProps {
 const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess, prefill }) => {
   const [date, setDate] = useState<string>(todayISO());
   const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState<string>(() => loadLastExpenseCurrency());
+  const [currencyFavorites, setCurrencyFavorites] = useState<string[]>(() => loadCurrencyFavorites());
+  const [eurPreview, setEurPreview] = useState<number | null>(null);
+  const [eurPreviewError, setEurPreviewError] = useState<string | null>(null);
+  const [rateLoading, setRateLoading] = useState(false);
+  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [jar, setJar] = useState<JarKey>("NEC");
   const [account, setAccount] = useState("Cash");
   const [description, setDescription] = useState("");
@@ -110,6 +123,59 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     return () => window.removeEventListener("spendingAccountsUpdated", reload);
   }, []);
 
+  useEffect(() => {
+    const onFav = () => setCurrencyFavorites(loadCurrencyFavorites());
+    window.addEventListener("currencySettingsUpdated", onFav);
+    return () => window.removeEventListener("currencySettingsUpdated", onFav);
+  }, []);
+
+  const currencyOptions = useMemo(() => {
+    const favSet = new Set(currencyFavorites);
+    const favs = CURRENCIES.filter((c) => favSet.has(c.code) && c.code !== "EUR").sort((a, b) =>
+      a.code.localeCompare(b.code)
+    );
+    const rest = CURRENCIES.filter((c) => !favSet.has(c.code) && c.code !== "EUR").sort((a, b) =>
+      a.code.localeCompare(b.code)
+    );
+    return { favs, rest };
+  }, [currencyFavorites]);
+
+  useEffect(() => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    const raw = parseFloat(amount.replace(",", "."));
+    if (!amount || !isFinite(raw) || raw <= 0) {
+      setEurPreview(null);
+      setEurPreviewError(null);
+      setRateLoading(false);
+      return;
+    }
+    if (currency === "EUR") {
+      setEurPreview(raw);
+      setEurPreviewError(null);
+      setRateLoading(false);
+      return;
+    }
+
+    setRateLoading(true);
+    setEurPreviewError(null);
+    previewTimerRef.current = setTimeout(() => {
+      getHistoricalExchangeRate(currency, "EUR", date)
+        .then((rate) => {
+          setEurPreview(raw * rate);
+          setEurPreviewError(null);
+        })
+        .catch((e: Error) => {
+          setEurPreview(null);
+          setEurPreviewError(e.message || "Taux indisponible");
+        })
+        .finally(() => setRateLoading(false));
+    }, 350);
+
+    return () => {
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    };
+  }, [amount, currency, date]);
+
   // ✅ Gérer le prefill depuis l'historique
   useEffect(() => {
     if (prefill) {
@@ -165,7 +231,8 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   };
 
   const handleSubmit = async () => {
-    if (!amount || parseFloat(amount) <= 0) {
+    const raw = parseFloat(amount.replace(",", "."));
+    if (!amount || !isFinite(raw) || raw <= 0) {
       setMessage("❌ Montant requis");
       return;
     }
@@ -174,15 +241,35 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       setLoading(true);
       
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
-      
+      let amountEur = raw;
+      if (currency !== "EUR") {
+        try {
+          const rate = await getHistoricalExchangeRate(currency, "EUR", date);
+          amountEur = parseFloat((raw * rate).toFixed(2));
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : "Conversion impossible";
+          setMessage(`❌ ${msg}`);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const baseDesc = description || `Dépense ${jar}`;
+      const withFx =
+        currency === "EUR"
+          ? baseDesc
+          : `${baseDesc} (${formatEur(raw)} ${currency})`;
+
       await appendSpending({
-        date, // ✅ Utiliser la date du state
+        date,
         jar,
         account,
-        amount: parseFloat(amount),
-        description: description || `Dépense ${jar}`,
+        amount: amountEur,
+        description: withFx,
         tags: tagsString,
       });
+
+      saveLastExpenseCurrency(currency);
       
       setMessage("✅ Enregistré !");
       
@@ -258,13 +345,53 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           </label>
         </div>
 
-        {/* Montant */}
+        {/* Montant + devise */}
         <div className="quick-amount-section">
           <p className="quick-amount-label">💰 Montant</p>
           <div className="quick-amount-display">
             {amount || "0"}
-            <span className="quick-amount-currency">€</span>
+            <span className="quick-amount-currency">{currency === "EUR" ? "€" : ` ${currency}`}</span>
           </div>
+          <div className="quick-currency-row">
+            <label className="quick-currency-label" htmlFor="quick-currency-select">
+              Devise
+            </label>
+            <select
+              id="quick-currency-select"
+              className="quick-currency-select"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+            >
+              <option value="EUR">EUR — Euro</option>
+              {currencyOptions.favs.length > 0 && (
+                <optgroup label="Favoris (réglages)">
+                  {currencyOptions.favs.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.code} — {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Toutes les devises">
+                {currencyOptions.rest.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </div>
+          {currency !== "EUR" && (
+            <p className="quick-eur-preview" role="status">
+              {rateLoading && "⏳ Conversion…"}
+              {!rateLoading && eurPreview != null && !eurPreviewError && (
+                <>≈ {formatEur(eurPreview)} € enregistré(s) en euros</>
+              )}
+              {!rateLoading && eurPreviewError && (
+                <span className="quick-eur-preview--err">{eurPreviewError}</span>
+              )}
+            </p>
+          )}
         </div>
 
         {/* Numpad + Jars */}
