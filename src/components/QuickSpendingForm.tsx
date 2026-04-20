@@ -52,16 +52,11 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [date, setDate] = useState<string>(todayISO());
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<string>(() => loadLastExpenseCurrency());
-  const [currencyFavorites, setCurrencyFavorites] = useState<string[]>(() => loadCurrencyFavorites());
-  const [eurPreview, setEurPreview] = useState<number | null>(null);
-  const [eurPreviewError, setEurPreviewError] = useState<string | null>(null);
-  const [rateLoading, setRateLoading] = useState(false);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [jar, setJar] = useState<JarKey>("NEC");
   const [account, setAccount] = useState("Cash");
   const [description, setDescription] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [currency, setCurrency] = useState("EUR");
   const [preferredCurrencies, setPreferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
