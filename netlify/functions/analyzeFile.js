@@ -498,18 +498,21 @@ function extractRevolutPersonnaliseTransactions(lines) {
 
 function extractRevolutFrenchTransactions(lines) {
   const monthMapFr = {
-    janvier: "01", janv: "01", "janv.": "01",
-    fevrier: "02", février: "02", févr: "02", "févr.": "02",
+    janvier: "01",
+    fevrier: "02",
+    février: "02",
     mars: "03",
-    avril: "04", avr: "04", "avr.": "04",
+    avril: "04",
     mai: "05",
     juin: "06",
-    juillet: "07", juil: "07", "juil.": "07",
-    aout: "08", août: "08",
-    septembre: "09", sept: "09", "sept.": "09",
-    octobre: "10", oct: "10", "oct.": "10",
-    novembre: "11", nov: "11", "nov.": "11",
-    decembre: "12", décembre: "12", déc: "12", "déc.": "12", dec: "12", "dec.": "12",
+    juillet: "07",
+    aout: "08",
+    août: "08",
+    septembre: "09",
+    octobre: "10",
+    novembre: "11",
+    decembre: "12",
+    décembre: "12",
   };
 
   const rows = [];
@@ -529,8 +532,8 @@ function extractRevolutFrenchTransactions(lines) {
       continue;
     }
 
-    // Exemple: "3 mars 2026Carrefour52,55€3095,30€" ou "5 avr. 2026Apple0,99€1857,15€"
-    const m = line.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+\.?)\s+(\d{4})(.+)$/);
+    // Exemple: "3 mars 2026Carrefour52,55€3095,30€"
+    const m = line.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})(.+)$/);
     if (!m) continue;
 
     const day = m[1].padStart(2, "0");

@@ -84,8 +84,8 @@ interface JarsViewV2Props {
   onOpenRevenue: () => void;
 }
 
-/** Nombre de jours écoulés depuis le 1er janvier (aujourd'hui inclus). */
-function getDaysElapsedSinceStartOfYear(): number {
+/** Dépenses totales depuis le 1er janv. de l'année en cours et nombre de jours écoulés */
+function getYtdSpendingsAndDays(analytics: AnalyticsResponse | null): { ytdSpendings: number; daysElapsed: number } {
   const now = new Date();
   const year = now.getFullYear();
   const currentMonthStr = `${year}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -149,13 +149,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   const totalBalance = totalRevenues - totalSpendings;
   const jarKeys = totals ? (Object.keys(totals.jars) as JarKey[]) : [];
 
-  /** Même base que « Dépenses » (somme des jarres) / jours depuis le 1er janv. — pas l’API analytics. */
   const averageDailySpending = useMemo(() => {
-    if (!totals) return null;
-    const days = getDaysElapsedSinceStartOfYear();
-    if (days <= 0) return null;
-    return totalSpendings / days;
-  }, [totals, totalSpendings]);
+    const { ytdSpendings, daysElapsed } = getYtdSpendingsAndDays(analytics);
+    if (daysElapsed <= 0) return null;
+    return ytdSpendings / daysElapsed;
+  }, [analytics]);
 
   const rolling30dAverageSpending = useMemo(() => {
     if (!analytics?.trends) return null;

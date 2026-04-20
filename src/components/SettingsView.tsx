@@ -101,7 +101,6 @@ const SettingsView: React.FC = () => {
     }).finally(() => { if (!cancelled) setAccountsLoading(false); });
     return () => { cancelled = true; };
   }, []);
-  const [currencyFavorites, setCurrencyFavorites] = useState<string[]>(() => loadCurrencyFavorites());
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showRevenueAccountForm, setShowRevenueAccountForm] = useState(false);
@@ -480,61 +479,6 @@ const SettingsView: React.FC = () => {
             🔄 Réinitialiser
           </button>
         </div>
-      </section>
-
-      {/* Section: Devises (saisie dépense rapide) */}
-      <section className="settings-section">
-        <h3 className="settings-section-title">💱 Devises (dépense rapide)</h3>
-        <p className="settings-currency-hint">
-          Jusqu&apos;à 8 devises en favoris : elles apparaissent en tête du menu « Devise » dans Nouvelle dépense.
-        </p>
-        <div className="currency-favorites-chips">
-          {currencyFavorites.map((code) => (
-            <span key={code} className="currency-fav-chip">
-              {code}
-              <button
-                type="button"
-                className="currency-fav-remove"
-                onClick={() => {
-                  const next = currencyFavorites.filter((c) => c !== code);
-                  setCurrencyFavorites(next);
-                  saveCurrencyFavorites(next);
-                  setMessage("✅ Favoris mis à jour");
-                  setTimeout(() => setMessage(null), 2000);
-                }}
-                aria-label={`Retirer ${code}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-        {currencyFavorites.length < 8 && (
-          <div className="form-group-inline settings-currency-add">
-            <label className="form-label-inline">Ajouter</label>
-            <select
-              className="form-select-inline"
-              value=""
-              onChange={(e) => {
-                const code = e.target.value;
-                e.target.value = "";
-                if (!code || currencyFavorites.includes(code)) return;
-                const next = [...currencyFavorites, code];
-                setCurrencyFavorites(next);
-                saveCurrencyFavorites(next);
-                setMessage("✅ Devise ajoutée aux favoris");
-                setTimeout(() => setMessage(null), 2000);
-              }}
-            >
-              <option value="">Choisir une devise…</option>
-              {CURRENCIES.filter((c) => !currencyFavorites.includes(c.code)).map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </section>
 
       {/* Section: Règles automatiques */}
