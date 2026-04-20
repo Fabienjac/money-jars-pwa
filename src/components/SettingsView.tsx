@@ -6,6 +6,7 @@ import { loadAccounts, saveAccounts } from "../accountsUtils";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import { loadTags } from "../tagsUtils";
 import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi } from "../api";
+import { ALL_CURRENCIES, loadPreferredCurrencies, savePreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: "Nécessités",
@@ -121,6 +122,36 @@ const SettingsView: React.FC = () => {
   const [newRevenueAccountName, setNewRevenueAccountName] = useState("");
   const [newRevenueAccountIcon, setNewRevenueAccountIcon] = useState("💰");
   const [newRevenueAccountType, setNewRevenueAccountType] = useState("");
+
+  // Devises préférées
+  const [preferredCurrencies, setPreferredCurrenciesState] = useState<string[]>(loadPreferredCurrencies);
+  const [currencySearch, setCurrencySearch] = useState("");
+
+  const handleAddCurrency = (code: string) => {
+    if (preferredCurrencies.includes(code)) return;
+    const updated = [...preferredCurrencies, code];
+    setPreferredCurrenciesState(updated);
+    savePreferredCurrencies(updated);
+    window.dispatchEvent(new Event("preferredCurrenciesUpdated"));
+    setCurrencySearch("");
+  };
+
+  const handleRemoveCurrency = (code: string) => {
+    if (code === "EUR") return;
+    const updated = preferredCurrencies.filter((c) => c !== code);
+    setPreferredCurrenciesState(updated);
+    savePreferredCurrencies(updated);
+    window.dispatchEvent(new Event("preferredCurrenciesUpdated"));
+  };
+
+  const currencySuggestions = currencySearch.trim()
+    ? ALL_CURRENCIES.filter(
+        (c) =>
+          !preferredCurrencies.includes(c.code) &&
+          (c.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
+           c.label.toLowerCase().includes(currencySearch.toLowerCase()))
+      ).slice(0, 6)
+    : [];
 
   // Édition inline des comptes de dépenses
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
@@ -829,6 +860,63 @@ const SettingsView: React.FC = () => {
             </button>
           </div>
         )}
+      </section>
+
+      {/* ── Devises préférées ── */}
+      <section className="settings-section">
+        <h3 className="settings-section-title">💱 Devises préférées</h3>
+        <p className="settings-section-desc">
+          Ces devises apparaissent en accès rapide dans le formulaire de dépense.
+          EUR est toujours présent.
+        </p>
+
+        <div className="settings-currency-list">
+          {preferredCurrencies.map((code) => {
+            const info = getCurrencyInfo(code);
+            return (
+              <div key={code} className="settings-currency-item">
+                <span className="settings-currency-flag">{info.flag}</span>
+                <span className="settings-currency-code">{code}</span>
+                <span className="settings-currency-label">{info.label}</span>
+                {code !== "EUR" && (
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-danger settings-btn-small"
+                    onClick={() => handleRemoveCurrency(code)}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="settings-currency-add">
+          <input
+            type="text"
+            className="settings-input"
+            placeholder="Ajouter une devise (ex: CHF, BTC, THB…)"
+            value={currencySearch}
+            onChange={(e) => setCurrencySearch(e.target.value)}
+          />
+          {currencySuggestions.length > 0 && (
+            <div className="settings-currency-suggestions">
+              {currencySuggestions.map((c) => (
+                <button
+                  key={c.code}
+                  type="button"
+                  className="settings-currency-suggestion"
+                  onClick={() => handleAddCurrency(c.code)}
+                >
+                  <span>{c.flag}</span>
+                  <strong>{c.code}</strong>
+                  <span>{c.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     </main>
   );

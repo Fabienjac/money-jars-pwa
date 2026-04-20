@@ -1,8 +1,8 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo } from "react";
-import { fetchTotals, fetchAnalytics, searchSpendings, AnalyticsResponse } from "../api";
-import { TotalsResponse, JarKey, SearchSpendingResult } from "../types";
+import { fetchTotals, fetchAnalytics, AnalyticsResponse } from "../api";
+import { TotalsResponse, JarKey } from "../types";
 
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: "Nécessités",
@@ -61,20 +61,22 @@ function loadJarSplitFromSettings(): Record<JarKey, number> | null {
   }
 }
 
-function parseDateFlexible(dateStr: string): Date | null {
-  if (!dateStr) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    const d = new Date(`${dateStr}T00:00:00`);
-    return isNaN(d.getTime()) ? null : d;
+
+const MONTH_NAMES: Record<string, string> = {
+  Jan: "01", Feb: "02", Mar: "03", Apr: "04",
+  May: "05", Jun: "06", Jul: "07", Aug: "08",
+  Sep: "09", Oct: "10", Nov: "11", Dec: "12",
+};
+
+/** Convertit "Jan 2026" → "2026-01", laisse "2026-01" intact */
+function normalizeMonth(m: string): string | null {
+  const human = m.match(/^(\w{3})\s+(\d{4})$/);
+  if (human) {
+    const num = MONTH_NAMES[human[1]];
+    return num ? `${human[2]}-${num}` : null;
   }
-  const frMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (frMatch) {
-    const [, day, month, year] = frMatch;
-    const d = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00`);
-    return isNaN(d.getTime()) ? null : d;
-  }
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
+  if (/^\d{4}-\d{2}$/.test(m)) return m;
+  return null;
 }
 
 interface JarsViewV2Props {
@@ -94,11 +96,12 @@ function getYtdSpendingsAndDays(analytics: AnalyticsResponse | null): { ytdSpend
     return { ytdSpendings: 0, daysElapsed };
   }
 
-  const yearMonths = analytics.monthlyData.filter(
-    (d) => d.month >= `${year}-01` && d.month <= currentMonthStr
-  );
+  const yearMonths = analytics.monthlyData.filter((d) => {
+    const n = normalizeMonth(d.month);
+    return n !== null && n >= `${year}-01` && n <= currentMonthStr;
+  });
   let ytdSpendings = yearMonths.reduce((s, d) => s + (d.spendings || 0), 0);
-  const hasCurrentMonth = yearMonths.some((d) => d.month === currentMonthStr);
+  const hasCurrentMonth = yearMonths.some((d) => normalizeMonth(d.month) === currentMonthStr);
   if (!hasCurrentMonth && analytics.trends?.spendings?.current != null) {
     ytdSpendings += analytics.trends.spendings.current;
   }
@@ -108,7 +111,6 @@ function getYtdSpendingsAndDays(analytics: AnalyticsResponse | null): { ytdSpend
 const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }) => {
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
-  const [spendingRows, setSpendingRows] = useState<SearchSpendingResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(null);
@@ -118,14 +120,12 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     try {
       setLoading(true);
       setError(null);
-      const [totalsData, analyticsData, spendingsData] = await Promise.all([
+      const [totalsData, analyticsData] = await Promise.all([
         fetchTotals(),
         fetchAnalytics().catch(() => null),
-        searchSpendings("", 1000).catch(() => ({ rows: [] as SearchSpendingResult[] })),
       ]);
       setTotals(totalsData);
       setAnalytics(analyticsData ?? null);
-      setSpendingRows(spendingsData?.rows || []);
     } catch (err: any) {
       console.error("Erreur chargement totals:", err);
       setError(err?.message || "Erreur lors du chargement des totaux.");
@@ -156,22 +156,23 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   }, [analytics]);
 
   const rolling30dAverageSpending = useMemo(() => {
-    if (!spendingRows.length) return null;
+    if (!analytics?.trends) return null;
     const now = new Date();
-    now.setHours(23, 59, 59, 999);
-    const start = new Date(now);
-    start.setDate(start.getDate() - 29);
-    start.setHours(0, 0, 0, 0);
+    const dayOfMonth = now.getDate();
+    const currentSpending = analytics.trends.spendings.current ?? 0;
+    const prevSpending = analytics.trends.spendings.previous ?? 0;
+    const daysFromPrev = 30 - dayOfMonth;
 
-    const spendings30d = spendingRows.reduce((sum, row) => {
-      const d = parseDateFlexible(row.date);
-      if (!d) return sum;
-      if (d < start || d > now) return sum;
-      return sum + Math.abs(Number(row.amount) || 0);
-    }, 0);
+    if (daysFromPrev <= 0) return currentSpending / 30;
 
-    return spendings30d / 30;
-  }, [spendingRows]);
+    const prevMonthNorm = normalizeMonth(analytics.trends.previousMonth);
+    if (!prevMonthNorm) return currentSpending / 30;
+    const [prevYear, prevMonth] = prevMonthNorm.split("-").map(Number);
+    const daysInPrevMonth = new Date(prevYear, prevMonth, 0).getDate();
+
+    const rolling30d = currentSpending + prevSpending * (daysFromPrev / daysInPrevMonth);
+    return rolling30d / 30;
+  }, [analytics]);
 
   return (
     <main className="jars-v2-page">
@@ -287,29 +288,54 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                     const allocated = jar.revenues || 0;
                     const spent = jar.spendings || 0;
                     const progressPercent = allocated > 0 ? (spent / allocated) * 100 : 0;
+                    const isOverspent = progressPercent > 100;
                     return (
-                      <article key={key} className="jar-card-v2">
+                      <article
+                        key={key}
+                        className="jar-card-v2"
+                        style={isOverspent ? { borderColor: "#FF3B30", borderWidth: 2 } : undefined}
+                      >
                         <div className="jar-card-header">
                           <div className="jar-card-title">
                             <span className="jar-emoji">{JAR_EMOJIS[key]}</span>
                             <span className="jar-code">{key}</span>
                           </div>
-                          <span
-                            className="jar-percent"
-                            style={{ color: JAR_COLORS[key] }}
-                          >
-                            {(effectiveSplit * 100).toFixed(0)}%
-                          </span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {isOverspent && (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: "700",
+                                  color: "#fff",
+                                  backgroundColor: "#FF3B30",
+                                  borderRadius: "10px",
+                                  padding: "2px 7px",
+                                  animation: "pulse 1.5s ease-in-out infinite",
+                                }}
+                              >
+                                ⚠️ Dépassé
+                              </span>
+                            )}
+                            <span
+                              className="jar-percent"
+                              style={{ color: isOverspent ? "#FF3B30" : JAR_COLORS[key] }}
+                            >
+                              {(effectiveSplit * 100).toFixed(0)}%
+                            </span>
+                          </div>
                         </div>
                         <p className="jar-label">{JAR_LABELS[key]}</p>
-                        <p className="jar-amount">
+                        <p className="jar-amount" style={isOverspent ? { color: "#FF3B30" } : undefined}>
                           {formatMoney(jar.net)}
                           <span className="jar-currency">€</span>
                         </p>
                         <div className="jar-progress-wrapper">
                           <div className="jar-progress-info">
                             <span className="jar-progress-label">Dépensé</span>
-                            <span className="jar-progress-value">
+                            <span
+                              className="jar-progress-value"
+                              style={isOverspent ? { color: "#FF3B30", fontWeight: "700" } : undefined}
+                            >
                               {progressPercent.toFixed(0)}%
                             </span>
                           </div>
@@ -318,7 +344,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                               className="jar-progress-fill"
                               style={{
                                 width: `${Math.min(progressPercent, 100)}%`,
-                                backgroundColor: JAR_COLORS[key],
+                                backgroundColor: isOverspent ? "#FF3B30" : JAR_COLORS[key],
                               }}
                             />
                           </div>

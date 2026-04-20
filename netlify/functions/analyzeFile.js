@@ -153,7 +153,14 @@ async function analyzePDF(buffer) {
   console.log(`📄 Total lines: ${lines.length}`);
   console.log(`📄 First 20 lines:`, lines.slice(0, 20));
 
-  // Tentative 0: format Revolut FR (relevé "DateDescriptionArgent sortantArgent entrantSolde")
+  // Tentative 0a: format Revolut "Relevé personnalisé" (nouveau format FR — avr./janv. etc.)
+  const revolutPersonnaliseRows = extractRevolutPersonnaliseTransactions(lines);
+  if (revolutPersonnaliseRows.length > 0) {
+    console.log(`✅ Revolut Relevé personnalisé parser: ${revolutPersonnaliseRows.length} transactions`);
+    return buildPdfStructure(revolutPersonnaliseRows);
+  }
+
+  // Tentative 0b: format Revolut FR (ancien relevé "DateDescriptionArgent sortantArgent entrantSolde")
   const revolutRows = extractRevolutFrenchTransactions(lines);
   if (revolutRows.length > 0) {
     console.log(`✅ Revolut FR parser: ${revolutRows.length} transactions détectées`);
@@ -294,7 +301,7 @@ async function analyzePDF(buffer) {
   console.log(`📊 PDF: ${dataLines.length} transactions détectées`);
 
   if (dataLines.length === 0) {
-    throw new Error("Aucune transaction détectée dans le PDF. Le format pourrait ne pas être supporté.");
+    throw new Error("DEBUG_LINES:" + JSON.stringify(lines.slice(0, 80)));
   }
 
   return buildPdfStructure(dataLines);
@@ -412,6 +419,81 @@ function buildPdfStructure(rows) {
     suggestedMappings,
     totalRows: rows.length,
   };
+}
+
+function extractRevolutPersonnaliseTransactions(lines) {
+  const FR_MONTHS = {
+    'janv': '01', 'janv.': '01', 'janvier': '01',
+    'févr': '02', 'févr.': '02', 'fevr': '02', 'fevr.': '02', 'février': '02',
+    'mars': '03',
+    'avr': '04', 'avr.': '04', 'avril': '04',
+    'mai': '05', 'juin': '06',
+    'juil': '07', 'juil.': '07', 'juillet': '07',
+    'août': '08', 'aout': '08',
+    'sept': '09', 'sept.': '09', 'septembre': '09',
+    'oct': '10', 'oct.': '10', 'octobre': '10',
+    'nov': '11', 'nov.': '11', 'novembre': '11',
+    'déc': '12', 'déc.': '12', 'dec': '12', 'dec.': '12', 'décembre': '12',
+  };
+
+  const fullText = lines.join('\n');
+  const hasPersonnalise = /Relevé personnalisé/i.test(fullText);
+  const hasSection = /Relevé des transactions/i.test(fullText);
+  console.log(`🔍 Revolut Personnalisé check: hasPersonnalise=${hasPersonnalise}, hasSection=${hasSection}`);
+  if (!hasPersonnalise && !hasSection) return [];
+
+  const rows = [];
+  let inSection = false;
+  let sectionLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/Relevé des transactions/i.test(line)) { inSection = true; continue; }
+    if (inSection && (/^Informations (sur|au sujet)/i.test(line) || /^Cryptos/i.test(line))) {
+      inSection = false;
+    }
+    if (!inSection) continue;
+    sectionLines.push(line);
+    if (/^(Date\b|Total\b|Compte personnel|Long Term|Argent|Impôt|Autres|Frais|Solde|Catégorie)/i.test(line)) continue;
+    if (line.length < 5) continue;
+
+    const dateRegex = /^(\d{1,2})\s+([A-Za-zÀ-ÿéèêëàâîïôùûüçœæ]+\.?)\s+(\d{4})/;
+    const dateMatch = line.match(dateRegex);
+    if (!dateMatch) {
+      console.log(`  ⛔ no date match: "${line}"`);
+      continue;
+    }
+
+    const day = dateMatch[1].padStart(2, '0');
+    const year = dateMatch[3];
+    const monthRaw = dateMatch[2].toLowerCase();
+    const month = FR_MONTHS[monthRaw] || FR_MONTHS[monthRaw.replace(/\.$/, '')] || FR_MONTHS[monthRaw + '.'];
+    if (!month) continue;
+
+    console.log(`  ✅ date match: day=${dateMatch[1]} month=${dateMatch[2]} year=${dateMatch[3]}`);
+    const rest = line.slice(dateMatch[0].length).trim();
+    console.log(`  rest: "${rest}"`);
+    const negAmountMatch = rest.match(/(-\s*\d[\d\s]*[.,]\d{2})\s*€/);
+    if (!negAmountMatch) { console.log(`  ⛔ no amount match in rest`); continue; }
+
+    const amount = parseFloat(negAmountMatch[1].replace(/\s/g, '').replace(',', '.'));
+    if (isNaN(amount) || amount >= 0) continue;
+
+    const amountIdx = rest.indexOf(negAmountMatch[0]);
+    let desc = rest.slice(0, amountIdx).trim();
+    desc = desc.replace(/\s*(Commerçant|Virement|Retrait|Paiement|Carte|Commission|Remboursement|Échange|Exchange)\s*$/i, '').trim();
+    if (!desc || desc.length < 1) continue;
+
+    rows.push({
+      Date: `${year}-${month}-${day}`,
+      Description: desc.replace(/\s+/g, ' '),
+      Amount: Math.abs(amount),
+      Currency: 'EUR',
+      OriginalAmount: amount,
+    });
+  }
+  console.log(`🔍 Revolut Personnalisé: ${rows.length} rows found. First 30 section lines:`, sectionLines.slice(0, 30));
+  return rows;
 }
 
 function extractRevolutFrenchTransactions(lines) {

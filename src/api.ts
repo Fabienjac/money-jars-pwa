@@ -12,6 +12,23 @@ import {
 const API_URL = import.meta.env.VITE_API_URL as string;
 const API_KEY = import.meta.env.VITE_API_KEY as string;
 
+// --------- CACHE localStorage TTL 5 min ---------
+const CACHE_TTL = 5 * 60 * 1000;
+
+function getCached<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw) as { data: T; ts: number };
+    if (Date.now() - ts > CACHE_TTL) { localStorage.removeItem(key); return null; }
+    return data;
+  } catch { return null; }
+}
+
+function setCache<T>(key: string, data: T): void {
+  try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch {}
+}
+
 if (!API_URL) {
   console.warn("⚠️ VITE_API_URL manquant dans .env");
 }
@@ -61,6 +78,36 @@ export async function appendRevenue(row: RevenueRow) {
   });
 }
 
+export async function updateSpending(rowIndex: number, row: SpendingRow) {
+  return callApi<{ ok: boolean; error?: string }>({
+    action: "updateSpending",
+    rowIndex,
+    row,
+  });
+}
+
+export async function updateRevenue(rowIndex: number, row: RevenueRow) {
+  return callApi<{ ok: boolean; error?: string }>({
+    action: "updateRevenue",
+    rowIndex,
+    row,
+  });
+}
+
+export async function deleteSpending(rowIndex: number) {
+  return callApi<{ ok: boolean; error?: string }>({
+    action: "deleteSpending",
+    rowIndex,
+  });
+}
+
+export async function deleteRevenue(rowIndex: number) {
+  return callApi<{ ok: boolean; error?: string }>({
+    action: "deleteRevenue",
+    rowIndex,
+  });
+}
+
 export async function searchSpendings(q: string, max = 50) {
   return callApi<{ rows: SearchSpendingResult[] }>({
     action: "search",
@@ -81,13 +128,14 @@ export async function searchRevenues(q: string, max = 50) {
 
 // --------- TOTALS : ON UTILISE UN GET (COMME TON TEST SAFARI) ---------
 
-export async function fetchTotals() {
-  
-  console.log('FETCH TOTALS URL =', (import.meta.env.VITE_API_URL || '' ) + '/totals');
-// Exemple final en prod :
-  // https://willowy-nougat-51e2a4.netlify.app/.netlify/functions/gsheetProxy?action=totals&key=...
-  const url = `${API_URL}?action=totals&key=${encodeURIComponent(API_KEY)}`;
+export async function fetchTotals(forceRefresh = false): Promise<TotalsResponse> {
+  const CACHE_KEY = "mjars:cache:totals";
+  if (!forceRefresh) {
+    const cached = getCached<TotalsResponse>(CACHE_KEY);
+    if (cached) return cached;
+  }
 
+  const url = `${API_URL}?action=totals&key=${encodeURIComponent(API_KEY)}`;
   const res = await fetch(url, { method: "GET" });
 
   if (!res.ok) {
@@ -95,7 +143,9 @@ export async function fetchTotals() {
     throw new Error(`Erreur API totals (${res.status}): ${text}`);
   }
 
-  return res.json() as Promise<TotalsResponse>;
+  const data = await res.json() as TotalsResponse;
+  setCache(CACHE_KEY, data);
+  return data;
 }
 
 // --------- COMPTES (Accounts / RevenueAccounts) - GET ---------
@@ -164,9 +214,14 @@ export interface AnalyticsResponse {
   };
 }
 
-export async function fetchAnalytics() {
-  const url = `${API_URL}?action=analytics&key=${encodeURIComponent(API_KEY)}`;
+export async function fetchAnalytics(forceRefresh = false): Promise<AnalyticsResponse> {
+  const CACHE_KEY = "mjars:cache:analytics";
+  if (!forceRefresh) {
+    const cached = getCached<AnalyticsResponse>(CACHE_KEY);
+    if (cached) return cached;
+  }
 
+  const url = `${API_URL}?action=analytics&key=${encodeURIComponent(API_KEY)}`;
   const res = await fetch(url, { method: "GET" });
 
   if (!res.ok) {
@@ -174,5 +229,7 @@ export async function fetchAnalytics() {
     throw new Error(`Erreur API analytics (${res.status}): ${text}`);
   }
 
-  return res.json() as Promise<AnalyticsResponse>;
+  const data = await res.json() as AnalyticsResponse;
+  setCache(CACHE_KEY, data);
+  return data;
 }

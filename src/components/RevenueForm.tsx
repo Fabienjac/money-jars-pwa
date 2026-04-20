@@ -3,6 +3,9 @@ import { appendRevenue, getAccounts, getRevenueAccounts } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
+import { loadPreferredCurrencies } from "../currencyUtils";
+import { useExchangeRate } from "../hooks/useExchangeRate";
+import CurrencySelector from "./CurrencySelector";
 
 interface RevenueFormProps {
   prefill?: any | null;
@@ -31,6 +34,26 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
   const [cryptoAddress, setCryptoAddress] = useState<string>("");
   const [destination, setDestination] = useState<string>("");
   const [incomeType, setIncomeType] = useState<string>("");
+
+  const [preferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
+  const [rateManuallyEdited, setRateManuallyEdited] = useState(false);
+
+  const { rate: fetchedRate, loading: rateLoading } = useExchangeRate(value, date);
+
+  // Auto-remplir le taux dès que la devise ou la date change (sauf si l'utilisateur l'a modifié manuellement)
+  useEffect(() => {
+    if (rateManuallyEdited) return;
+    if (value === "EUR") {
+      setRate("1");
+    } else if (fetchedRate !== null) {
+      setRate(fetchedRate.toFixed(6).replace(/\.?0+$/, ""));
+    }
+  }, [fetchedRate, value]);
+
+  // Quand la devise change, autoriser le rechargement auto
+  useEffect(() => {
+    setRateManuallyEdited(false);
+  }, [value, date]);
 
   const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
   const [loading, setLoading] = useState(false);
@@ -216,29 +239,14 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
         ensureSpendingAccountExists(destination);
       }
       
-      // CALCUL AUTO du taux
-      if (!numRate && method) {
-        const currency = extractCurrencyFromMethod(method);
-        
-        if (currency && currency !== 'EUR') {
-          console.log(`💱 Calcul auto du taux ${currency}/EUR...`);
-          const calculatedRate = await getHistoricalRate(currency, date);
-          
-          if (calculatedRate) {
-            numRate = calculatedRate;
-            console.log(`✅ Taux calculé: ${calculatedRate}`);
-          }
-        }
-      }
-      
       await appendRevenue({
         date: formatDateForGoogleSheets(date),
         source,
-        amount: numAmount,
+        amount: numAmount ?? undefined,
         value,
-        cryptoQuantity: numCryptoQty,
+        cryptoQuantity: numCryptoQty ?? undefined,
         method,
-        rate: numRate,
+        rate: numRate ?? undefined,
         cryptoAddress,
         destination,
         incomeType,
@@ -267,90 +275,6 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       setMessage("❌ Erreur : " + (err.message || String(err)));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const extractCurrencyFromMethod = (method: string): string | null => {
-    if (!method) return null;
-    const knownCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'XRP', 'ADA', 'SOL', 'DOGE', 'DOT', 'MATIC', 'LTC', 'BCH'];
-    // Méthode "USDC_ETH" ou "USDT_TRC20" → la devise est la partie avant "_" (l'actif, pas le réseau)
-    if (method.includes('_')) {
-      const firstToken = method.split('_')[0].trim().toUpperCase();
-      if (knownCurrencies.includes(firstToken)) return firstToken;
-    }
-    const currencyPatterns = [
-      /BTC/i, /ETH/i, /USDT/i, /USDC/i, /XRP/i,
-      /ADA/i, /SOL/i, /DOGE/i, /DOT/i, /MATIC/i,
-      /LTC/i, /BCH/i,
-    ];
-    for (const pattern of currencyPatterns) {
-      if (pattern.test(method)) {
-        return method.match(pattern)![0].toUpperCase();
-      }
-    }
-    return null;
-  };
-
-  const getHistoricalRate = async (fromCurrency: string, dateStr: string): Promise<number | null> => {
-    try {
-      const isoDate = dateStr;
-      
-      const cryptoIds: { [key: string]: string } = {
-        'BTC': 'bitcoin',
-        'ETH': 'ethereum',
-        'USDT': 'tether',
-        'USDC': 'usd-coin',
-        'XRP': 'ripple',
-        'ADA': 'cardano',
-        'SOL': 'solana',
-        'DOGE': 'dogecoin',
-        'DOT': 'polkadot',
-        'MATIC': 'matic-network',
-        'LTC': 'litecoin',
-        'BCH': 'bitcoin-cash',
-      };
-      
-      if (cryptoIds[fromCurrency]) {
-        const coinId = cryptoIds[fromCurrency];
-        const [year, month, day] = isoDate.split('-');
-        const dateFormatted = `${day}-${month}-${year}`;
-        
-        const url = `https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${dateFormatted}`;
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          console.error(`❌ CoinGecko API returned ${response.status}`);
-          return null;
-        }
-        
-        const data = await response.json();
-        
-        if (!data.market_data || !data.market_data.current_price || !data.market_data.current_price.eur) {
-          return null;
-        }
-        
-        return data.market_data.current_price.eur;
-      } else {
-        const url = `https://api.frankfurter.app/${isoDate}?from=${fromCurrency}&to=EUR`;
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          return null;
-        }
-        
-        const data = await response.json();
-        
-        if (!data.rates || !data.rates.EUR) {
-          return null;
-        }
-        
-        return data.rates.EUR;
-      }
-    } catch (error) {
-      console.error(`❌ Error fetching rate:`, error);
-      return null;
     }
   };
 
@@ -447,24 +371,13 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
       </div>
 
       <div>
-        <label htmlFor="value" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          💱 Devise
+        <label style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
+          💱 Devise du revenu
         </label>
-        <input
-          id="value"
-          type="text"
+        <CurrencySelector
           value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="ex: USD, EUR, BTC..."
-          style={{
-            width: "100%",
-            padding: "10px 12px",
-            borderRadius: "8px",
-            border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "14px",
-          }}
+          preferred={preferredCurrencies}
+          onChange={setValue}
         />
       </div>
 
@@ -515,25 +428,47 @@ const RevenueForm: React.FC<RevenueFormProps> = ({
 
       <div>
         <label htmlFor="rate" style={{ display: "block", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          📊 Taux de change (optionnel)
+          📊 Taux de change {value !== "EUR" && (
+            <span style={{ fontWeight: 400, fontSize: "12px", color: "var(--text-muted)" }}>
+              ({value} → EUR)
+            </span>
+          )}
+          {rateLoading && (
+            <span style={{ fontWeight: 400, fontSize: "12px", color: "#007AFF", marginLeft: "8px" }}>
+              ⏳ Chargement…
+            </span>
+          )}
+          {!rateLoading && !rateManuallyEdited && rate && value !== "EUR" && (
+            <span style={{ fontWeight: 400, fontSize: "12px", color: "#34C759", marginLeft: "8px" }}>
+              ✓ Auto
+            </span>
+          )}
         </label>
         <input
           id="rate"
           type="text"
           inputMode="decimal"
           value={rate}
-          onChange={(e) => setRate(e.target.value)}
-          placeholder="Auto si vide + crypto détectée"
+          onChange={(e) => {
+            setRate(e.target.value);
+            setRateManuallyEdited(true);
+          }}
+          placeholder={value === "EUR" ? "1" : "Chargement automatique…"}
           style={{
             width: "100%",
             padding: "10px 12px",
             borderRadius: "8px",
-            border: "1px solid var(--border-color)",
+            border: `1px solid ${!rateManuallyEdited && rate && value !== "EUR" ? "rgba(52,199,89,0.5)" : "var(--border-color)"}`,
             backgroundColor: "var(--bg-body)",
             color: "var(--text-main)",
             fontSize: "14px",
           }}
         />
+        {!rateManuallyEdited && value !== "EUR" && (
+          <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
+            💡 Modifiez manuellement pour remplacer le taux automatique
+          </p>
+        )}
       </div>
 
       <div>

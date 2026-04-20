@@ -5,6 +5,9 @@ import { appendSpending, searchSpendings, getAccounts } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
 import { tagsToString, tagsFromString } from "../tagsUtils";
+import { loadPreferredCurrencies } from "../currencyUtils";
+import { useExchangeRate } from "../hooks/useExchangeRate";
+import CurrencySelector from "./CurrencySelector";
 
 interface RecentTransaction {
   description: string;
@@ -48,8 +51,12 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [account, setAccount] = useState("Cash");
   const [description, setDescription] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [currency, setCurrency] = useState("EUR");
+  const [preferredCurrencies, setPreferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date);
   
   // Les 2 dernières dépenses (chargées depuis le Google Sheet)
   const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
@@ -108,6 +115,12 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     const reload = () => getAccounts().then(setAccountsState).catch(() => setAccountsState(loadAccounts()));
     window.addEventListener("spendingAccountsUpdated", reload);
     return () => window.removeEventListener("spendingAccountsUpdated", reload);
+  }, []);
+
+  useEffect(() => {
+    const reload = () => setPreferredCurrencies(loadPreferredCurrencies());
+    window.addEventListener("preferredCurrenciesUpdated", reload);
+    return () => window.removeEventListener("preferredCurrenciesUpdated", reload);
   }, []);
 
   // ✅ Gérer le prefill depuis l'historique
@@ -169,18 +182,28 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       setMessage("❌ Montant requis");
       return;
     }
+    if (currency !== "EUR" && !rate) {
+      setMessage("❌ Taux de change indisponible");
+      return;
+    }
 
     try {
       setLoading(true);
-      
+
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
-      
+      const originalAmount = parseFloat(amount);
+      const eurAmount = currency === "EUR" ? originalAmount : originalAmount * rate!;
+      const baseDesc = description || `Dépense ${jar}`;
+      const finalDescription = currency !== "EUR"
+        ? `${baseDesc} (${originalAmount} ${currency})`
+        : baseDesc;
+
       await appendSpending({
-        date, // ✅ Utiliser la date du state
+        date,
         jar,
         account,
-        amount: parseFloat(amount),
-        description: description || `Dépense ${jar}`,
+        amount: Math.round(eurAmount * 100) / 100,
+        description: finalDescription,
         tags: tagsString,
       });
       
@@ -258,13 +281,35 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           </label>
         </div>
 
+        {/* Devise */}
+        <div className="quick-currency-section">
+          <CurrencySelector
+            value={currency}
+            preferred={preferredCurrencies}
+            onChange={setCurrency}
+          />
+        </div>
+
         {/* Montant */}
         <div className="quick-amount-section">
           <p className="quick-amount-label">💰 Montant</p>
           <div className="quick-amount-display">
             {amount || "0"}
-            <span className="quick-amount-currency">€</span>
+            <span className="quick-amount-currency">{currency}</span>
           </div>
+          {currency !== "EUR" && amount && parseFloat(amount) > 0 && (
+            <div className="quick-amount-eur-estimate">
+              {rateLoading && <span className="quick-rate-loading">⏳ Taux…</span>}
+              {!rateLoading && rate && (
+                <span className="quick-rate-result">
+                  ≈ {(parseFloat(amount) * rate).toFixed(2)} €
+                </span>
+              )}
+              {!rateLoading && rateError && (
+                <span className="quick-rate-error">⚠️ {rateError}</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Numpad + Jars */}

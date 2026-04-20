@@ -1,23 +1,35 @@
 // src/App.tsx - VERSION V3 FINALE avec "Utiliser" qui fonctionne
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, lazy, Suspense } from "react";
 import SpendingForm from "./components/SpendingForm";
 import RevenueForm from "./components/RevenueForm";
-import HistoryView, { HistoryUseEntry } from "./components/HistoryView";
+import type { HistoryUseEntry } from "./components/HistoryView";
 import JarsView from "./components/JarsView";
 // ✅ AJOUT : Nouveaux composants V2
 import JarsViewV2 from "./components/JarsViewV2";
 import QuickSpendingForm from "./components/QuickSpendingForm";
 // Fin ajouts V2
-import SettingsView from "./components/SettingsView";
-import { UniversalImporter } from "./components/UniversalImporter";
 import { RecentTransactions } from "./components/RecentTransactions";
-import TagStatsView from "./components/TagStatsView";
 import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { useOffline } from "./hooks/useOffline";
 import { loadAccounts } from "./accountsUtils";
 import { getAccounts } from "./api";
+import { offlineManager } from "./offlineManager";
 import "./style.css";
+
+// Lazy-loaded heavy views
+const HistoryView = lazy(() => import("./components/HistoryView"));
+const SettingsView = lazy(() => import("./components/SettingsView"));
+const TagStatsView = lazy(() => import("./components/TagStatsView"));
+const UniversalImporterLazy = lazy(() =>
+  import("./components/UniversalImporter").then(m => ({ default: m.UniversalImporter }))
+);
+
+const SuspenseFallback = () => (
+  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", padding: "40px", color: "var(--text-muted)" }}>
+    ⏳ Chargement…
+  </div>
+);
 
 type Section = "home" | "history" | "settings" | "tags";
 type EntryMode = "spending" | "revenue";
@@ -59,6 +71,11 @@ function App() {
 
   // Mode offline
   const offline = useOffline();
+  const [pendingCount, setPendingCount] = useState(() => offlineManager.getPendingCount());
+
+  useEffect(() => {
+    return offlineManager.subscribe((state) => setPendingCount(state.pendingTransactions.length));
+  }, []);
 
   // Thème
   useEffect(() => {
@@ -418,6 +435,33 @@ function App() {
     <div className={`app-shell ${darkMode ? "dark" : ""}`}>
       {/* Indicateur de mode offline */}
       <OfflineIndicator />
+
+      {/* Badge transactions en attente */}
+      {pendingCount > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            top: "12px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 2000,
+            backgroundColor: "#FF9500",
+            color: "white",
+            fontSize: "13px",
+            fontWeight: "700",
+            padding: "6px 14px",
+            borderRadius: "20px",
+            boxShadow: "0 2px 8px rgba(255, 149, 0, 0.4)",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            cursor: "default",
+          }}
+          title="Ces transactions seront envoyées dès le retour en ligne"
+        >
+          📴 {pendingCount} transaction{pendingCount > 1 ? "s" : ""} en attente
+        </div>
+      )}
       
       <div className="app-main">
         <header className="home-header">
@@ -475,9 +519,21 @@ function App() {
             </>
           )}
           
-          {section === "history" && <HistoryView onUseEntry={handleUseEntry} />}
-          {section === "settings" && <SettingsView />}
-          {section === "tags" && <TagStatsView />}
+          {section === "history" && (
+            <Suspense fallback={<SuspenseFallback />}>
+              <HistoryView onUseEntry={handleUseEntry} />
+            </Suspense>
+          )}
+          {section === "settings" && (
+            <Suspense fallback={<SuspenseFallback />}>
+              <SettingsView />
+            </Suspense>
+          )}
+          {section === "tags" && (
+            <Suspense fallback={<SuspenseFallback />}>
+              <TagStatsView />
+            </Suspense>
+          )}
         </main>
       </div>
 
@@ -798,17 +854,18 @@ function App() {
               </button>
             </header>
 
-            <div className="entry-sheet-body" style={{ 
-              padding: 0, 
+            <div className="entry-sheet-body" style={{
+              padding: 0,
               flex: 1,
               minHeight: 0,
               overflow: "auto",
             }}>
-              <UniversalImporter 
-                onImport={handleImportTransactions} 
-                onClose={() => setImporterOpen(false)}
-                accounts={accounts.map(acc => ({ name: acc.name, emoji: acc.icon }))}
-              />
+              <Suspense fallback={<SuspenseFallback />}>
+                <UniversalImporterLazy
+                  onImport={handleImportTransactions}
+                  accounts={accounts.map(acc => ({ name: acc.name, emoji: acc.icon }))}
+                />
+              </Suspense>
             </div>
           </div>
         </div>
