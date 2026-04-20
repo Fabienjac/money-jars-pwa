@@ -26,7 +26,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
 
   const handleExportChart = () => {
     // Chercher le SVG du graphique par ID
-    const svgElement = document.getElementById('tag-pie-chart') as SVGSVGElement;
+    const svgElement = document.getElementById('tag-pie-chart') as unknown as SVGSVGElement;
     
     if (!svgElement) {
       console.error("SVG non trouvé avec ID 'tag-pie-chart'");

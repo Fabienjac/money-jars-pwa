@@ -6,6 +6,7 @@ import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
 import { tagsToString, tagsFromString } from "../tagsUtils";
 import { loadPreferredCurrencies } from "../currencyUtils";
+import { loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
 import { useExchangeRate } from "../hooks/useExchangeRate";
 import CurrencySelector from "./CurrencySelector";
 

@@ -1,5 +1,6 @@
 // src/types.ts
 export type JarKey = "NEC" | "FFA" | "LTSS" | "PLAY" | "EDUC" | "GIFT";
+export type { TagStat } from "./tagStatsUtils";
 
 export interface SpendingRow {
   date: string;

@@ -14,6 +14,7 @@ import { OfflineIndicator } from "./components/OfflineIndicator";
 import { useOffline } from "./hooks/useOffline";
 import { loadAccounts } from "./accountsUtils";
 import { getAccounts } from "./api";
+import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
 import "./style.css";
 
@@ -67,7 +68,7 @@ function App() {
   const [isImporting, setIsImporting] = useState(false);
   
   // Comptes de dépenses
-  const [accounts, setAccounts] = useState<Array<{id: string, name: string, icon: string}>>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
 
   // Mode offline
   const offline = useOffline();
@@ -863,7 +864,7 @@ function App() {
               <Suspense fallback={<SuspenseFallback />}>
                 <UniversalImporterLazy
                   onImport={handleImportTransactions}
-                  accounts={accounts.map(acc => ({ name: acc.name, emoji: acc.icon }))}
+                  accounts={accounts.map(acc => ({ name: acc.name, emoji: acc.icon ?? "🏦" }))}
                 />
               </Suspense>
             </div>
