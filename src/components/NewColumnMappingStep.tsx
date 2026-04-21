@@ -94,6 +94,14 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
         if (savedMappings.length === googleSheetColumns.length &&
             savedMappings.every((m, i) => m.googleSheetColumn === googleSheetColumns[i])) {
           return savedMappings.map((saved, i) => {
+            const col = saved.googleSheetColumn;
+            // Toujours forcer le compte/source sélectionné à l'étape précédente
+            const isAccountField =
+              (transactionType === "spending" && col === "Compte") ||
+              (transactionType === "revenue" && (col === "Source" || col === "Compte de destination"));
+            if (isAccountField && defaultSource) {
+              return { ...saved, option: { type: "fixed", value: defaultSource } };
+            }
             // Vérifier que les colonnes référencées existent encore dans le fichier
             if (saved.option.type === "column" && saved.option.value &&
                 !detectedColumns.includes(saved.option.value)) {
