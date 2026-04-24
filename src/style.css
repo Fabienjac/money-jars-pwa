@@ -3549,3 +3549,31 @@ button, input, select, a {
 .settings-currency-suggestion:hover {
   background: rgba(0, 122, 255, 0.08);
 }
+
+
+/* ========================================
+   PILLS SCROLL (horizontal, cross-platform)
+   ======================================== */
+
+.pills-scroll {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 2px 20px 8px;
+  margin: 0 -20px;
+  /* desktop : thin scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.15) transparent;
+}
+
+/* mobile : hide scrollbar (swipe works) */
+@media (max-width: 768px) {
+  .pills-scroll {
+    scrollbar-width: none;
+  }
+  .pills-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}

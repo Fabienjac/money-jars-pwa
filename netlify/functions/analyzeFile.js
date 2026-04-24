@@ -718,9 +718,11 @@ function parseMultipartWithBusboy(event) {
       reject(error);
     });
 
+    // "latin1" (= "binary") préserve les octets 0x00-0xFF tels quels.
+    // "utf-8" corrompt les PDFs et autres binaires quand isBase64Encoded = false.
     const bodyBuffer = event.isBase64Encoded
       ? Buffer.from(event.body, "base64")
-      : Buffer.from(event.body, "utf-8");
+      : Buffer.from(event.body, "latin1");
 
     busboy.write(bodyBuffer);
     busboy.end();

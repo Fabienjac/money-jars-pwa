@@ -1,6 +1,7 @@
 // src/components/NewColumnMappingStep.tsx
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { loadTags } from "../tagsUtils";
+import { fetchColumnMappings, saveColumnMappingToSheet } from "../api";
 
 interface MappingOption {
   type: "empty" | "column" | "fixed";
@@ -81,39 +82,78 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
     };
   });
 
-  // Fingerprint des colonnes détectées pour mémoriser le mapping
+  // Clé de cache : type + banque/source + fingerprint des colonnes détectées
+  // → chaque banque a son propre mapping mémorisé
   const columnFingerprint = [...detectedColumns].sort().join(",");
-  const MAPPING_CACHE_KEY = `mjars:colmapping:${transactionType}:${columnFingerprint}`;
+  const bankSlug = (defaultSource || "default").toLowerCase().replace(/\s+/g, "_");
+  const MAPPING_CACHE_KEY = `mjars:colmapping:${transactionType}:${bankSlug}:${columnFingerprint}`;
+
+  const [restoredFromCache, setRestoredFromCache] = useState(false);
+  // Ref pour savoir si localStorage avait déjà un mapping (synchrone, avant l'effet)
+  const hasLocalCache = useRef(false);
 
   const [mappings, setMappings] = useState<ColumnMapping[]>(() => {
     try {
       const saved = localStorage.getItem(MAPPING_CACHE_KEY);
       if (saved) {
         const savedMappings: ColumnMapping[] = JSON.parse(saved);
-        // Restaurer uniquement si toutes les colonnes GSheets correspondent
         if (savedMappings.length === googleSheetColumns.length &&
             savedMappings.every((m, i) => m.googleSheetColumn === googleSheetColumns[i])) {
-          return savedMappings.map((saved, i) => {
-            const col = saved.googleSheetColumn;
-            // Toujours forcer le compte/source sélectionné à l'étape précédente
+          const restored = savedMappings.map((s, i) => {
+            const col = s.googleSheetColumn;
             const isAccountField =
               (transactionType === "spending" && col === "Compte") ||
               (transactionType === "revenue" && (col === "Source" || col === "Compte de destination"));
             if (isAccountField && defaultSource) {
-              return { ...saved, option: { type: "fixed", value: defaultSource } };
+              return { ...s, option: { type: "fixed" as const, value: defaultSource } };
             }
-            // Vérifier que les colonnes référencées existent encore dans le fichier
-            if (saved.option.type === "column" && saved.option.value &&
-                !detectedColumns.includes(saved.option.value)) {
+            if (s.option.type === "column" && s.option.value &&
+                !detectedColumns.includes(s.option.value)) {
               return initialMappings[i];
             }
-            return saved;
+            return s;
           });
+          hasLocalCache.current = true;
+          setTimeout(() => setRestoredFromCache(true), 0);
+          return restored;
         }
       }
     } catch {}
     return initialMappings;
   });
+
+  // Si localStorage n'avait rien → chercher dans Google Sheets
+  useEffect(() => {
+    if (hasLocalCache.current) return; // localStorage suffit
+
+    fetchColumnMappings().then(allMappings => {
+      const saved = allMappings[MAPPING_CACHE_KEY];
+      if (!saved || !Array.isArray(saved)) return;
+      const savedMappings = saved as ColumnMapping[];
+      if (savedMappings.length !== googleSheetColumns.length) return;
+      if (!savedMappings.every((m, i) => m.googleSheetColumn === googleSheetColumns[i])) return;
+
+      const restored = savedMappings.map((s, i) => {
+        const col = s.googleSheetColumn;
+        const isAccountField =
+          (transactionType === "spending" && col === "Compte") ||
+          (transactionType === "revenue" && (col === "Source" || col === "Compte de destination"));
+        if (isAccountField && defaultSource) {
+          return { ...s, option: { type: "fixed" as const, value: defaultSource } };
+        }
+        if (s.option.type === "column" && s.option.value &&
+            !detectedColumns.includes(s.option.value)) {
+          return initialMappings[i];
+        }
+        return s;
+      });
+
+      setMappings(restored);
+      setRestoredFromCache(true);
+      // Mettre en cache localStorage pour les prochains imports sur cet appareil
+      try { localStorage.setItem(MAPPING_CACHE_KEY, JSON.stringify(restored)); } catch {}
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [showFixedValueInput, setShowFixedValueInput] = useState<string | null>(null);
 
   const availableTags = loadTags();
@@ -162,9 +202,36 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
           >
             🗂️ Configuration du mapping
           </h2>
-          <p style={{ color: "var(--text-muted)", margin: 0 }}>
-            Pour chaque champ Google Sheets, choisissez : laisser vide, mapper une colonne du fichier, ou entrer une valeur fixe
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+            <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "14px" }}>
+              Pour chaque champ Google Sheets, choisissez : laisser vide, mapper une colonne du fichier, ou entrer une valeur fixe
+            </p>
+            {restoredFromCache && defaultSource && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: "6px",
+                fontSize: "12px", fontWeight: "700",
+                color: "#34C759",
+                backgroundColor: "rgba(52,199,89,0.12)",
+                border: "1px solid rgba(52,199,89,0.3)",
+                borderRadius: "20px", padding: "3px 10px",
+                whiteSpace: "nowrap",
+              }}>
+                ✓ Mapping {defaultSource} mémorisé
+                <button
+                  type="button"
+                  onClick={() => {
+                    try { localStorage.removeItem(MAPPING_CACHE_KEY); } catch {}
+                    setMappings(initialMappings);
+                    setRestoredFromCache(false);
+                  }}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "12px", color: "#8E8E93", padding: "0", lineHeight: 1 }}
+                  title="Réinitialiser le mapping mémorisé"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -517,8 +584,10 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
               return;
             }
 
-            // Mémoriser le mapping pour la prochaine fois
+            // Mémoriser localement
             try { localStorage.setItem(MAPPING_CACHE_KEY, JSON.stringify(mappings)); } catch {}
+            // Sauvegarder dans Google Sheets (fire-and-forget, cross-device)
+            saveColumnMappingToSheet(MAPPING_CACHE_KEY, mappings);
 
             onContinue(mappings);
           }}

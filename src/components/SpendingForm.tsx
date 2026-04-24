@@ -29,6 +29,8 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
 
+  const [subscription, setSubscription] = useState<string>("");
+
   const [currency, setCurrency] = useState("EUR");
   const [preferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
   const [loading, setLoading] = useState(false);
@@ -92,6 +94,9 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
     } else {
       setSelectedTags([]);
     }
+
+    if (prefill.subscription) setSubscription(prefill.subscription);
+    else setSubscription("");
 
     setAppliedRule(null);
     onClearPrefill?.();
@@ -157,6 +162,7 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
         amount: eurAmount,
         description: finalDescription,
         tags: tagsString,
+        subscription: subscription || undefined,
       });
       
       setMessage("Dépense enregistrée ✅");
@@ -166,6 +172,7 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
       setDescription("");
       setSelectedTags([]);
       setAppliedRule(null);
+      setSubscription("");
     } catch (err: any) {
       console.error(err);
       setMessage(err.message || "Erreur lors de l'enregistrement.");
@@ -401,6 +408,53 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
             onChange={setSelectedTags}
             compact={true}
           />
+        </div>
+
+        {/* Abonnement récurrent */}
+        <div>
+          <label style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", display: "block", marginBottom: "8px" }}>
+            🔁 Abonnement (optionnel)
+          </label>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {[
+              { value: "",            label: "Aucun",        color: "#8E8E93" },
+              { value: "mensuel",     label: "📅 Mensuel",   color: "#007AFF" },
+              { value: "trimestriel", label: "🗓 Trimestriel", color: "#5856D6" },
+              { value: "semestriel",  label: "📆 Semestriel", color: "#FF9500" },
+              { value: "annuel",      label: "🗓 Annuel",    color: "#FF3B30" },
+            ].map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setSubscription(opt.value)}
+                style={{
+                  padding: "7px 12px",
+                  borderRadius: "20px",
+                  border: subscription === opt.value
+                    ? `2px solid ${opt.color}`
+                    : "1px solid var(--border-color)",
+                  background: subscription === opt.value
+                    ? `${opt.color}18`
+                    : "var(--bg-body)",
+                  color: subscription === opt.value ? opt.color : "var(--text-muted)",
+                  fontSize: "12px",
+                  fontWeight: subscription === opt.value ? "700" : "500",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {subscription && subscription !== "" && (
+            <div style={{ marginTop: "6px", fontSize: "11px", color: "#8E8E93" }}>
+              {subscription === "mensuel"     && "→ Affiché dans les charges fixes mensuelles"}
+              {subscription === "trimestriel" && "→ Équivalent mensuel : montant ÷ 3"}
+              {subscription === "semestriel"  && "→ Équivalent mensuel : montant ÷ 6"}
+              {subscription === "annuel"      && "→ Équivalent mensuel : montant ÷ 12"}
+            </div>
+          )}
         </div>
 
         {/* Message */}

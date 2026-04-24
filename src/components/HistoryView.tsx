@@ -1,11 +1,30 @@
-// src/components/HistoryView.tsx - VERSION MOBILE OPTIMISÉE
-import React, { useState, useEffect, useMemo } from "react";
-import { searchSpendings, searchRevenues, fetchTotals, updateSpending, updateRevenue, deleteSpending, deleteRevenue } from "../api";
+// src/components/HistoryView.tsx - VERSION REFACTORISÉE (Features 4 & 5)
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import {
+  searchSpendings, searchRevenues,
+  updateSpending, updateRevenue,
+  deleteSpending, deleteRevenue,
+} from "../api";
 import { SearchSpendingResult, SearchRevenueResult, JarKey } from "../types";
+
+// ── Constants ────────────────────────────────────────────────────────────────
 
 const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
 
+const JAR_COLORS: Record<JarKey, string> = {
+  NEC: "#007AFF", FFA: "#34C759", LTSS: "#FFD60A",
+  PLAY: "#FF9500", EDUC: "#AF52DE", GIFT: "#5AC8FA",
+};
+
+const JAR_EMOJI: Record<JarKey, string> = {
+  NEC: "🏠", FFA: "💰", LTSS: "🎯", PLAY: "🎉", EDUC: "📚", GIFT: "🎁",
+};
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
 type Mode = "spending" | "revenue";
+type MainTab = "history" | "report";
+type PeriodFilter = "all" | "month" | "prevmonth" | "90d" | "year";
 
 export type HistoryUseEntry =
   | { kind: "spending"; row: SearchSpendingResult }
@@ -15,650 +34,878 @@ interface HistoryViewProps {
   onUseEntry?: (entry: HistoryUseEntry) => void;
 }
 
-const formatAmount = (value: number | undefined | null) => {
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const fmt = (value: number | undefined | null, dec = 2) => {
   if (value == null || isNaN(value)) return "—";
-  return value.toFixed(2);
+  return value.toFixed(dec);
 };
 
-const parseDate = (value: string): Date | null => {
-  const d = new Date(value);
+const parseDate = (v: string): Date | null => {
+  const d = new Date(v);
   return isNaN(d.getTime()) ? null : d;
 };
 
-type PeriodFilter = "all" | "30d" | "90d" | "year";
+const fmtDate = (v: string): string => {
+  const d = parseDate(v);
+  if (!d) return v;
+  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const getYearMonth = (dateStr: string) => dateStr?.slice(0, 7) ?? "";
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
-  const [mode, setMode] = useState<Mode>("revenue");
+
+  // ── Tab & mode ────────────────────────────────────────────────────
+  const [mainTab, setMainTab] = useState<MainTab>("history");
+  const [mode, setMode] = useState<Mode>("spending");
+
+  // ── History data ──────────────────────────────────────────────────
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spendings, setSpendings] = useState<SearchSpendingResult[]>([]);
   const [revenues, setRevenues] = useState<SearchRevenueResult[]>([]);
 
-  // États pour les vrais totaux
-  const [totalRevenuesFromAPI, setTotalRevenuesFromAPI] = useState<number>(0);
-  const [totalSpendingsFromAPI, setTotalSpendingsFromAPI] = useState<number>(0);
-
+  // ── Filters ───────────────────────────────────────────────────────
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
-  const [destinationFilter, setDestinationFilter] = useState<string>("all");
-  const [methodFilter, setMethodFilter] = useState<string>("all");
-  const [jarFilter, setJarFilter] = useState<string>("all");
-  const [accountFilter, setAccountFilter] = useState<string>("all");
+  const [jarFilter, setJarFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [destinationFilter, setDestinationFilter] = useState("all");
 
-  // ✅ NOUVEAU : État pour card expanded
-  const [expandedCard, setExpandedCard] = useState<number | null>(null);
-
-  // États pour l'édition inline
-  const [editingSpendingRow, setEditingSpendingRow] = useState<SearchSpendingResult | null>(null);
-  const [editingRevenueRow, setEditingRevenueRow] = useState<SearchRevenueResult | null>(null);
+  // ── Card & edit state ─────────────────────────────────────────────
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [editingRow, setEditingRow] = useState<SearchSpendingResult | SearchRevenueResult | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  // Charger les vrais totaux depuis l'API
-  useEffect(() => {
-    const loadTotals = async () => {
-      try {
-        const totals = await fetchTotals();
-        setTotalRevenuesFromAPI(totals.totalRevenues || 0);
-        
-        const totalSpend = Object.values(totals.jars).reduce(
-          (sum, jar) => sum + (jar.spendings || 0),
-          0
-        );
-        setTotalSpendingsFromAPI(totalSpend);
-      } catch (err) {
-        console.error("Erreur chargement totaux:", err);
-      }
-    };
-    
-    loadTotals();
-  }, []);
+  // ── Report tab state ──────────────────────────────────────────────
+  const now = new Date();
+  const [reportMonth, setReportMonth] = useState(
+    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  );
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportSpendings, setReportSpendings] = useState<SearchSpendingResult[]>([]);
+  const [reportRevenues, setReportRevenues] = useState<SearchRevenueResult[]>([]);
+  const [reportGenerated, setReportGenerated] = useState(false);
 
-  useEffect(() => {
-    handleSearch();
-  }, [mode]);
+  // ── Search (debounced) ────────────────────────────────────────────
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearch = async () => {
+  const doSearch = useCallback(async (q: string, m: Mode) => {
     setLoading(true);
     setError(null);
-
     try {
-      if (mode === "spending") {
-        const res = await searchSpendings(query, 200);
+      if (m === "spending") {
+        const res = await searchSpendings(q, 300);
         setSpendings(res.rows || []);
         setRevenues([]);
       } else {
-        const res = await searchRevenues(query, 200);
+        const res = await searchRevenues(q, 300);
         setRevenues(res.rows || []);
         setSpendings([]);
       }
     } catch (e: any) {
-      console.error(e);
       setError(e.message || "Erreur inconnue");
       setSpendings([]);
       setRevenues([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleModeChange = (m: Mode) => {
-    setMode(m);
-    setSpendings([]);
-    setRevenues([]);
-    setQuery("");
-  };
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const delay = query === "" ? 0 : 400;
+    debounceRef.current = setTimeout(() => doSearch(query, mode), delay);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [mode, query, doSearch]);
 
-  const handleUseSpendingRow = (row: SearchSpendingResult) => {
-    if (!onUseEntry) return;
-    onUseEntry({ kind: "spending", row });
-  };
-
-  const handleUseRevenueRow = (row: SearchRevenueResult) => {
-    if (!onUseEntry) return;
-    onUseEntry({ kind: "revenue", row });
-  };
-
-  const startEditSpending = (row: SearchSpendingResult) => {
-    setEditingSpendingRow(row);
-    setEditingRevenueRow(null);
-    setEditDraft({
-      date: row.date,
-      description: row.description,
-      amount: row.amount,
-      jar: row.jar,
-      account: row.account,
-      tags: row.tags || "",
-    });
-    setEditError(null);
-  };
-
-  const startEditRevenue = (row: SearchRevenueResult) => {
-    setEditingRevenueRow(row);
-    setEditingSpendingRow(null);
-    setEditDraft({
-      date: row.date,
-      source: row.source,
-      amount: row.amount,
-      value: row.value || "",
-      method: row.method || "",
-      rate: row.rate || "",
-      destination: row.destination || "",
-      incomeType: row.incomeType || "",
-      tags: row.tags || "",
-    });
-    setEditError(null);
-  };
-
-  const handleSaveSpending = async () => {
-    if (!editingSpendingRow) return;
-    if (!editingSpendingRow.rowIndex) {
-      setEditError("rowIndex manquant — mettez à jour votre Google Apps Script pour activer l'édition.");
-      return;
+  // ── Computed filters ──────────────────────────────────────────────
+  const periodRange = useMemo((): { start: Date; end: Date } | null => {
+    const now = new Date();
+    if (periodFilter === "all") return null;
+    if (periodFilter === "month") {
+      return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: now };
     }
-    setEditSaving(true);
+    if (periodFilter === "prevmonth") {
+      return {
+        start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+        end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
+      };
+    }
+    if (periodFilter === "90d") {
+      const s = new Date(now); s.setDate(s.getDate() - 90);
+      return { start: s, end: now };
+    }
+    // year
+    const s = new Date(now); s.setMonth(s.getMonth() - 12);
+    return { start: s, end: now };
+  }, [periodFilter]);
+
+  // Label lisible pour la période active
+  const periodLabel = useMemo(() => {
+    if (!periodRange) return null;
+    const now = new Date();
+    if (periodFilter === "month")
+      return now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    if (periodFilter === "prevmonth") {
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      return prev.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    }
+    return null;
+  }, [periodFilter, periodRange]);
+
+  const filteredSpendings = useMemo(() =>
+    spendings.filter(s => {
+      if (periodRange) {
+        const dt = parseDate(s.date);
+        if (!dt || dt < periodRange.start || dt > periodRange.end) return false;
+      }
+      if (jarFilter !== "all" && s.jar !== jarFilter) return false;
+      if (accountFilter !== "all" && s.account !== accountFilter) return false;
+      return true;
+    }),
+    [spendings, periodRange, jarFilter, accountFilter]
+  );
+
+  const filteredRevenues = useMemo(() =>
+    revenues.filter(r => {
+      if (periodRange) {
+        const dt = parseDate(r.date);
+        if (!dt || dt < periodRange.start || dt > periodRange.end) return false;
+      }
+      if (typeFilter !== "all" && r.incomeType !== typeFilter) return false;
+      if (destinationFilter !== "all" && r.destination !== destinationFilter) return false;
+      return true;
+    }),
+    [revenues, periodRange, typeFilter, destinationFilter]
+  );
+
+  // On garde seulement les valeurs reconnues comme JarKey pour éviter que des données
+  // parasites (tags, valeurs erronées) ne polluent le filtre jarre
+  const uniqueJars = useMemo(() =>
+    Array.from(new Set(spendings.map(s => s.jar).filter(Boolean)))
+      .filter(j => JAR_KEYS.includes(j as JarKey)),
+    [spendings]
+  );
+  const uniqueAccounts = useMemo(() => Array.from(new Set(spendings.map(s => s.account).filter(Boolean))), [spendings]);
+  const uniqueTypes = useMemo(() => Array.from(new Set(revenues.map(r => r.incomeType).filter(Boolean))), [revenues]);
+  const uniqueDestinations = useMemo(() => Array.from(new Set(revenues.map(r => r.destination).filter(Boolean))), [revenues]);
+
+  const totalFiltered = useMemo(() =>
+    mode === "spending"
+      ? filteredSpendings.reduce((s, r) => s + (r.amount || 0), 0)
+      : filteredRevenues.reduce((s, r) => s + (r.amount || 0), 0),
+    [mode, filteredSpendings, filteredRevenues]
+  );
+
+  // ── Edit helpers ──────────────────────────────────────────────────
+  const isSpendingRow = (row: any): row is SearchSpendingResult => "jar" in row;
+
+  const startEdit = (row: SearchSpendingResult | SearchRevenueResult) => {
+    setEditingRow(row);
     setEditError(null);
+    if (isSpendingRow(row)) {
+      setEditDraft({ date: row.date, description: row.description, amount: row.amount, jar: row.jar, account: row.account, tags: row.tags || "" });
+    } else {
+      setEditDraft({ date: row.date, source: row.source, amount: row.amount, value: row.value || "", method: row.method || "", rate: row.rate || "", destination: row.destination || "", incomeType: row.incomeType || "", tags: row.tags || "" });
+    }
+  };
+
+  const cancelEdit = () => { setEditingRow(null); setEditError(null); };
+
+  const handleSave = async () => {
+    if (!editingRow) return;
+    setEditSaving(true); setEditError(null);
     try {
-      await updateSpending(editingSpendingRow.rowIndex, {
-        date: editDraft.date,
-        description: editDraft.description,
-        amount: parseFloat(editDraft.amount),
-        jar: editDraft.jar,
-        account: editDraft.account,
-        tags: editDraft.tags || undefined,
-      });
-      setSpendings(prev => prev.map(s =>
-        s === editingSpendingRow
-          ? { ...s, ...editDraft, amount: parseFloat(editDraft.amount) }
-          : s
-      ));
-      setEditingSpendingRow(null);
+      if (isSpendingRow(editingRow)) {
+        if (!editingRow.rowIndex) throw new Error("rowIndex manquant — mettez à jour votre Apps Script.");
+        await updateSpending(editingRow.rowIndex, {
+          date: editDraft.date, description: editDraft.description,
+          amount: parseFloat(editDraft.amount), jar: editDraft.jar,
+          account: editDraft.account, tags: editDraft.tags || undefined,
+        });
+        setSpendings(prev => prev.map(s => s === editingRow ? { ...s, ...editDraft, amount: parseFloat(editDraft.amount) } : s));
+      } else {
+        if (!editingRow.rowIndex) throw new Error("rowIndex manquant — mettez à jour votre Apps Script.");
+        await updateRevenue(editingRow.rowIndex, {
+          date: editDraft.date, source: editDraft.source,
+          amount: parseFloat(editDraft.amount) || undefined,
+          value: editDraft.value || undefined, method: editDraft.method || undefined,
+          rate: parseFloat(editDraft.rate) || undefined,
+          destination: editDraft.destination || undefined,
+          incomeType: editDraft.incomeType || undefined,
+          tags: editDraft.tags || undefined,
+        });
+        setRevenues(prev => prev.map(r => r === editingRow ? { ...r, ...editDraft, amount: parseFloat(editDraft.amount) } : r));
+      }
+      setEditingRow(null);
     } catch (e: any) {
-      setEditError(e.message || "Erreur lors de la sauvegarde");
-    } finally {
-      setEditSaving(false);
-    }
-  };
-
-  const handleSaveRevenue = async () => {
-    if (!editingRevenueRow) return;
-    if (!editingRevenueRow.rowIndex) {
-      setEditError("rowIndex manquant — mettez à jour votre Google Apps Script pour activer l'édition.");
-      return;
-    }
-    setEditSaving(true);
-    setEditError(null);
-    try {
-      await updateRevenue(editingRevenueRow.rowIndex, {
-        date: editDraft.date,
-        source: editDraft.source,
-        amount: parseFloat(editDraft.amount) || undefined,
-        value: editDraft.value || undefined,
-        method: editDraft.method || undefined,
-        rate: parseFloat(editDraft.rate) || undefined,
-        destination: editDraft.destination || undefined,
-        incomeType: editDraft.incomeType || undefined,
-        tags: editDraft.tags || undefined,
-      });
-      setRevenues(prev => prev.map(r =>
-        r === editingRevenueRow
-          ? { ...r, ...editDraft, amount: parseFloat(editDraft.amount) }
-          : r
-      ));
-      setEditingRevenueRow(null);
-    } catch (e: any) {
-      setEditError(e.message || "Erreur lors de la sauvegarde");
+      setEditError(e.message || "Erreur de sauvegarde");
     } finally {
       setEditSaving(false);
     }
   };
 
   const handleDeleteSpending = async (row: SearchSpendingResult) => {
-    if (!row.rowIndex) {
-      alert("rowIndex manquant — mettez à jour votre Google Apps Script pour activer la suppression.");
-      return;
-    }
-    if (!window.confirm(`Supprimer définitivement "${row.description}" (${row.amount} €) ?`)) return;
+    if (!row.rowIndex) { alert("rowIndex manquant"); return; }
+    if (!window.confirm(`Supprimer "${row.description}" (${row.amount} €) ?`)) return;
     try {
       await deleteSpending(row.rowIndex);
       setSpendings(prev => prev.filter(s => s !== row));
-    } catch (e: any) {
-      alert("Erreur suppression : " + (e.message || String(e)));
-    }
+      setExpandedCard(null);
+    } catch (e: any) { alert("Erreur : " + (e.message || String(e))); }
   };
 
   const handleDeleteRevenue = async (row: SearchRevenueResult) => {
-    if (!row.rowIndex) {
-      alert("rowIndex manquant — mettez à jour votre Google Apps Script pour activer la suppression.");
-      return;
-    }
-    if (!window.confirm(`Supprimer définitivement "${row.source}" (${row.amount}) ?`)) return;
+    if (!row.rowIndex) { alert("rowIndex manquant"); return; }
+    if (!window.confirm(`Supprimer "${row.source}" (${row.amount}) ?`)) return;
     try {
       await deleteRevenue(row.rowIndex);
       setRevenues(prev => prev.filter(r => r !== row));
+      setExpandedCard(null);
+    } catch (e: any) { alert("Erreur : " + (e.message || String(e))); }
+  };
+
+  // ── Report generation ─────────────────────────────────────────────
+  const generateReport = async () => {
+    setReportLoading(true);
+    try {
+      const [spRes, revRes] = await Promise.all([
+        searchSpendings("", 500),
+        searchRevenues("", 300),
+      ]);
+      setReportSpendings((spRes.rows || []).filter(s => getYearMonth(s.date) === reportMonth));
+      setReportRevenues((revRes.rows || []).filter(r => getYearMonth(r.date) === reportMonth));
+      setReportGenerated(true);
     } catch (e: any) {
-      alert("Erreur suppression : " + (e.message || String(e)));
+      alert("Erreur génération rapport : " + e.message);
+    } finally {
+      setReportLoading(false);
     }
   };
 
-  const periodCutoff = useMemo(() => {
-    if (periodFilter === "all") return null;
-    const d = new Date();
-    if (periodFilter === "30d") d.setDate(d.getDate() - 30);
-    else if (periodFilter === "90d") d.setDate(d.getDate() - 90);
-    else if (periodFilter === "year") d.setDate(d.getDate() - 365);
-    return d;
-  }, [periodFilter]);
+  const reportTotalSpendings = useMemo(() => reportSpendings.reduce((s, r) => s + (r.amount || 0), 0), [reportSpendings]);
+  const reportTotalRevenues = useMemo(() => reportRevenues.reduce((s, r) => s + (r.amount || 0), 0), [reportRevenues]);
 
-  const filteredSpendings = useMemo(() =>
-    spendings.filter((s) => {
-      if (periodCutoff) {
-        const dt = parseDate(s.date);
-        if (!dt || dt < periodCutoff) return false;
-      }
-      if (jarFilter !== "all" && s.jar !== jarFilter) return false;
-      if (accountFilter !== "all" && s.account !== accountFilter) return false;
-      return true;
-    }),
-    [spendings, periodCutoff, jarFilter, accountFilter]
+  const reportByJar = useMemo(() => {
+    const map: Record<string, number> = {};
+    reportSpendings.forEach(s => { map[s.jar] = (map[s.jar] || 0) + (s.amount || 0); });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [reportSpendings]);
+
+  const reportTopDescriptions = useMemo(() => {
+    const map: Record<string, number> = {};
+    reportSpendings.forEach(s => { map[s.description] = (map[s.description] || 0) + (s.amount || 0); });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 7);
+  }, [reportSpendings]);
+
+  const reportSubscriptions = useMemo(() =>
+    reportSpendings.filter(s => s.subscription && s.subscription !== ""),
+    [reportSpendings]
   );
 
-  const filteredRevenues = useMemo(() =>
-    revenues.filter((r) => {
-      if (periodCutoff) {
-        const dt = parseDate(r.date);
-        if (!dt || dt < periodCutoff) return false;
-      }
-      if (typeFilter !== "all" && r.incomeType !== typeFilter) return false;
-      if (destinationFilter !== "all" && r.destination !== destinationFilter) return false;
-      if (methodFilter !== "all" && r.method !== methodFilter) return false;
-      return true;
-    }),
-    [revenues, periodCutoff, typeFilter, destinationFilter, methodFilter]
-  );
+  // ── Styles ────────────────────────────────────────────────────────
 
-  const totalSpendingFiltered = useMemo(() =>
-    filteredSpendings.reduce((sum, s) => sum + (s.amount || 0), 0),
-    [filteredSpendings]
-  );
+  const tabBarStyle: React.CSSProperties = {
+    display: "flex",
+    background: "rgba(116,116,128,0.12)",
+    borderRadius: 10,
+    padding: 2,
+  };
 
-  const totalRevenueFiltered = useMemo(() =>
-    filteredRevenues.reduce((sum, r) => sum + (r.amount || 0), 0),
-    [filteredRevenues]
-  );
+  const tabBtnStyle = (active: boolean, accent = "#1d1d1f"): React.CSSProperties => ({
+    flex: 1,
+    padding: "8px 0",
+    border: "none",
+    borderRadius: 8,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.2s",
+    background: active ? "var(--bg-card)" : "transparent",
+    color: active ? accent : "var(--text-muted)",
+    boxShadow: active ? "0 1px 4px rgba(0,0,0,0.12)" : "none",
+  });
 
-  const uniqueTypes = useMemo(() => Array.from(new Set(revenues.map((r) => r.incomeType).filter(Boolean))), [revenues]);
-  const uniqueDestinations = useMemo(() => Array.from(new Set(revenues.map((r) => r.destination).filter(Boolean))), [revenues]);
-  const uniqueMethods = useMemo(() => Array.from(new Set(revenues.map((r) => r.method).filter(Boolean))), [revenues]);
-  const uniqueJars = useMemo(() => Array.from(new Set(spendings.map((s) => s.jar).filter(Boolean))), [spendings]);
-  const uniqueAccounts = useMemo(() => Array.from(new Set(spendings.map((s) => s.account).filter(Boolean))), [spendings]);
+  const pillStyle = (active: boolean, color = "#007AFF"): React.CSSProperties => ({
+    flexShrink: 0,
+    padding: "6px 14px",
+    borderRadius: 20,
+    border: `1.5px solid ${active ? color : "var(--border-color)"}`,
+    background: active ? `${color}18` : "var(--bg-card)",
+    color: active ? color : "var(--text-muted)",
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  });
 
-  return (
-    <main className="history-main">
-      <div className="history-container">
-        <h2 className="history-title">Historique</h2>
+  const actionBtnStyle = (variant: "primary" | "edit" | "delete" | "ghost"): React.CSSProperties => {
+    const map = {
+      primary: { bg: "#EAF3FF", color: "#007AFF" },
+      edit:    { bg: "#FFF5E6", color: "#FF9500" },
+      delete:  { bg: "#FFEDED", color: "#FF3B30" },
+      ghost:   { bg: "rgba(0,0,0,0.04)", color: "var(--text-muted)" },
+    };
+    const c = map[variant];
+    return { flex: "1 1 auto", padding: "9px 10px", borderRadius: 10, border: "none", background: c.bg, color: c.color, fontSize: 13, fontWeight: 600, cursor: "pointer", textAlign: "center" };
+  };
 
-        {/* Mode Toggle */}
-        <div className="mode-toggle">
-          <button
-            type="button"
-            className={`mode-toggle-btn ${mode === "spending" ? "active" : ""}`}
-            onClick={() => handleModeChange("spending")}
-          >
-            Dépenses
+  // ── Render helpers ────────────────────────────────────────────────
+
+  const renderPills = (
+    items: { label: string; value: string }[],
+    current: string,
+    onChange: (v: string) => void,
+    color = "#007AFF",
+    sectionLabel?: string
+  ) => (
+    <div>
+      {sectionLabel && (
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>
+          {sectionLabel}
+        </div>
+      )}
+      {/* pills-scroll: classe CSS pour le scroll horizontal cross-platform */}
+      <div className="pills-scroll">
+        {items.map(item => (
+          <button key={item.value} style={pillStyle(current === item.value, color)} onClick={() => onChange(item.value)}>
+            {item.label}
           </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderEditForm = (row: SearchSpendingResult | SearchRevenueResult) => {
+    const isSpending = isSpendingRow(row);
+    return (
+      <div style={{ borderTop: "1px solid var(--border-color)", padding: 16, background: "rgba(0,0,0,0.02)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+          {/* Common */}
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+            Date
+            <input type="date" value={editDraft.date || ""} onChange={e => setEditDraft(d => ({ ...d, date: e.target.value }))}
+              style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+            Montant
+            <input type="number" step="0.01" value={editDraft.amount || ""} onChange={e => setEditDraft(d => ({ ...d, amount: e.target.value }))}
+              style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+          </label>
+
+          {isSpending ? (<>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
+              Description
+              <input type="text" value={editDraft.description || ""} onChange={e => setEditDraft(d => ({ ...d, description: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+              Jarre
+              <select value={editDraft.jar || ""} onChange={e => setEditDraft(d => ({ ...d, jar: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }}>
+                {JAR_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+              Compte
+              <input type="text" value={editDraft.account || ""} onChange={e => setEditDraft(d => ({ ...d, account: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
+              Tags
+              <input type="text" value={editDraft.tags || ""} onChange={e => setEditDraft(d => ({ ...d, tags: e.target.value }))} placeholder="id1,id2,…"
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+          </>) : (<>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
+              Source
+              <input type="text" value={editDraft.source || ""} onChange={e => setEditDraft(d => ({ ...d, source: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+              Méthode
+              <input type="text" value={editDraft.method || ""} onChange={e => setEditDraft(d => ({ ...d, method: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+              Destination
+              <input type="text" value={editDraft.destination || ""} onChange={e => setEditDraft(d => ({ ...d, destination: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+              Taux
+              <input type="number" step="0.000001" value={editDraft.rate || ""} onChange={e => setEditDraft(d => ({ ...d, rate: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
+              Type
+              <input type="text" value={editDraft.incomeType || ""} onChange={e => setEditDraft(d => ({ ...d, incomeType: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </label>
+          </>)}
+        </div>
+        {editError && <p style={{ color: "#FF3B30", fontSize: 13, marginBottom: 10 }}>⚠️ {editError}</p>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={actionBtnStyle("primary")} onClick={handleSave} disabled={editSaving}>
+            {editSaving ? "⏳ Sauvegarde…" : "💾 Enregistrer"}
+          </button>
+          <button style={actionBtnStyle("ghost")} onClick={cancelEdit}>Annuler</button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSpendingCard = (row: SearchSpendingResult, idx: number) => {
+    const cardKey = `sp-${row.rowIndex ?? idx}`;
+    const isExpanded = expandedCard === cardKey;
+    const isEditing = editingRow === row;
+    const jarColor = JAR_COLORS[row.jar as JarKey] || "#aaa";
+    const jarEmoji = JAR_EMOJI[row.jar as JarKey] || "💸";
+
+    return (
+      <div key={cardKey} style={{ background: "var(--bg-card)", borderRadius: 16, boxShadow: isExpanded || isEditing ? "var(--shadow-md)" : "var(--shadow-sm)", overflow: "hidden", transition: "box-shadow 0.2s" }}>
+        {/* Card header — tappable */}
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", cursor: "pointer" }}
+          onClick={() => { if (!isEditing) setExpandedCard(isExpanded ? null : cardKey); }}
+        >
+          <div style={{ width: 42, height: 42, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: `${jarColor}20`, fontSize: 20, flexShrink: 0 }}>
+            {jarEmoji}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {row.description}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(row.date)}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 6, background: `${jarColor}20`, color: jarColor }}>{row.jar}</span>
+              {row.account && <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: 6, background: "rgba(0,0,0,0.05)", color: "var(--text-muted)" }}>{row.account}</span>}
+              {row.subscription && <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: "#AF52DE20", color: "#AF52DE" }}>🔄 {row.subscription}</span>}
+              {row.tags && row.tags.split(",").slice(0, 3).map(t => t.trim()).filter(Boolean).map(t => (
+                <span key={t} style={{ fontSize: 11, padding: "2px 6px", borderRadius: 6, background: "rgba(0,0,0,0.05)", color: "var(--text-muted)" }}>#{t}</span>
+              ))}
+            </div>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <span style={{ fontSize: 17, fontWeight: 700, color: "#FF3B30" }}>-{fmt(row.amount)}€</span>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
+          </div>
+        </div>
+
+        {/* Edit form */}
+        {isEditing && renderEditForm(row)}
+
+        {/* Expanded actions */}
+        {isExpanded && !isEditing && (
+          <div style={{ borderTop: "1px solid var(--border-color)", padding: "12px 16px" }}>
+            {row.tags && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                {row.tags.split(",").map(t => t.trim()).filter(Boolean).map(t => (
+                  <span key={t} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "rgba(0,0,0,0.05)", color: "var(--text-muted)" }}>#{t}</span>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {onUseEntry && (
+                <button style={actionBtnStyle("primary")} onClick={() => onUseEntry({ kind: "spending", row })}>↻ Réutiliser</button>
+              )}
+              <button style={actionBtnStyle("edit")} onClick={() => startEdit(row)}>✏️ Modifier</button>
+              <button style={actionBtnStyle("delete")} onClick={() => handleDeleteSpending(row)}>🗑️</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderRevenueCard = (row: SearchRevenueResult, idx: number) => {
+    const cardKey = `rev-${row.rowIndex ?? idx}`;
+    const isExpanded = expandedCard === cardKey;
+    const isEditing = editingRow === row;
+
+    return (
+      <div key={cardKey} style={{ background: "var(--bg-card)", borderRadius: 16, boxShadow: isExpanded || isEditing ? "var(--shadow-md)" : "var(--shadow-sm)", overflow: "hidden", transition: "box-shadow 0.2s" }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", cursor: "pointer" }}
+          onClick={() => { if (!isEditing) setExpandedCard(isExpanded ? null : cardKey); }}
+        >
+          <div style={{ width: 42, height: 42, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: "#E8FAF0", fontSize: 20, flexShrink: 0 }}>
+            💵
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {row.source}
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 4, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{fmtDate(row.date)}</span>
+              {row.method && <span style={{ fontSize: 11, fontWeight: 500, padding: "2px 7px", borderRadius: 6, background: "rgba(0,0,0,0.05)", color: "var(--text-muted)" }}>{row.method}</span>}
+              {row.destination && <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 6, background: "#34C75920", color: "#34C759" }}>{row.destination}</span>}
+            </div>
+          </div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <span style={{ fontSize: 17, fontWeight: 700, color: "#34C759" }}>+{fmt(row.amount)}€</span>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
+          </div>
+        </div>
+
+        {isEditing && renderEditForm(row)}
+
+        {isExpanded && !isEditing && (
+          <div style={{ borderTop: "1px solid var(--border-color)", padding: "12px 16px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+              {row.cryptoQuantity > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ color: "var(--text-muted)" }}>Crypto</span>
+                  <span style={{ fontWeight: 600 }}>{fmt(row.cryptoQuantity, 8)}</span>
+                </div>
+              )}
+              {row.rate > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ color: "var(--text-muted)" }}>Taux</span>
+                  <span style={{ fontWeight: 600 }}>{fmt(row.rate, 4)}</span>
+                </div>
+              )}
+              {row.incomeType && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ color: "var(--text-muted)" }}>Type</span>
+                  <span style={{ fontWeight: 600 }}>{row.incomeType}</span>
+                </div>
+              )}
+              {row.value && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                  <span style={{ color: "var(--text-muted)" }}>Valeur</span>
+                  <span style={{ fontWeight: 600 }}>{row.value}</span>
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {onUseEntry && (
+                <button style={actionBtnStyle("primary")} onClick={() => onUseEntry({ kind: "revenue", row })}>↻ Réutiliser</button>
+              )}
+              <button style={actionBtnStyle("edit")} onClick={() => startEdit(row)}>✏️ Modifier</button>
+              <button style={actionBtnStyle("delete")} onClick={() => handleDeleteRevenue(row)}>🗑️</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── Report section ────────────────────────────────────────────────
+
+  const renderReport = () => {
+    const balance = reportTotalRevenues - reportTotalSpendings;
+    const monthLabel = (() => {
+      try { return new Date(reportMonth + "-01").toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); }
+      catch { return reportMonth; }
+    })();
+
+    return (
+      <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Month picker card */}
+        <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
+            Rapport mensuel
+          </div>
+          {/* Navigation mois */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <button
+              onClick={() => {
+                const [y, m] = reportMonth.split("-").map(Number);
+                const d = new Date(y, m - 2, 1);
+                setReportMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+                setReportGenerated(false);
+              }}
+              style={{ width: 40, height: 40, borderRadius: 10, border: "1.5px solid var(--border-color)", background: "var(--bg-card)", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: "var(--text-main)" }}
+            >‹</button>
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-main)", textTransform: "capitalize" }}>
+                {monthLabel}
+              </div>
+              {/* Picker natif en backup (invisible mais accessible) */}
+              <input
+                type="month"
+                value={reportMonth}
+                onChange={e => { setReportMonth(e.target.value); setReportGenerated(false); }}
+                style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+              />
+            </div>
+            <button
+              onClick={() => {
+                const [y, m] = reportMonth.split("-").map(Number);
+                const d = new Date(y, m, 1);
+                const nowM = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+                const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+                if (next <= nowM) { setReportMonth(next); setReportGenerated(false); }
+              }}
+              style={{ width: 40, height: 40, borderRadius: 10, border: "1.5px solid var(--border-color)", background: "var(--bg-card)", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, color: (() => { const [y,m] = reportMonth.split("-").map(Number); const d = new Date(y,m,1); const nowM = new Date(); return d > nowM ? "var(--text-muted)" : "var(--text-main)"; })() }}
+            >›</button>
+          </div>
           <button
-            type="button"
-            className={`mode-toggle-btn ${mode === "revenue" ? "active" : ""}`}
-            onClick={() => handleModeChange("revenue")}
+            onClick={generateReport}
+            disabled={reportLoading}
+            style={{ width: "100%", padding: "12px", background: "#007AFF", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer" }}
           >
-            Revenus
+            {reportLoading ? "⏳ Chargement…" : "📊 Générer le rapport"}
           </button>
         </div>
 
-        {/* Recherche */}
-        <input
-          type="text"
-          className="search-input"
-          placeholder="Recherche..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-        />
+        {reportGenerated && (<>
+          {/* Summary */}
+          <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
+              Résumé · {monthLabel}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div style={{ padding: "14px", background: "#FFEDED", borderRadius: 12 }}>
+                <div style={{ fontSize: 11, color: "#FF3B30", fontWeight: 700, marginBottom: 6 }}>DÉPENSES</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#FF3B30", lineHeight: 1 }}>{fmt(reportTotalSpendings)} €</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{reportSpendings.length} transactions</div>
+              </div>
+              <div style={{ padding: "14px", background: "#E8FAF0", borderRadius: 12 }}>
+                <div style={{ fontSize: 11, color: "#34C759", fontWeight: 700, marginBottom: 6 }}>REVENUS</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#34C759", lineHeight: 1 }}>{fmt(reportTotalRevenues)} €</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{reportRevenues.length} transactions</div>
+              </div>
+            </div>
+            <div style={{ padding: "14px", background: balance >= 0 ? "#EAF3FF" : "#FFF5E6", borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 500 }}>Balance du mois</span>
+              <span style={{ fontSize: 24, fontWeight: 800, color: balance >= 0 ? "#007AFF" : "#FF9500" }}>
+                {balance >= 0 ? "+" : ""}{fmt(balance)} €
+              </span>
+            </div>
+          </div>
 
-        {/* Filtres */}
-        <select
-          className="filter-select"
-          value={periodFilter}
-          onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
-        >
-          <option value="all">Toute période</option>
-          <option value="30d">30 derniers jours</option>
-          <option value="90d">90 derniers jours</option>
-          <option value="year">Cette année</option>
-        </select>
+          {/* By jar */}
+          {reportByJar.length > 0 && (
+            <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
+                Répartition par jarre
+              </div>
+              {reportByJar.map(([jar, amount]) => {
+                const pct = reportTotalSpendings > 0 ? (amount / reportTotalSpendings) * 100 : 0;
+                const color = JAR_COLORS[jar as JarKey] || "#ccc";
+                const emoji = JAR_EMOJI[jar as JarKey] || "💰";
+                return (
+                  <div key={jar} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>{emoji} {jar}</span>
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: 15, fontWeight: 700 }}>{fmt(amount)} €</span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>{pct.toFixed(0)}%</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 6, background: "var(--border-color)", borderRadius: 3 }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.6s ease" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-        {mode === "revenue" && (
-          <>
-            <select
-              className="filter-select"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="all">Tous les types</option>
-              {uniqueTypes.map((t) => (
-                <option key={t} value={t}>{t}</option>
+          {/* Top transactions */}
+          {reportTopDescriptions.length > 0 && (
+            <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
+                Top dépenses
+              </div>
+              {reportTopDescriptions.map(([desc, amount], idx) => (
+                <div key={desc} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: idx < reportTopDescriptions.length - 1 ? "1px solid var(--border-color)" : "none" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ width: 24, height: 24, borderRadius: 12, background: "rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>
+                      {idx + 1}
+                    </span>
+                    <span style={{ fontSize: 14, color: "var(--text-main)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{desc}</span>
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30", flexShrink: 0 }}>{fmt(amount)} €</span>
+                </div>
               ))}
-            </select>
+            </div>
+          )}
 
-            <select
-              className="filter-select"
-              value={destinationFilter}
-              onChange={(e) => setDestinationFilter(e.target.value)}
-            >
-              <option value="all">Toutes les destinations</option>
-              {uniqueDestinations.map((d) => (
-                <option key={d} value={d}>{d}</option>
+          {/* Subscriptions */}
+          {reportSubscriptions.length > 0 && (
+            <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
+                🔄 Abonnements actifs
+              </div>
+              {reportSubscriptions.map((sub, idx) => (
+                <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: idx < reportSubscriptions.length - 1 ? "1px solid var(--border-color)" : "none" }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-main)" }}>{sub.description}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>
+                      {sub.subscription} · {sub.jar}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30" }}>{fmt(sub.amount)} €</span>
+                </div>
               ))}
-            </select>
+            </div>
+          )}
 
-            <select
-              className="filter-select"
-              value={methodFilter}
-              onChange={(e) => setMethodFilter(e.target.value)}
-            >
-              <option value="all">Toutes les méthodes</option>
-              {uniqueMethods.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </>
-        )}
+          {/* Empty */}
+          {reportSpendings.length === 0 && reportRevenues.length === 0 && (
+            <div style={{ textAlign: "center", padding: "32px 0", color: "var(--text-muted)" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>Aucune transaction</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>Aucune donnée pour {monthLabel}</div>
+            </div>
+          )}
+        </>)}
+      </div>
+    );
+  };
 
-        {mode === "spending" && (
-          <>
-            <select
-              className="filter-select"
-              value={jarFilter}
-              onChange={(e) => setJarFilter(e.target.value)}
-            >
-              <option value="all">Toutes les jarres</option>
-              {uniqueJars.map((j) => (
-                <option key={j} value={j}>{j}</option>
-              ))}
-            </select>
+  // ── Main render ───────────────────────────────────────────────────
 
-            <select
-              className="filter-select"
-              value={accountFilter}
-              onChange={(e) => setAccountFilter(e.target.value)}
-            >
-              <option value="all">Tous les comptes</option>
-              {uniqueAccounts.map((a) => (
-                <option key={a} value={a}>{a}</option>
-              ))}
-            </select>
-          </>
-        )}
+  return (
+    <main style={{ background: "var(--bg-body)", minHeight: "100vh" }}>
+      <div style={{ maxWidth: 600, margin: "0 auto", paddingBottom: 32 }}>
 
-        <button
-          type="button"
-          className="search-btn"
-          onClick={handleSearch}
-          disabled={loading}
-        >
-          {loading ? "Chargement..." : "Rechercher"}
-        </button>
+        {/* Header */}
+        <div style={{ padding: "20px 20px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+          <h2 style={{ fontSize: 28, fontWeight: 700, color: "var(--text-main)", letterSpacing: -0.5 }}>
+            Rapports
+          </h2>
+          {/* Main tab bar */}
+          <div style={tabBarStyle}>
+            <button style={tabBtnStyle(mainTab === "history")} onClick={() => setMainTab("history")}>
+              📋 Historique
+            </button>
+            <button style={tabBtnStyle(mainTab === "report", "#007AFF")} onClick={() => setMainTab("report")}>
+              📊 Rapport mensuel
+            </button>
+          </div>
+        </div>
 
-        {error && <p className="error-message">{error}</p>}
+        <div style={{ height: 20 }} />
 
-        {/* Totaux */}
-        {mode === "spending" && (
-          <div className="history-summary">
-            <p><strong>Total dépenses (calculé par l'API) : {formatAmount(totalSpendingsFromAPI)} €</strong></p>
-            {filteredSpendings.length > 0 && (
-              <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                Total des lignes affichées : {formatAmount(totalSpendingFiltered)} €
-              </p>
+        {/* ═══ HISTORY TAB ═══ */}
+        {mainTab === "history" && (<>
+          <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+            {/* Mode toggle */}
+            <div style={tabBarStyle}>
+              <button
+                style={tabBtnStyle(mode === "spending", "#FF3B30")}
+                onClick={() => { setMode("spending"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setJarFilter("all"); setAccountFilter("all"); }}
+              >
+                💸 Dépenses
+              </button>
+              <button
+                style={tabBtnStyle(mode === "revenue", "#34C759")}
+                onClick={() => { setMode("revenue"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setTypeFilter("all"); setDestinationFilter("all"); }}
+              >
+                💵 Revenus
+              </button>
+            </div>
+
+            {/* Search */}
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
+              <input
+                type="text"
+                placeholder={mode === "spending" ? "Rechercher une dépense…" : "Rechercher un revenu…"}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                autoComplete="off"
+                style={{ width: "100%", padding: "11px 12px 11px 38px", border: "1.5px solid var(--border-color)", borderRadius: 12, fontSize: 15, background: "var(--bg-card)", color: "var(--text-main)", outline: "none" }}
+              />
+              {loading && (
+                <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "var(--text-muted)" }}>⏳</span>
+              )}
+            </div>
+
+            {/* Period pills */}
+            {renderPills(
+              [
+                { label: "Tout", value: "all" },
+                { label: "Ce mois", value: "month" },
+                { label: "Mois préc.", value: "prevmonth" },
+                { label: "90j", value: "90d" },
+                { label: "1 an", value: "year" },
+              ],
+              periodFilter, (v) => setPeriodFilter(v as PeriodFilter), "#007AFF", "Période"
+            )}
+
+            {/* Contextual filter pills — on affiche toujours les 6 jarres */}
+            {mode === "spending" && renderPills(
+              [{ label: "Toutes", value: "all" }, ...JAR_KEYS.map(j => ({ label: `${JAR_EMOJI[j]} ${j}`, value: j }))],
+              jarFilter, setJarFilter, "#007AFF", "Jarre"
+            )}
+            {mode === "spending" && uniqueAccounts.length > 1 && renderPills(
+              [{ label: "Tous", value: "all" }, ...uniqueAccounts.map(a => ({ label: a, value: a }))],
+              accountFilter, setAccountFilter, "#34C759", "Compte"
+            )}
+            {mode === "revenue" && uniqueTypes.length > 1 && renderPills(
+              [{ label: "Tous", value: "all" }, ...uniqueTypes.map(t => ({ label: t, value: t }))],
+              typeFilter, setTypeFilter, "#34C759", "Type de revenu"
+            )}
+            {mode === "revenue" && uniqueDestinations.length > 1 && renderPills(
+              [{ label: "Toutes", value: "all" }, ...uniqueDestinations.map(d => ({ label: d, value: d }))],
+              destinationFilter, setDestinationFilter, "#FF9500", "Destination"
             )}
           </div>
-        )}
 
-        {mode === "revenue" && (
-          <div className="history-summary">
-            <p><strong>Total revenus (calculé par l'API) : {formatAmount(totalRevenuesFromAPI)} €</strong></p>
-            {filteredRevenues.length > 0 && (
-              <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                Total des lignes affichées (montant brut USD) : {formatAmount(totalRevenueFiltered)} USD/EUR
-                {Math.abs(totalRevenueFiltered - totalRevenuesFromAPI) > 1 && (
-                  <span style={{ color: "#f97316", marginLeft: "8px" }}>
-                    ⚠️ La différence est normale car les lignes affichent le montant en USD, 
-                    mais le total API calcule en EUR après conversion crypto
+          {/* Summary bar */}
+          {!loading && (mode === "spending" ? filteredSpendings.length : filteredRevenues.length) > 0 && (
+            <div style={{ padding: "10px 20px" }}>
+              <div style={{ background: "var(--bg-card)", borderRadius: 12, boxShadow: "var(--shadow-sm)", padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                    {(mode === "spending" ? filteredSpendings.length : filteredRevenues.length)} transaction{(mode === "spending" ? filteredSpendings.length : filteredRevenues.length) !== 1 ? "s" : ""}
                   </span>
-                )}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* ✅ CARDS DÉPENSES (Mobile-First) */}
-        {mode === "spending" && filteredSpendings.length > 0 && (
-          <div className="history-cards">
-            {filteredSpendings.map((row, i) => (
-              <div key={`${row.date}-${row.description}-${i}`} className="history-card">
-                <div className="history-card-header">
-                  <div className="history-card-main">
-                    <span className="history-card-date">{row.date}</span>
-                    <span className="history-card-description">{row.description}</span>
-                  </div>
-                  <span className="history-card-amount">-{formatAmount(row.amount)} €</span>
+                  {periodLabel && (
+                    <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 6, fontStyle: "italic" }}>
+                      · {periodLabel}
+                    </span>
+                  )}
                 </div>
-                <div className="history-card-meta">
-                  <span className="history-card-badge">{row.jar}</span>
-                  <span className="history-card-badge">{row.account}</span>
+                <span style={{ fontSize: 17, fontWeight: 700, color: mode === "spending" ? "#FF3B30" : "#34C759" }}>
+                  {mode === "spending" ? "-" : "+"}{fmt(totalFiltered)} €
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div style={{ margin: "10px 20px", padding: "12px 16px", background: "#FFEDED", borderRadius: 12, color: "#FF3B30", fontSize: 14 }}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          {/* Cards */}
+          <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {mode === "spending" && filteredSpendings.map((row, i) => renderSpendingCard(row, i))}
+            {mode === "revenue" && filteredRevenues.map((row, i) => renderRevenueCard(row, i))}
+
+            {/* Empty state */}
+            {!loading && !error && (mode === "spending" ? filteredSpendings : filteredRevenues).length === 0 && (
+              <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)" }}>
+                <div style={{ fontSize: 44, marginBottom: 14 }}>🔍</div>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
+                  {query ? "Aucun résultat" : "Aucune transaction"}
                 </div>
-
-                {/* Formulaire d'édition inline */}
-                {editingSpendingRow === row && (
-                  <div className="history-card-edit-form">
-                    <div className="edit-form-grid">
-                      <label>Date
-                        <input type="date" value={editDraft.date || ""} onChange={e => setEditDraft(d => ({ ...d, date: e.target.value }))} />
-                      </label>
-                      <label>Montant (€)
-                        <input type="number" step="0.01" value={editDraft.amount || ""} onChange={e => setEditDraft(d => ({ ...d, amount: e.target.value }))} />
-                      </label>
-                      <label>Description
-                        <input type="text" value={editDraft.description || ""} onChange={e => setEditDraft(d => ({ ...d, description: e.target.value }))} />
-                      </label>
-                      <label>Jarre
-                        <select value={editDraft.jar || ""} onChange={e => setEditDraft(d => ({ ...d, jar: e.target.value }))}>
-                          {JAR_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
-                        </select>
-                      </label>
-                      <label>Compte
-                        <input type="text" value={editDraft.account || ""} onChange={e => setEditDraft(d => ({ ...d, account: e.target.value }))} />
-                      </label>
-                      <label>Tags
-                        <input type="text" value={editDraft.tags || ""} onChange={e => setEditDraft(d => ({ ...d, tags: e.target.value }))} placeholder="id1,id2,..." />
-                      </label>
-                    </div>
-                    {editError && <p className="edit-form-error">{editError}</p>}
-                    <div className="edit-form-actions">
-                      <button type="button" className="edit-form-save" onClick={handleSaveSpending} disabled={editSaving}>
-                        {editSaving ? "⏳ Sauvegarde…" : "💾 Enregistrer"}
-                      </button>
-                      <button type="button" className="edit-form-cancel" onClick={() => setEditingSpendingRow(null)}>
-                        Annuler
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="history-card-actions">
-                  <button
-                    type="button"
-                    className="history-card-action-btn"
-                    onClick={() => handleUseSpendingRow(row)}
-                    disabled={!onUseEntry}
-                  >
-                    ↻ Utiliser
-                  </button>
-                  <button
-                    type="button"
-                    className="history-card-action-btn history-card-edit-btn"
-                    onClick={() => editingSpendingRow === row ? setEditingSpendingRow(null) : startEditSpending(row)}
-                  >
-                    ✏️ Modifier
-                  </button>
-                  <button
-                    type="button"
-                    className="history-card-action-btn history-card-delete-btn"
-                    onClick={() => handleDeleteSpending(row)}
-                  >
-                    🗑️
-                  </button>
+                <div style={{ fontSize: 13 }}>
+                  {query ? `Aucune transaction pour "${query}"` : "Essayez d'élargir vos filtres"}
                 </div>
               </div>
-            ))}
+            )}
           </div>
-        )}
+        </>)}
 
-        {/* ✅ CARDS REVENUS (Mobile-First) */}
-        {mode === "revenue" && filteredRevenues.length > 0 && (
-          <div className="history-cards">
-            {filteredRevenues.map((row, i) => {
-              const isExpanded = expandedCard === i;
-              return (
-                <div key={`${row.date}-${row.source}-${i}`} className="history-card">
-                  <div className="history-card-header">
-                    <div className="history-card-main">
-                      <span className="history-card-date">{row.date}</span>
-                      <span className="history-card-description">{row.source}</span>
-                    </div>
-                    <span className="history-card-amount revenue">+{formatAmount(row.amount)} {row.value}</span>
-                  </div>
-                  
-                  <div className="history-card-meta">
-                    <span className="history-card-badge">{row.method}</span>
-                    {row.destination && <span className="history-card-badge">{row.destination}</span>}
-                  </div>
+        {/* ═══ REPORT TAB ═══ */}
+        {mainTab === "report" && renderReport()}
 
-                  {/* DétailsExpandableUTF */}
-                  {isExpanded && (
-                    <div className="history-card-details">
-                      {row.cryptoQuantity && (
-                        <div className="history-card-detail-row">
-                          <span>Crypto:</span>
-                          <span>{formatAmount(row.cryptoQuantity)}</span>
-                        </div>
-                      )}
-                      {row.rate && (
-                        <div className="history-card-detail-row">
-                          <span>Taux:</span>
-                          <span>{formatAmount(row.rate)}</span>
-                        </div>
-                      )}
-                      {row.incomeType && (
-                        <div className="history-card-detail-row">
-                          <span>Type:</span>
-                          <span>{row.incomeType}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Formulaire d'édition inline */}
-                  {editingRevenueRow === row && (
-                    <div className="history-card-edit-form">
-                      <div className="edit-form-grid">
-                        <label>Date
-                          <input type="date" value={editDraft.date || ""} onChange={e => setEditDraft(d => ({ ...d, date: e.target.value }))} />
-                        </label>
-                        <label>Montant
-                          <input type="number" step="0.01" value={editDraft.amount || ""} onChange={e => setEditDraft(d => ({ ...d, amount: e.target.value }))} />
-                        </label>
-                        <label>Source
-                          <input type="text" value={editDraft.source || ""} onChange={e => setEditDraft(d => ({ ...d, source: e.target.value }))} />
-                        </label>
-                        <label>Valeur (devise)
-                          <input type="text" value={editDraft.value || ""} onChange={e => setEditDraft(d => ({ ...d, value: e.target.value }))} />
-                        </label>
-                        <label>Méthode
-                          <input type="text" value={editDraft.method || ""} onChange={e => setEditDraft(d => ({ ...d, method: e.target.value }))} />
-                        </label>
-                        <label>Taux
-                          <input type="number" step="0.000001" value={editDraft.rate || ""} onChange={e => setEditDraft(d => ({ ...d, rate: e.target.value }))} />
-                        </label>
-                        <label>Destination
-                          <input type="text" value={editDraft.destination || ""} onChange={e => setEditDraft(d => ({ ...d, destination: e.target.value }))} />
-                        </label>
-                        <label>Type
-                          <input type="text" value={editDraft.incomeType || ""} onChange={e => setEditDraft(d => ({ ...d, incomeType: e.target.value }))} />
-                        </label>
-                      </div>
-                      {editError && <p className="edit-form-error">{editError}</p>}
-                      <div className="edit-form-actions">
-                        <button type="button" className="edit-form-save" onClick={handleSaveRevenue} disabled={editSaving}>
-                          {editSaving ? "⏳ Sauvegarde…" : "💾 Enregistrer"}
-                        </button>
-                        <button type="button" className="edit-form-cancel" onClick={() => setEditingRevenueRow(null)}>
-                          Annuler
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="history-card-actions">
-                    <button
-                      type="button"
-                      className="history-card-toggle-btn"
-                      onClick={() => setExpandedCard(isExpanded ? null : i)}
-                    >
-                      {isExpanded ? "▲ Moins" : "▼ Plus"}
-                    </button>
-                    <button
-                      type="button"
-                      className="history-card-action-btn primary"
-                      onClick={() => handleUseRevenueRow(row)}
-                      disabled={!onUseEntry}
-                    >
-                      ↻ Utiliser
-                    </button>
-                    <button
-                      type="button"
-                      className="history-card-action-btn history-card-edit-btn"
-                      onClick={() => editingRevenueRow === row ? setEditingRevenueRow(null) : startEditRevenue(row)}
-                    >
-                      ✏️ Modifier
-                    </button>
-                    <button
-                      type="button"
-                      className="history-card-action-btn history-card-delete-btn"
-                      onClick={() => handleDeleteRevenue(row)}
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {loading && (
-          <p style={{ marginTop: "1rem", textAlign: "center", color: "var(--text-muted)" }}>
-            Chargement des données…
-          </p>
-        )}
-
-        {!loading && !error && spendings.length === 0 && revenues.length === 0 && (
-          <p style={{ marginTop: "1rem", color: "#777", textAlign: "center" }}>
-            Aucune donnée trouvée. Essayez d'élargir vos critères de recherche.
-          </p>
-        )}
       </div>
     </main>
   );

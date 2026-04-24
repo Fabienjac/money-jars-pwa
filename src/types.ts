@@ -9,6 +9,7 @@ export interface SpendingRow {
   amount: number;
   description: string;
   tags?: string;
+  subscription?: string; // "" | "mensuel" | "trimestriel" | "semestriel" | "annuel"
 }
 
 export interface RevenueRow {
@@ -45,6 +46,7 @@ export interface SearchSpendingResult {
   amount: number;
   description: string;
   tags?: string;
+  subscription?: string; // "" | "mensuel" | "trimestriel" | "semestriel" | "annuel"
   rowIndex?: number;
 }
 

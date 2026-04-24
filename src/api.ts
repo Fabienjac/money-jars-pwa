@@ -8,6 +8,7 @@ import {
   Account,
   RevenueAccount,
 } from "./types";
+import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
 
 const API_URL = import.meta.env.VITE_API_URL as string;
 const API_KEY = import.meta.env.VITE_API_KEY as string;
@@ -232,4 +233,112 @@ export async function fetchAnalytics(forceRefresh = false): Promise<AnalyticsRes
   const data = await res.json() as AnalyticsResponse;
   setCache(CACHE_KEY, data);
   return data;
+}
+// --------- NET WORTH ---------
+export interface NetWorthResponse {
+  value: number;
+  currency: string;
+}
+
+export async function fetchNetWorth(forceRefresh = false): Promise<NetWorthResponse> {
+  const CACHE_KEY = "mjars:cache:networth";
+  if (!forceRefresh) {
+    const cached = getCached<NetWorthResponse>(CACHE_KEY);
+    if (cached) return cached;
+  }
+  const url = `${API_URL}?action=getNetWorth&key=${encodeURIComponent(API_KEY)}`;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) throw new Error(`Erreur API netWorth (${res.status})`);
+  const data = await res.json() as NetWorthResponse;
+  setCache(CACHE_KEY, data);
+  return data;
+}
+
+// ── Column mappings (Google Sheets ↔ localStorage cache) ─────────────────────
+
+const COLMAPPING_CACHE_KEY = "mjars:colmappings:all";
+const COLMAPPING_CACHE_TTL = 60 * 60 * 1000; // 1h
+
+/**
+ * Récupère tous les mappings de colonnes depuis Google Sheets.
+ * Cache en localStorage (TTL 1h) pour éviter un appel API à chaque import.
+ */
+export async function fetchColumnMappings(): Promise<Record<string, unknown>> {
+  try {
+    const raw = localStorage.getItem(COLMAPPING_CACHE_KEY);
+    if (raw) {
+      const { data, ts } = JSON.parse(raw) as { data: Record<string, unknown>; ts: number };
+      if (Date.now() - ts < COLMAPPING_CACHE_TTL) return data;
+    }
+  } catch {}
+
+  try {
+    const url = `${API_URL}?action=getColumnMappings&key=${encodeURIComponent(API_KEY)}`;
+    const res = await fetch(url, { method: "GET" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { mappings: Record<string, unknown> };
+    const mappings = data.mappings || {};
+    try { localStorage.setItem(COLMAPPING_CACHE_KEY, JSON.stringify({ data: mappings, ts: Date.now() })); } catch {}
+    return mappings;
+  } catch (err) {
+    console.warn("fetchColumnMappings: erreur API", err);
+    return {};
+  }
+}
+
+/**
+ * Sauvegarde un mapping dans Google Sheets (upsert par clé).
+ * Met aussi à jour le cache local immédiatement.
+ *
+ * ⚠️  On utilise `mappingKey` (pas `key`) pour ne pas écraser
+ *     le champ `key: API_KEY` injecté par callApi().
+ */
+export async function saveColumnMappingToSheet(mappingKey: string, mapping: unknown): Promise<void> {
+  // Mettre à jour le cache local tout de suite
+  try {
+    const raw = localStorage.getItem(COLMAPPING_CACHE_KEY);
+    const existing = raw ? (JSON.parse(raw) as { data: Record<string, unknown>; ts: number }) : { data: {}, ts: 0 };
+    existing.data[mappingKey] = mapping;
+    existing.ts = Date.now();
+    localStorage.setItem(COLMAPPING_CACHE_KEY, JSON.stringify(existing));
+  } catch {}
+
+  // Envoyer au Sheet (fire-and-forget)
+  // mappingKey → transmis comme `mappingKey` pour éviter le conflit avec `key: API_KEY`
+  callApi<{ ok: boolean }>({ action: "saveColumnMapping", mappingKey, mapping }).catch(err =>
+    console.warn("saveColumnMappingToSheet: erreur API", err)
+  );
+}
+
+// ── Auto-tag rules (Google Sheets ↔ localStorage cache) ──────────────────────
+
+/**
+ * Récupère les règles d'auto-tag depuis Google Sheets.
+ * Utilise le cache localStorage comme fallback si l'API échoue.
+ */
+export async function fetchAutoTagRules(): Promise<AutoTagRule[]> {
+  try {
+    const url = `${API_URL}?action=getAutoTagRules&key=${encodeURIComponent(API_KEY)}`;
+    const res = await fetch(url, { method: "GET" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json() as { rules: AutoTagRule[] };
+    const rules = Array.isArray(data.rules) ? data.rules : [];
+    saveCachedRules(rules); // mettre à jour le cache local
+    return rules;
+  } catch (err) {
+    console.warn("fetchAutoTagRules: fallback localStorage", err);
+    return loadCachedRules();
+  }
+}
+
+/**
+ * Sauvegarde toutes les règles d'auto-tag dans Google Sheets (remplacement complet).
+ * Met aussi à jour le cache localStorage.
+ */
+export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<void> {
+  saveCachedRules(rules); // toujours mettre à jour le cache local en premier
+  await callApi<{ ok: boolean }>({
+    action: "saveAutoTagRules",
+    rules,
+  });
 }

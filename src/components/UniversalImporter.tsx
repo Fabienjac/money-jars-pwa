@@ -6,6 +6,9 @@ import { TransactionEditor } from "./TransactionEditor";
 import { RevenueTransactionEditor } from "./RevenueTransactionEditor";
 import { loadRevenueSources } from "../revenueSourcesUtils";
 import { getRevenueAccounts } from "../api";
+import { loadTags } from "../tagsUtils";
+import { AutoTagRule, findRule, upsertRule, loadCachedRules } from "../autoTagRules";
+import { fetchAutoTagRules, saveAutoTagRulesToSheet } from "../api";
 
 interface MatchDetails {
   dateMatch: string;
@@ -52,6 +55,9 @@ interface Transaction {
   adresseCrypto?: string;
   compteDestination?: string;
   type?: string;
+  // Champs internes (non envoyés à l'API)
+  _origDescription?: string;   // libellé original avant édition / auto-tag
+  _autoTagged?: boolean;       // true si une règle a été appliquée automatiquement
 }
 
 // Interfaces pour le nouveau système de mapping inversé
@@ -98,6 +104,17 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
   // Cache des taux de change par (devise, date) pour éviter des appels répétés au proxy
   const rateCacheRef = useRef<Map<string, number>>(new Map());
+
+  // ✨ Règles d'auto-tag chargées depuis Google Sheets (avec fallback localStorage)
+  const autoTagRulesRef = useRef<AutoTagRule[]>([]);
+
+  useEffect(() => {
+    // Pré-charger les règles depuis le cache local immédiatement, puis depuis l'API
+    autoTagRulesRef.current = loadCachedRules();
+    fetchAutoTagRules()
+      .then(rules => { autoTagRulesRef.current = rules; })
+      .catch(() => { /* garder le cache local */ });
+  }, []);
 
   // Sources de revenu (chargées au montage et à chaque revenueAccountsUpdated)
   const [revenueSources, setRevenueSources] = useState<any[]>([]);
@@ -164,9 +181,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
       console.log("🔍 Analyse de la structure du fichier...");
 
-      // En dev (Vite seul), handler Node local — pas besoin de Netlify sur :8888
+      // Port 5173 = Vite seul → plugin local. Port 8888 = netlify dev → vraie fonction.
       const analyzeUrl =
-        import.meta.env.DEV
+        import.meta.env.DEV && window.location.port === "5173"
           ? "/__vite-local/analyzeFile"
           : "/.netlify/functions/analyzeFile";
 
@@ -302,8 +319,28 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       const deselectedCount = withSelection.length - selectedCount;
       console.log(`✅ ${selectedCount} nouvelles transactions sélectionnées pour import`);
       console.log(`❌ ${deselectedCount} doublons désélectionnés`);
-      
-      setTransactions(withSelection);
+
+      // ✨ Appliquer les règles d'auto-tag mémorisées
+      const autoTagRules = autoTagRulesRef.current;
+      const withAutoTag = withSelection.map(t => {
+        const origDesc = t.description;
+        const rule = findRule(origDesc, autoTagRules);
+        if (!rule) return { ...t, _origDescription: origDesc };
+        const changed =
+          rule.correctedDescription !== origDesc ||
+          rule.tags.length > 0 ||
+          (rule.jar != null && rule.jar !== t.suggestedJar);
+        return {
+          ...t,
+          _origDescription: origDesc,
+          description: rule.correctedDescription,
+          tags: rule.tags.length > 0 ? rule.tags.join(",") : (t.tags ?? ""),
+          suggestedJar: (rule.jar as JarKey) ?? t.suggestedJar,
+          _autoTagged: changed,
+        };
+      });
+
+      setTransactions(withAutoTag);
       setStep("review");
       
     } catch (err: any) {
@@ -415,10 +452,31 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       
       const selectedCount = withSelection.filter(t => t.selected).length;
       console.log(`✅ ${selectedCount} nouvelles transactions sélectionnées`);
-      
-      setTransactions(withSelection);
+
+      // ✨ Appliquer les règles d'auto-tag mémorisées
+      const autoTagRules = autoTagRulesRef.current;
+      const withAutoTag = withSelection.map(t => {
+        const origDesc = t.description;
+        const rule = findRule(origDesc, autoTagRules);
+        if (!rule) return { ...t, _origDescription: origDesc };
+        // Déterminer si la règle change quelque chose d'visible
+        const changed =
+          rule.correctedDescription !== origDesc ||
+          rule.tags.length > 0 ||
+          (rule.jar != null && rule.jar !== t.suggestedJar);
+        return {
+          ...t,
+          _origDescription: origDesc,
+          description: rule.correctedDescription,
+          tags: rule.tags.length > 0 ? rule.tags.join(",") : (t.tags ?? ""),
+          suggestedJar: (rule.jar as JarKey) ?? t.suggestedJar,
+          _autoTagged: changed,
+        };
+      });
+
+      setTransactions(withAutoTag);
       setStep("review");
-      
+
     } catch (err: any) {
       console.error("❌ Erreur mapping:", err);
       setError(err.message || "Erreur lors du mapping");
@@ -622,6 +680,25 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       await new Promise(resolve => setTimeout(resolve, 50)); // Petit délai pour l'affichage
     }
 
+    // ✨ Mémoriser les associations libellé → description/tags/jar pour l'auto-tag futur
+    let updatedRules = autoTagRulesRef.current;
+    for (const t of selectedTransactions) {
+      const origDesc = t._origDescription || t.description;
+      const tags = t.tags ? t.tags.split(",").map(s => s.trim()).filter(Boolean) : [];
+      updatedRules = upsertRule(updatedRules, origDesc, t.description, tags, t.suggestedJar);
+    }
+    // Sauvegarder dans Google Sheets (+ cache localStorage en fallback)
+    // fire-and-forget : on n'attend pas pour ne pas bloquer l'import
+    saveAutoTagRulesToSheet(updatedRules)
+      .then(() => { autoTagRulesRef.current = updatedRules; })
+      .catch(err => {
+        console.warn("Sauvegarde auto-tag dans Sheets échouée (cache local mis à jour):", err);
+        autoTagRulesRef.current = updatedRules;
+      });
+
+    // ✅ Mémoriser la date du dernier import
+    try { localStorage.setItem("mjars:lastImport", Date.now().toString()); } catch {}
+
     // ✅ Passer le type de transaction à onImport
     onImport(selectedTransactions, transactionType || "spending");
     
@@ -643,6 +720,21 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
     );
   };
+
+  // Inline editing: update a field on the transaction found by reference in the transactions array
+  const updateTransactionField = (transaction: Transaction, field: string, value: any) => {
+    const realIndex = transactions.indexOf(transaction);
+    if (realIndex === -1) return;
+    setTransactions(prev =>
+      prev.map((t, i) => (i === realIndex ? { ...t, [field]: value } : t))
+    );
+  };
+
+  // Available tags loaded once
+  const availableTags = loadTags();
+
+  // Track which card's tag-add dropdown is open (by transaction reference)
+  const [openTagDropdown, setOpenTagDropdown] = useState<Transaction | null>(null);
 
   const toggleTransaction = (index: number) => {
     setTransactions(prev =>
@@ -708,6 +800,29 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "15px" }}>
             Sélectionnez le type de transactions à importer
           </p>
+          {(() => {
+            try {
+              const ts = localStorage.getItem("mjars:lastImport");
+              if (!ts) return null;
+              const diffMs = Date.now() - parseInt(ts, 10);
+              const diffMin = Math.floor(diffMs / 60000);
+              const diffH = Math.floor(diffMs / 3600000);
+              const diffD = Math.floor(diffMs / 86400000);
+              let label = "";
+              if (diffMin < 2) label = "à l'instant";
+              else if (diffMin < 60) label = `il y a ${diffMin} min`;
+              else if (diffH < 24) label = `il y a ${diffH}h`;
+              else if (diffD === 1) label = "hier";
+              else if (diffD < 7) label = `il y a ${diffD} jours`;
+              else label = `il y a ${Math.floor(diffD / 7)} sem.`;
+              const color = diffD >= 7 ? "#FF9500" : diffD >= 3 ? "#AEAEB2" : "#34C759";
+              return (
+                <div style={{ marginTop: "10px", fontSize: "12px", color, fontWeight: "600" }}>
+                  🔄 Dernier import : {label}
+                </div>
+              );
+            } catch { return null; }
+          })()}
         </div>
 
         <div style={{ display: "grid", gap: "16px" }}>
@@ -824,7 +939,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         display: "flex",
         flexDirection: "column",
         position: "relative",
-        overflow: "hidden",
+        overflowY: "auto",
       }}
       >
         {loading && (
@@ -852,37 +967,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
   // ÉTAPE 4 : Révision des transactions
   if (step === "review") {
-    return (
-      <>
-        {renderReviewStep()}
-        
-        {/* Modal d'édition de transaction de dépense */}
-        {editingTransaction && transactionType === "spending" && (
-          <TransactionEditor
-            transaction={editingTransaction}
-            onSave={handleSaveEditedTransaction}
-            onCancel={() => {
-              setEditingTransaction(null);
-              setEditingIndex(null);
-            }}
-            accounts={accounts}
-          />
-        )}
-        
-        {/* Modal d'édition de transaction de revenu */}
-        {editingRevenueTransaction && transactionType === "revenue" && (
-          <RevenueTransactionEditor
-            transaction={editingRevenueTransaction}
-            onSave={handleSaveEditedRevenueTransaction}
-            onCancel={() => {
-              setEditingRevenueTransaction(null);
-              setEditingRevenueIndex(null);
-            }}
-            accounts={accounts}
-          />
-        )}
-      </>
-    );
+    return renderReviewStep();
   }
 
   return null;
@@ -914,6 +999,29 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "14px" }}>
               Étape 1 : Sélectionnez votre fichier
             </p>
+            {(() => {
+              try {
+                const ts = localStorage.getItem("mjars:lastImport");
+                if (!ts) return null;
+                const diffMs = Date.now() - parseInt(ts, 10);
+                const diffD = Math.floor(diffMs / 86400000);
+                const diffH = Math.floor(diffMs / 3600000);
+                const diffMin = Math.floor(diffMs / 60000);
+                let label = "";
+                if (diffMin < 2) label = "à l'instant";
+                else if (diffMin < 60) label = `il y a ${diffMin} min`;
+                else if (diffH < 24) label = `il y a ${diffH}h`;
+                else if (diffD === 1) label = "hier";
+                else if (diffD < 7) label = `il y a ${diffD} jours`;
+                else label = `il y a ${Math.floor(diffD / 7)} sem.`;
+                const color = diffD >= 7 ? "#FF9500" : diffD >= 3 ? "#AEAEB2" : "#34C759";
+                return (
+                  <p style={{ margin: "2px 0 0", fontSize: "12px", color, fontWeight: "600" }}>
+                    🔄 Dernier import : {label}
+                  </p>
+                );
+              } catch { return null; }
+            })()}
           </div>
           <button
             onClick={() => {
@@ -1159,6 +1267,43 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     const selectedCount = transactions.filter(t => t.selected).length;
     const duplicateCount = transactions.filter(t => t.isDuplicate).length;
 
+    const jars: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
+
+    const inputStyle: React.CSSProperties = {
+      width: "100%",
+      padding: "8px 12px",
+      borderRadius: "8px",
+      border: "1px solid var(--border-color)",
+      backgroundColor: "var(--bg-body)",
+      color: "var(--text-main)",
+      fontSize: "14px",
+      boxSizing: "border-box",
+    };
+
+    const chipStyle: React.CSSProperties = {
+      padding: "4px 10px",
+      borderRadius: "20px",
+      backgroundColor: "rgba(0,122,255,0.15)",
+      color: "var(--jar-nec)",
+      fontSize: "12px",
+      fontWeight: "600",
+      border: "1px solid rgba(0,122,255,0.3)",
+      cursor: "pointer",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+    };
+
+    const addTagBtnStyle: React.CSSProperties = {
+      padding: "4px 10px",
+      borderRadius: "20px",
+      backgroundColor: "var(--bg-body)",
+      border: "1px dashed var(--border-color)",
+      fontSize: "12px",
+      cursor: "pointer",
+      color: "var(--text-muted)",
+    };
+
     return (
       <div style={{
         backgroundColor: "var(--bg-card)",
@@ -1250,181 +1395,228 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           overflowY: "auto",
           marginBottom: "16px",
           minHeight: 0,
-        }}>
-          {filteredTransactions.map((transaction, index) => (
-            <div
-              key={index}
-              style={{
-                padding: "16px",
-                marginBottom: "12px",
-                borderRadius: "12px",
-                border: transaction.isDuplicate
-                  ? `2px solid ${transaction.duplicateLevel === 1 ? "#FF3B30" : transaction.duplicateLevel === 2 ? "#FF9500" : "#FFCC00"}`
-                  : "1px solid var(--border-color)",
-                backgroundColor: transaction.selected ? "var(--bg-body)" : "rgba(0,0,0,0.02)",
-                opacity: transaction.selected ? 1 : 0.6,
-              }}
-            >
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto auto",
-                gap: "16px",
-                alignItems: "start",
-              }}>
-                {/* Checkbox */}
-                <input
-                  type="checkbox"
-                  checked={transaction.selected}
-                  onChange={() => toggleTransaction(index)}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    width: "20px",
-                    height: "20px",
-                    cursor: "pointer",
-                    marginTop: "2px",
-                  }}
-                />
+        }}
+          onClick={() => setOpenTagDropdown(null)}
+        >
+          {filteredTransactions.map((transaction, index) => {
+            const currentTagIds = transaction.tags
+              ? transaction.tags.split(",").map(s => s.trim()).filter(Boolean)
+              : [];
+            const unselectedTags = availableTags.filter(t => !currentTagIds.includes(t.id));
+            const isTagDropdownOpen = openTagDropdown === transaction;
 
-                {/* Infos */}
-                <div>
-                  <div style={{
-                    fontSize: "15px",
-                    fontWeight: "600",
-                    color: "var(--text-main)",
-                    marginBottom: "4px",
-                  }}>
-                    {transaction.description}
-                  </div>
-                  <div style={{
+            return (
+              <div
+                key={index}
+                style={{
+                  padding: "14px 16px",
+                  marginBottom: "12px",
+                  borderRadius: "12px",
+                  border: transaction.isDuplicate
+                    ? `2px solid ${transaction.duplicateLevel === 1 ? "#FF3B30" : transaction.duplicateLevel === 2 ? "#FF9500" : "#FFCC00"}`
+                    : "1px solid var(--border-color)",
+                  backgroundColor: transaction.selected ? "var(--bg-body)" : "rgba(0,0,0,0.02)",
+                  opacity: transaction.selected ? 1 : 0.6,
+                }}
+              >
+                {/* Row 1: checkbox + date + amount */}
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  marginBottom: "10px",
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={transaction.selected}
+                    onChange={() => toggleTransaction(index)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      width: "20px",
+                      height: "20px",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{
                     fontSize: "13px",
                     color: "var(--text-muted)",
+                    flexShrink: 0,
                   }}>
-                    {transaction.date} • {transaction.suggestedAccount || "Compte non défini"}
-                  </div>
+                    {transaction.date}
+                  </span>
+                  {transaction._autoTagged && (
+                    <span style={{
+                      fontSize: "11px",
+                      color: "#FF2D78",
+                      fontWeight: "700",
+                      backgroundColor: "rgba(255,45,120,0.1)",
+                      borderRadius: "8px",
+                      padding: "2px 7px",
+                      flexShrink: 0,
+                    }}
+                      title="Pré-rempli automatiquement depuis vos règles mémorisées"
+                    >
+                      ✨ Auto
+                    </span>
+                  )}
                   {transaction.isDuplicate && (
-                    <div style={{
-                      fontSize: "12px",
+                    <span style={{
+                      fontSize: "11px",
                       color: transaction.duplicateLevel === 1 ? "#FF3B30" : transaction.duplicateLevel === 2 ? "#FF9500" : "#FFCC00",
-                      marginTop: "6px",
                       fontWeight: "600",
+                      flex: 1,
                     }}>
                       {transaction.duplicateNote}
-                    </div>
+                    </span>
                   )}
-                </div>
-
-                {/* Montant (toujours en EUR après conversion) */}
-                <div style={{
-                  textAlign: "right",
-                }}>
-                  <div style={{
-                    fontSize: "18px",
-                    fontWeight: "700",
-                    color: "var(--text-main)",
-                  }}>
-                    {transactionType === "revenue" 
-                      ? `${transaction.amount.toFixed(2)} ${transaction.valeur || transaction.currency || "EUR"}`
-                      : `${transaction.amount.toFixed(2)} €`
-                    }
-                  </div>
-                  {transactionType === "spending" && transaction.conversionNote && (
-                    <div style={{
-                      fontSize: "11px",
-                      color: "var(--text-muted)",
-                      marginTop: "2px",
+                  <div style={{ marginLeft: "auto", textAlign: "right", flexShrink: 0 }}>
+                    <span style={{
+                      fontSize: "17px",
+                      fontWeight: "700",
+                      color: "var(--text-main)",
                     }}>
-                      {transaction.conversionNote}
-                    </div>
-                  )}
+                      {transactionType === "revenue"
+                        ? `${transaction.amount.toFixed(2)} ${transaction.valeur || transaction.currency || "EUR"}`
+                        : `${transaction.amount.toFixed(2)} €`
+                      }
+                    </span>
+                    {transactionType === "spending" && transaction.conversionNote && (
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
+                        {transaction.conversionNote}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Jar badge (uniquement pour spending) */}
-                {transactionType === "spending" && (
-                  <div style={{
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    backgroundColor: `var(--jar-${transaction.suggestedJar?.toLowerCase() || 'nec'})`,
-                    color: "white",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    whiteSpace: "nowrap",
-                  }}>
-                    {transaction.suggestedJar || "NEC"}
+                {/* Row 2: description input (full width) */}
+                <div style={{ marginBottom: "10px" }}>
+                  <input
+                    type="text"
+                    value={transaction.description}
+                    placeholder="Description..."
+                    onChange={e => updateTransactionField(transaction, "description", e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+
+                {/* Row 3: jar select (spending only) + tag chips */}
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  flexWrap: "wrap",
+                }}>
+                  {/* Jar select — spending only */}
+                  {transactionType === "spending" && (
+                    <select
+                      value={transaction.suggestedJar || "NEC"}
+                      onChange={e => updateTransactionField(transaction, "suggestedJar", e.target.value as JarKey)}
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: "8px",
+                        border: "1px solid var(--border-color)",
+                        backgroundColor: `var(--jar-${(transaction.suggestedJar || "NEC").toLowerCase()})`,
+                        color: "white",
+                        fontSize: "12px",
+                        fontWeight: "700",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {jars.map(j => (
+                        <option key={j} value={j}>{j}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  {/* Current tag chips */}
+                  {currentTagIds.map(tagId => {
+                    const tagInfo = availableTags.find(t => t.id === tagId);
+                    return (
+                      <span
+                        key={tagId}
+                        style={chipStyle}
+                        onClick={e => {
+                          e.stopPropagation();
+                          const newTags = currentTagIds.filter(id => id !== tagId).join(",");
+                          updateTransactionField(transaction, "tags", newTags || undefined);
+                        }}
+                        title="Cliquer pour supprimer"
+                      >
+                        {tagInfo ? `${tagInfo.emoji} ${tagInfo.name}` : tagId}
+                        <span style={{ fontSize: "14px", lineHeight: 1 }}>×</span>
+                      </span>
+                    );
+                  })}
+
+                  {/* Add tag button + inline dropdown */}
+                  <div style={{ position: "relative", display: "inline-block" }}>
+                    <button
+                      style={addTagBtnStyle}
+                      onClick={e => {
+                        e.stopPropagation();
+                        setOpenTagDropdown(isTagDropdownOpen ? null : transaction);
+                      }}
+                    >
+                      + Tag
+                    </button>
+                    {isTagDropdownOpen && unselectedTags.length > 0 && (
+                      <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          position: "absolute",
+                          top: "calc(100% + 4px)",
+                          left: 0,
+                          zIndex: 100,
+                          backgroundColor: "var(--bg-card)",
+                          border: "1px solid var(--border-color)",
+                          borderRadius: "10px",
+                          padding: "6px",
+                          boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                          minWidth: "160px",
+                        }}
+                      >
+                        {unselectedTags.map(tag => (
+                          <button
+                            key={tag.id}
+                            onClick={e => {
+                              e.stopPropagation();
+                              const newTags = [...currentTagIds, tag.id].join(",");
+                              updateTransactionField(transaction, "tags", newTags);
+                              setOpenTagDropdown(null);
+                            }}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: "8px",
+                              border: "none",
+                              backgroundColor: "transparent",
+                              color: "var(--text-main)",
+                              fontSize: "13px",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.backgroundColor = "rgba(0,122,255,0.08)";
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.backgroundColor = "transparent";
+                            }}
+                          >
+                            {tag.emoji} {tag.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-              
-              {/* Bouton "Éditer" pour dépenses */}
-              {transactionType === "spending" && (
-                <button
-                  onClick={() => {
-                    setEditingTransaction(transaction);
-                    setEditingIndex(index);
-                  }}
-                  style={{
-                    marginTop: "8px",
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border-color)",
-                    backgroundColor: "var(--bg-body)",
-                    fontSize: "12px",
-                    color: "var(--text-main)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(0, 122, 255, 0.1)";
-                    e.currentTarget.style.borderColor = "var(--jar-nec)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--bg-body)";
-                    e.currentTarget.style.borderColor = "var(--border-color)";
-                  }}
-                >
-                  <span>✏️</span>
-                  <span>Éditer</span>
-                </button>
-              )}
-              
-              {/* Bouton "Éditer" pour revenus */}
-              {transactionType === "revenue" && (
-                <button
-                  onClick={() => {
-                    setEditingRevenueTransaction(transaction);
-                    setEditingRevenueIndex(index);
-                  }}
-                  style={{
-                    marginTop: "8px",
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border-color)",
-                    backgroundColor: "var(--bg-body)",
-                    fontSize: "12px",
-                    color: "var(--text-main)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "rgba(0, 122, 255, 0.1)";
-                    e.currentTarget.style.borderColor = "var(--jar-nec)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "var(--bg-body)";
-                    e.currentTarget.style.borderColor = "var(--border-color)";
-                  }}
-                >
-                  <span>✏️</span>
-                  <span>Éditer</span>
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
 
           {filteredTransactions.length === 0 && (
             <div style={{
