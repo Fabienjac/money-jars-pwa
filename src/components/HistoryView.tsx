@@ -718,14 +718,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                 Top dépenses
               </div>
               {reportTopDescriptions.map(([desc, amount], idx) => (
-                <div key={desc} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: idx < reportTopDescriptions.length - 1 ? "1px solid var(--border-color)" : "none" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ width: 24, height: 24, borderRadius: 12, background: "rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>
-                      {idx + 1}
-                    </span>
-                    <span style={{ fontSize: 14, color: "var(--text-main)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{desc}</span>
-                  </div>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30", flexShrink: 0 }}>{fmt(amount)} €</span>
+                <div key={desc} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 0", borderBottom: idx < reportTopDescriptions.length - 1 ? "1px solid var(--border-color)" : "none" }}>
+                  {/* Numéro */}
+                  <span style={{ width: 24, height: 24, borderRadius: 12, background: "rgba(0,0,0,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0, marginTop: 1 }}>
+                    {idx + 1}
+                  </span>
+                  {/* Libellé — prend tout l'espace disponible, peut passer à la ligne */}
+                  <span style={{ flex: 1, fontSize: 14, color: "var(--text-main)", lineHeight: 1.4, wordBreak: "break-word", minWidth: 0 }}>
+                    {desc}
+                  </span>
+                  {/* Montant — toujours collé à droite, jamais tronqué */}
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30", flexShrink: 0, whiteSpace: "nowrap", paddingLeft: 8 }}>
+                    {fmt(amount)} €
+                  </span>
                 </div>
               ))}
             </div>
