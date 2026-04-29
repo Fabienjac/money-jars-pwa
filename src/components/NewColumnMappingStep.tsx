@@ -181,392 +181,244 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
     return mappings.find(m => m.googleSheetColumn === googleColumn)?.option || { type: "empty" };
   };
 
-  return (
-    <div style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto" }}>
-      <div
-        style={{
-          marginBottom: "32px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <h2
+  // Segmented control : sélecteur de type de mapping (Vide / Colonne / Fixe)
+  const renderTypeSelector = (googleColumn: string, mapping: MappingOption) => {
+    const options: { type: MappingOption["type"]; label: string }[] = [
+      { type: "empty",  label: "Vide" },
+      { type: "column", label: "Colonne" },
+      { type: "fixed",  label: "Valeur fixe" },
+    ];
+    return (
+      <div style={{ display: "flex", background: "rgba(116,116,128,0.12)", borderRadius: 8, padding: 2 }}>
+        {options.map(opt => (
+          <button
+            key={opt.type}
+            type="button"
+            onClick={() => {
+              if (opt.type === "column") {
+                updateMapping(googleColumn, { type: "column", value: detectedColumns[0] || "" });
+              } else if (opt.type === "fixed") {
+                updateMapping(googleColumn, { type: "fixed", value: mapping.type === "fixed" ? (mapping.value || "") : "" });
+                setShowFixedValueInput(googleColumn);
+              } else {
+                updateMapping(googleColumn, { type: "empty" });
+                setShowFixedValueInput(null);
+              }
+            }}
             style={{
-              fontSize: "24px",
-              fontWeight: "700",
-              color: "var(--text-main)",
-              margin: "0 0 8px 0",
+              flex: 1,
+              padding: "7px 4px",
+              border: "none",
+              borderRadius: 6,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s",
+              background: mapping.type === opt.type ? "var(--bg-card)" : "transparent",
+              color: mapping.type === opt.type ? "var(--text-main)" : "var(--text-muted)",
+              boxShadow: mapping.type === opt.type ? "0 1px 4px rgba(0,0,0,0.1)" : "none",
             }}
           >
-            🗂️ Configuration du mapping
-          </h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-            <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "14px" }}>
-              Pour chaque champ Google Sheets, choisissez : laisser vide, mapper une colonne du fichier, ou entrer une valeur fixe
-            </p>
-            {restoredFromCache && defaultSource && (
-              <span style={{
-                display: "inline-flex", alignItems: "center", gap: "6px",
-                fontSize: "12px", fontWeight: "700",
-                color: "#34C759",
-                backgroundColor: "rgba(52,199,89,0.12)",
-                border: "1px solid rgba(52,199,89,0.3)",
-                borderRadius: "20px", padding: "3px 10px",
-                whiteSpace: "nowrap",
-              }}>
-                ✓ Mapping {defaultSource} mémorisé
-                <button
-                  type="button"
-                  onClick={() => {
-                    try { localStorage.removeItem(MAPPING_CACHE_KEY); } catch {}
-                    setMappings(initialMappings);
-                    setRestoredFromCache(false);
-                  }}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "12px", color: "#8E8E93", padding: "0", lineHeight: 1 }}
-                  title="Réinitialiser le mapping mémorisé"
-                >
-                  ✕
-                </button>
-              </span>
-            )}
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "10px 12px",
+    borderRadius: 8,
+    border: "1.5px solid var(--border-color)",
+    backgroundColor: "var(--bg-card)",
+    color: "var(--text-main)",
+    fontSize: 14,
+    cursor: "pointer",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div style={{ padding: "16px", maxWidth: "600px", margin: "0 auto" }}>
+
+      {/* Header */}
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-main)", margin: "0 0 6px 0" }}>
+          🗂️ Configuration du mapping
+        </h2>
+        <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 13, lineHeight: 1.4 }}>
+          Pour chaque champ, choisissez : laisser vide, mapper une colonne du fichier, ou entrer une valeur fixe.
+        </p>
+        {restoredFromCache && defaultSource && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            marginTop: 10, fontSize: 12, fontWeight: 700,
+            color: "#34C759", backgroundColor: "rgba(52,199,89,0.12)",
+            border: "1px solid rgba(52,199,89,0.3)",
+            borderRadius: 20, padding: "4px 12px",
+          }}>
+            ✓ Mapping {defaultSource} mémorisé
+            <button
+              type="button"
+              onClick={() => {
+                try { localStorage.removeItem(MAPPING_CACHE_KEY); } catch {}
+                setMappings(initialMappings);
+                setRestoredFromCache(false);
+              }}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#8E8E93", padding: 0, lineHeight: 1 }}
+            >✕</button>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Table de mapping */}
-      <div
-        style={{
-          backgroundColor: "var(--bg-card)",
-          borderRadius: "16px",
-          border: "1px solid var(--border-color)",
-          overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "300px 1fr",
-            gap: "16px",
-            padding: "16px 24px",
-            backgroundColor: "var(--bg-body)",
-            borderBottom: "1px solid var(--border-color)",
-            fontWeight: "700",
-            fontSize: "14px",
-            color: "var(--text-main)",
-          }}
-        >
-          <div>📋 Colonne Google Sheet</div>
-          <div>🔗 Colonne du fichier ou valeur fixe</div>
-        </div>
-
-        {/* Rows */}
-        {googleSheetColumns.map((googleColumn, index) => {
+      {/* Cards de mapping — une par champ Google Sheets */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {googleSheetColumns.map((googleColumn) => {
           const mapping = getMappingForColumn(googleColumn);
-          const isFixedInputVisible = showFixedValueInput === googleColumn;
+          const isRequired = googleColumn === "Date" || googleColumn === "Montant";
 
           return (
             <div
               key={googleColumn}
               style={{
-                display: "grid",
-                gridTemplateColumns: "300px 1fr",
-                gap: "16px",
-                padding: "20px 24px",
-                borderBottom:
-                  index < googleSheetColumns.length - 1
-                    ? "1px solid var(--border-color)"
-                    : "none",
-                alignItems: "center",
+                background: "var(--bg-card)",
+                borderRadius: 14,
+                border: isRequired && mapping.type === "empty"
+                  ? "1.5px solid rgba(255,59,48,0.3)"
+                  : "1px solid var(--border-color)",
+                padding: "14px 16px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
               }}
             >
-              {/* Colonne Google Sheets */}
-              <div
-                style={{
-                  fontWeight: "600",
-                  fontSize: "15px",
-                  color: "var(--text-main)",
-                }}
-              >
-                {googleColumn}
-                {(googleColumn === "Date" || googleColumn === "Montant") && (
-                  <span style={{ color: "#FF3B30", marginLeft: "4px" }}>*</span>
+              {/* Nom du champ */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-main)" }}>
+                  {googleColumn}
+                  {isRequired && <span style={{ color: "#FF3B30", marginLeft: 4 }}>*</span>}
+                </span>
+                {/* Badge statut */}
+                {mapping.type === "empty" && (
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", background: "rgba(0,0,0,0.05)", padding: "2px 8px", borderRadius: 6 }}>non mappé</span>
                 )}
-              </div>
-
-              {/* Options */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {/* Radio buttons */}
-                <div style={{ display: "flex", gap: "24px", flexWrap: "wrap" }}>
-                  {/* Option 1 : Laisser vide */}
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name={`mapping-${googleColumn}`}
-                      checked={mapping.type === "empty"}
-                      onChange={() => {
-                        updateMapping(googleColumn, { type: "empty" });
-                        setShowFixedValueInput(null);
-                      }}
-                      style={{ cursor: "pointer" }}
-                    />
-                    <span style={{ color: "var(--text-muted)" }}>Laisser vide</span>
-                  </label>
-
-                  {/* Option 2 : Mapper une colonne */}
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name={`mapping-${googleColumn}`}
-                      checked={mapping.type === "column"}
-                      onChange={() => {
-                        // Par défaut, sélectionner la première colonne
-                        updateMapping(googleColumn, {
-                          type: "column",
-                          value: detectedColumns[0] || "",
-                        });
-                        setShowFixedValueInput(null);
-                      }}
-                      style={{ cursor: "pointer" }}
-                    />
-                    <span style={{ color: "var(--text-main)", fontWeight: "500" }}>
-                      Utiliser une colonne
-                    </span>
-                  </label>
-
-                  {/* Option 3 : Valeur fixe */}
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      cursor: "pointer",
-                      fontSize: "14px",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name={`mapping-${googleColumn}`}
-                      checked={mapping.type === "fixed"}
-                      onChange={() => {
-                        updateMapping(googleColumn, {
-                          type: "fixed",
-                          value: "",
-                        });
-                        setShowFixedValueInput(googleColumn);
-                      }}
-                      style={{ cursor: "pointer" }}
-                    />
-                    <span style={{ color: "var(--text-main)", fontWeight: "500" }}>
-                      Valeur fixe
-                    </span>
-                  </label>
-                </div>
-
-                {/* Dropdown pour sélectionner la colonne */}
-                {mapping.type === "column" && (
-                  <select
-                    value={mapping.value || ""}
-                    onChange={(e) =>
-                      updateMapping(googleColumn, {
-                        type: "column",
-                        value: e.target.value,
-                      })
-                    }
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border-color)",
-                      backgroundColor: "var(--bg-body)",
-                      color: "var(--text-main)",
-                      fontSize: "14px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <option value="">-- Sélectionnez une colonne --</option>
-                    {detectedColumns.map((col) => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                  </select>
-                )}
-
-                {/* Input pour valeur fixe — adapté selon la colonne */}
-                {mapping.type === "fixed" && googleColumn === "Jar" && (
-                  <select
-                    value={mapping.value || ""}
-                    onChange={(e) =>
-                      updateMapping(googleColumn, { type: "fixed", value: e.target.value })
-                    }
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border-color)",
-                      backgroundColor: "var(--bg-body)",
-                      color: "var(--text-main)",
-                      fontSize: "14px",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <option value="">-- Choisir une jarre --</option>
-                    {JAR_OPTIONS.map((j) => (
-                      <option key={j.key} value={j.key}>{j.label}</option>
-                    ))}
-                  </select>
-                )}
-
-                {mapping.type === "fixed" && googleColumn === "Tags" && (
-                  <div style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "8px",
-                    padding: "10px",
-                    borderRadius: "8px",
-                    border: "1px solid var(--border-color)",
-                    backgroundColor: "var(--bg-body)",
-                  }}>
-                    {availableTags.map((tag) => {
-                      const selectedIds = (mapping.value || "").split(",").filter(Boolean);
-                      const isSelected = selectedIds.includes(tag.id);
-                      return (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          onClick={() => {
-                            const next = isSelected
-                              ? selectedIds.filter((id) => id !== tag.id)
-                              : [...selectedIds, tag.id];
-                            updateMapping(googleColumn, { type: "fixed", value: next.join(",") });
-                          }}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            padding: "6px 12px",
-                            borderRadius: "20px",
-                            border: `2px solid ${isSelected ? tag.color : "var(--border-color)"}`,
-                            backgroundColor: isSelected ? `${tag.color}22` : "var(--bg-card)",
-                            color: isSelected ? tag.color : "var(--text-muted)",
-                            fontSize: "13px",
-                            fontWeight: isSelected ? "700" : "500",
-                            cursor: "pointer",
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          <span>{tag.emoji}</span>
-                          <span>{tag.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {mapping.type === "fixed" && googleColumn !== "Jar" && googleColumn !== "Tags" && (
-                  <input
-                    type="text"
-                    value={mapping.value || ""}
-                    onChange={(e) =>
-                      updateMapping(googleColumn, { type: "fixed", value: e.target.value })
-                    }
-                    placeholder={
-                      googleColumn === "Source" ? "Ex: LGMCorp Fabien"
-                      : googleColumn === "Valeur" ? "Ex: USD"
-                      : googleColumn === "Type" ? "Ex: Passive Income"
-                      : "Entrez une valeur..."
-                    }
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: "8px",
-                      border: "1px solid var(--border-color)",
-                      backgroundColor: "var(--bg-body)",
-                      color: "var(--text-main)",
-                      fontSize: "14px",
-                    }}
-                  />
-                )}
-
-                {/* Affichage de la valeur actuelle */}
                 {mapping.type === "column" && mapping.value && (
-                  <div
-                    style={{
-                      fontSize: "13px",
-                      color: "var(--text-muted)",
-                      fontStyle: "italic",
-                    }}
-                  >
-                    ✓ Mappé sur : <strong>{mapping.value}</strong>
-                  </div>
+                  <span style={{ fontSize: 11, color: "#007AFF", background: "#EAF3FF", padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>→ {mapping.value}</span>
                 )}
                 {mapping.type === "fixed" && mapping.value && googleColumn !== "Tags" && (
-                  <div style={{ fontSize: "13px", color: "#34C759", fontWeight: "500" }}>
-                    ✓ Valeur fixe : <strong>"{mapping.value}"</strong>
-                  </div>
+                  <span style={{ fontSize: 11, color: "#34C759", background: "#E8FAF0", padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>= "{mapping.value}"</span>
                 )}
                 {mapping.type === "fixed" && googleColumn === "Tags" && mapping.value && (
-                  <div style={{ fontSize: "13px", color: "#34C759", fontWeight: "500" }}>
-                    ✓ {mapping.value.split(",").filter(Boolean).length} tag(s) sélectionné(s)
-                  </div>
+                  <span style={{ fontSize: 11, color: "#34C759", background: "#E8FAF0", padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>
+                    {mapping.value.split(",").filter(Boolean).length} tag(s)
+                  </span>
                 )}
               </div>
+
+              {/* Segmented control */}
+              {renderTypeSelector(googleColumn, mapping)}
+
+              {/* Sélecteur de colonne */}
+              {mapping.type === "column" && (
+                <select
+                  value={mapping.value || ""}
+                  onChange={e => updateMapping(googleColumn, { type: "column", value: e.target.value })}
+                  style={inputStyle}
+                >
+                  <option value="">-- Sélectionnez une colonne --</option>
+                  {detectedColumns.map(col => (
+                    <option key={col} value={col}>{col}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Valeur fixe : Jar */}
+              {mapping.type === "fixed" && googleColumn === "Jar" && (
+                <select
+                  value={mapping.value || ""}
+                  onChange={e => updateMapping(googleColumn, { type: "fixed", value: e.target.value })}
+                  style={inputStyle}
+                >
+                  <option value="">-- Choisir une jarre --</option>
+                  {JAR_OPTIONS.map(j => (
+                    <option key={j.key} value={j.key}>{j.label}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* Valeur fixe : Tags */}
+              {mapping.type === "fixed" && googleColumn === "Tags" && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {availableTags.map(tag => {
+                    const selectedIds = (mapping.value || "").split(",").filter(Boolean);
+                    const isSelected = selectedIds.includes(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => {
+                          const next = isSelected
+                            ? selectedIds.filter(id => id !== tag.id)
+                            : [...selectedIds, tag.id];
+                          updateMapping(googleColumn, { type: "fixed", value: next.join(",") });
+                        }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 6,
+                          padding: "6px 12px", borderRadius: 20,
+                          border: `2px solid ${isSelected ? tag.color : "var(--border-color)"}`,
+                          backgroundColor: isSelected ? `${tag.color}22` : "var(--bg-card)",
+                          color: isSelected ? tag.color : "var(--text-muted)",
+                          fontSize: 13, fontWeight: isSelected ? 700 : 500,
+                          cursor: "pointer", transition: "all 0.15s",
+                        }}
+                      >
+                        <span>{tag.emoji}</span>
+                        <span>{tag.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Valeur fixe : texte libre */}
+              {mapping.type === "fixed" && googleColumn !== "Jar" && googleColumn !== "Tags" && (
+                <input
+                  type="text"
+                  value={mapping.value || ""}
+                  onChange={e => updateMapping(googleColumn, { type: "fixed", value: e.target.value })}
+                  placeholder={
+                    googleColumn === "Source"      ? "Ex: LGMCorp Fabien"
+                    : googleColumn === "Valeur"    ? "Ex: USD"
+                    : googleColumn === "Type"      ? "Ex: Passive Income"
+                    : "Entrez une valeur…"
+                  }
+                  style={inputStyle}
+                />
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Validation */}
-      <div
-        style={{
-          marginTop: "24px",
-          padding: "16px",
-          backgroundColor: "rgba(255, 149, 0, 0.1)",
-          border: "1px solid rgba(255, 149, 0, 0.3)",
-          borderRadius: "12px",
-          fontSize: "14px",
-          color: "var(--text-main)",
-        }}
-      >
-        <strong>⚠️ Champs obligatoires :</strong> Date et Montant doivent être mappés (soit via une colonne, soit via une valeur fixe)
+      {/* Avertissement champs obligatoires */}
+      <div style={{
+        marginTop: 16, padding: "12px 14px",
+        backgroundColor: "rgba(255,149,0,0.1)",
+        border: "1px solid rgba(255,149,0,0.3)",
+        borderRadius: 12, fontSize: 13, color: "var(--text-main)",
+      }}>
+        <strong>⚠️ Obligatoires :</strong> Date et Montant doivent être mappés.
       </div>
 
-      {/* Buttons */}
-      <div
-        style={{
-          marginTop: "32px",
-          display: "flex",
-          gap: "16px",
-          justifyContent: "flex-end",
-        }}
-      >
+      {/* Boutons */}
+      <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
         <button
           onClick={onBack}
           style={{
-            padding: "14px 32px",
-            borderRadius: "12px",
+            flex: 1, padding: "14px", borderRadius: 12,
             border: "1px solid var(--border-color)",
-            backgroundColor: "var(--bg-body)",
-            color: "var(--text-main)",
-            fontSize: "15px",
-            fontWeight: "600",
-            cursor: "pointer",
+            backgroundColor: "var(--bg-body)", color: "var(--text-main)",
+            fontSize: 15, fontWeight: 600, cursor: "pointer",
           }}
         >
           ← Retour
@@ -575,32 +427,20 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
           onClick={() => {
             const dateMapping = getMappingForColumn("Date");
             const montantMapping = getMappingForColumn("Montant");
-
-            const isDateMapped = dateMapping.type !== "empty" && dateMapping.value;
-            const isMontantMapped = montantMapping.type !== "empty" && montantMapping.value;
-
-            if (!isDateMapped || !isMontantMapped) {
+            if (!(dateMapping.type !== "empty" && dateMapping.value) ||
+                !(montantMapping.type !== "empty" && montantMapping.value)) {
               alert("⚠️ Les champs Date et Montant sont obligatoires !");
               return;
             }
-
-            // Mémoriser localement
             try { localStorage.setItem(MAPPING_CACHE_KEY, JSON.stringify(mappings)); } catch {}
-            // Sauvegarder dans Google Sheets (fire-and-forget, cross-device)
             saveColumnMappingToSheet(MAPPING_CACHE_KEY, mappings);
-
             onContinue(mappings);
           }}
           style={{
-            padding: "14px 32px",
-            borderRadius: "12px",
-            border: "none",
+            flex: 2, padding: "14px", borderRadius: 12, border: "none",
             background: "linear-gradient(135deg, #007AFF 0%, #0051D5 100%)",
-            color: "white",
-            fontSize: "15px",
-            fontWeight: "700",
-            cursor: "pointer",
-            boxShadow: "0 4px 12px rgba(0, 122, 255, 0.3)",
+            color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer",
+            boxShadow: "0 4px 12px rgba(0,122,255,0.3)",
           }}
         >
           Continuer →
