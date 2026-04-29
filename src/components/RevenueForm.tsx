@@ -7,6 +7,27 @@ import { loadPreferredCurrencies } from "../currencyUtils";
 import { useExchangeRate } from "../hooks/useExchangeRate";
 import CurrencySelector from "./CurrencySelector";
 
+// ── Crypto rate helper ────────────────────────────────────────────────────────
+
+const COIN_IDS: Record<string, string> = {
+  BTC:  "bitcoin",
+  ETH:  "ethereum",
+  USDT: "tether",
+  USDC: "usd-coin",
+  XMR:  "monero",
+  SOL:  "solana",
+};
+
+// Détecte le ticker crypto dans la chaîne "méthode" (ex: "BTC", "USDC_ETH", "Virement BTC")
+function detectCoin(methodStr: string): string | null {
+  const upper = methodStr.toUpperCase();
+  // Ordre important : USDT avant USD, USDC avant USD
+  for (const ticker of ["USDT", "USDC", "BTC", "ETH", "XMR", "SOL"]) {
+    if (upper.includes(ticker)) return ticker;
+  }
+  return null;
+}
+
 interface RevenueFormProps {
   prefill?: any | null;
   onClearPrefill?: () => void;
@@ -79,6 +100,50 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
   useEffect(() => {
     setRateManuallyEdited(false);
   }, [value, date]);
+
+  // ── Cours crypto live ────────────────────────────────────────────────────────
+  const [cryptoFetching, setCryptoFetching] = useState(false);
+  const [cryptoFetchError, setCryptoFetchError] = useState<string | null>(null);
+  const [cryptoFetchedInfo, setCryptoFetchedInfo] = useState<{ coin: string; usd: number; eur: number } | null>(null);
+
+  const fetchCryptoRates = async () => {
+    const coin = detectCoin(method);
+    if (!coin) return;
+    const amountNum = parseFloat(amount.replace(",", "."));
+    if (isNaN(amountNum) || amountNum <= 0) return;
+
+    setCryptoFetching(true);
+    setCryptoFetchError(null);
+    setCryptoFetchedInfo(null);
+    try {
+      const coinId = COIN_IDS[coin];
+      const res = await fetch(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd,eur`
+      );
+      if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status}`);
+      const data = await res.json() as Record<string, { usd: number; eur: number }>;
+      const prices = data[coinId];
+      if (!prices) throw new Error("Coin non trouvé");
+
+      const usdPrice = prices.usd;  // prix 1 coin en USD
+      const eurPrice = prices.eur;  // prix 1 coin en EUR
+
+      // Quantité : pour stablecoins (USDT/USDC) ≈ parité 1:1 avec USD
+      const isStable = coin === "USDT" || coin === "USDC";
+      const qty = isStable ? amountNum : amountNum / usdPrice;
+      setCryptoQuantity(qty.toFixed(isStable ? 2 : 8).replace(/\.?0+$/, ""));
+
+      // Taux = prix crypto/EUR (utilisé pour le calcul EUR dans Google Sheets)
+      setRate(eurPrice.toFixed(isStable ? 6 : 2).replace(/\.?0+$/, ""));
+      setRateManuallyEdited(true); // empêche useExchangeRate d'écraser
+
+      setCryptoFetchedInfo({ coin, usd: usdPrice, eur: eurPrice });
+    } catch (e: any) {
+      setCryptoFetchError("Impossible de récupérer les cours : " + (e.message || String(e)));
+    } finally {
+      setCryptoFetching(false);
+    }
+  };
 
   const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
   const [loading, setLoading] = useState(false);
@@ -408,11 +473,79 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
               id="rev-method"
               type="text"
               value={method}
-              onChange={(e) => setMethod(e.target.value)}
-              placeholder="ex: USDC_ETH, Virement..."
+              onChange={(e) => { setMethod(e.target.value); setCryptoFetchedInfo(null); setCryptoFetchError(null); }}
+              placeholder="ex: BTC, USDT, ETH, USDC…"
               style={fieldStyle}
             />
           </div>
+
+          {/* ── Bouton cours live — visible si coin détecté + montant renseigné ── */}
+          {(() => {
+            const coin = detectCoin(method);
+            const amountNum = parseFloat(amount.replace(",", "."));
+            if (!coin || isNaN(amountNum) || amountNum <= 0) return null;
+            const isStable = coin === "USDT" || coin === "USDC";
+            return (
+              <div style={{ background: "rgba(255,149,0,0.08)", border: "1px solid rgba(255,149,0,0.25)", borderRadius: 12, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Coin détecté */}
+                <div style={{ fontSize: 13, color: "#FF9500", fontWeight: 600 }}>
+                  {coin === "BTC" ? "₿" : coin === "ETH" ? "Ξ" : "🪙"} {coin} détecté
+                  {isStable && <span style={{ fontWeight: 400, marginLeft: 6, color: "var(--text-muted)" }}>(stablecoin — parité ~1:1 avec USD)</span>}
+                </div>
+
+                {/* Bouton */}
+                <button
+                  type="button"
+                  onClick={fetchCryptoRates}
+                  disabled={cryptoFetching}
+                  style={{
+                    padding: "11px 16px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: cryptoFetching ? "#ccc" : "linear-gradient(135deg, #FF9500, #E08600)",
+                    color: "#fff",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    cursor: cryptoFetching ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  {cryptoFetching
+                    ? "⏳ Récupération en cours…"
+                    : `💱 Récupérer les cours ${coin} (live)`}
+                </button>
+
+                {/* Résultat du fetch */}
+                {cryptoFetchedInfo && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--text-muted)" }}>Prix {cryptoFetchedInfo.coin}/USD</span>
+                      <span style={{ fontWeight: 600 }}>{cryptoFetchedInfo.usd.toLocaleString("fr-FR")} $</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--text-muted)" }}>Prix {cryptoFetchedInfo.coin}/EUR</span>
+                      <span style={{ fontWeight: 600 }}>{cryptoFetchedInfo.eur.toLocaleString("fr-FR")} €</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+                      <span style={{ color: "var(--text-muted)" }}>Quantité {cryptoFetchedInfo.coin}</span>
+                      <span style={{ fontWeight: 700, color: "#FF9500" }}>{cryptoQuantity}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#34C759", marginTop: 2 }}>
+                      ✓ Quantité crypto et taux auto-remplis
+                    </div>
+                  </div>
+                )}
+
+                {/* Erreur */}
+                {cryptoFetchError && (
+                  <div style={{ fontSize: 13, color: "#FF3B30" }}>⚠️ {cryptoFetchError}</div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Taux de change */}
           <div>
