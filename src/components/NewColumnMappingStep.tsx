@@ -76,6 +76,20 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
         option: { type: "column", value: "Currency" }
       };
     }
+    // Dépenses : "Jar" = NEC par défaut
+    if (col === "Jar") {
+      return {
+        googleSheetColumn: col,
+        option: { type: "fixed", value: "NEC" }
+      };
+    }
+    // Dépenses : "Tags" = vie_quotidienne par défaut
+    if (col === "Tags") {
+      return {
+        googleSheetColumn: col,
+        option: { type: "fixed", value: "vie_quotidienne" }
+      };
+    }
     return {
       googleSheetColumn: col,
       option: { type: "empty" }
