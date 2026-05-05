@@ -884,6 +884,30 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             </div>
           </div>
 
+          {/* 🥗 Alimentation avg/jour — grand format */}
+          {tagOverlayPoints.length > 0 && (
+            <div style={{
+              background: "rgba(132,204,22,0.07)",
+              borderRadius: "12px",
+              padding: "10px 14px",
+              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              border: "1px solid rgba(132,204,22,0.2)",
+            }}>
+              <span style={{ fontSize: "22px", flexShrink: 0 }}>🥗</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "11px", color: "#84CC16", fontWeight: "700", marginBottom: "2px" }}>
+                  Alimentation · Glissant 30j
+                </div>
+                <div style={{ fontSize: "26px", fontWeight: "800", color: "#84CC16", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
+                  {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)} €<span style={{ fontSize: "13px", fontWeight: "600", color: "#84CC16", opacity: 0.8 }}> /jour</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Graphique */}
           {chartPoints.length >= 2
             ? renderChart()

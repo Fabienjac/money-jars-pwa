@@ -7,6 +7,7 @@ import JarsView from "./components/JarsView";
 // ✅ AJOUT : Nouveaux composants V2
 import JarsViewV2 from "./components/JarsViewV2";
 import QuickSpendingForm from "./components/QuickSpendingForm";
+import { VoiceSpendingModal } from "./components/VoiceSpendingModal";
 // Fin ajouts V2
 import { RecentTransactions } from "./components/RecentTransactions";
 import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
@@ -58,6 +59,9 @@ function App() {
       return true; // Par défaut, utiliser V2
     }
   });
+
+  // Saisie vocale
+  const [voiceOpen, setVoiceOpen] = useState(false);
 
   // Importeur universel
   const [importerOpen, setImporterOpen] = useState(false);
@@ -607,6 +611,26 @@ function App() {
           </span>
           <span className="bottom-nav-label">Rapports</span>
         </button>
+        {/* 🎙️ Bouton micro central */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+          <button
+            type="button"
+            onClick={() => setVoiceOpen(true)}
+            style={{
+              width: 56, height: 56, borderRadius: "50%", border: "none",
+              background: "linear-gradient(135deg, #FF2D78 0%, #CC1960 100%)",
+              color: "#fff", fontSize: 24, cursor: "pointer",
+              boxShadow: "0 4px 16px rgba(255,45,120,0.45)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 8,
+              flexShrink: 0,
+            }}
+            title="Saisie vocale"
+          >
+            🎙️
+          </button>
+        </div>
+
         <button
           type="button"
           className={`bottom-nav-btn ${section === "tags" ? "active" : ""}`}
@@ -709,6 +733,14 @@ function App() {
             📂
           </button>
         </>
+      )}
+
+      {/* 🎙️ Modal saisie vocale */}
+      {voiceOpen && (
+        <VoiceSpendingModal
+          onClose={() => setVoiceOpen(false)}
+          onSaved={() => setVoiceOpen(false)}
+        />
       )}
 
       {/* ✅ AJOUT : Modal QuickSpendingForm avec prefill */}
