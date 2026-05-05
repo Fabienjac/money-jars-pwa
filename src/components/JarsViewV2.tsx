@@ -416,7 +416,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     loadAnalytics();
   }, []);
 
-  // Un seul fetch pour les tags du mois ET la détection des abonnements
+  // Un seul fetch pour les tags du mois, la détection des abonnements ET l'overlay graphique
   useEffect(() => {
     setTagStatsLoading(true);
     searchSpendings("", 500)
@@ -443,6 +443,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
 
         // Détection des abonnements (6 derniers mois, toutes les transactions)
         setSubscriptions(detectRecurring(all));
+
+        // Toutes les transactions pour l'overlay de tag sur le graphique
+        setAllTransactionsForChart(all);
       })
       .catch(() => {})
       .finally(() => setTagStatsLoading(false));
@@ -494,6 +497,61 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
 
   /** Points hebdomadaires pour le graphique */
   const chartPoints = useMemo(() => computeWeeklyRolling30dAvg(analytics), [analytics]);
+
+  /** Tag sélectionné pour l'overlay sur le graphique */
+  const [tagOverlayId, setTagOverlayId] = useState<string | null>("alimentaire");
+
+  /** Transactions "toutes" (pour l'overlay de tag sur le graphique) */
+  const [allTransactionsForChart, setAllTransactionsForChart] = useState<import("../types").SearchSpendingResult[]>([]);
+
+  /** Points overlay du tag sélectionné — recalculé depuis allTransactionsForChart */
+  const tagOverlayPoints = useMemo((): { label: string; avg: number; date: Date }[] => {
+    if (!tagOverlayId || allTransactionsForChart.length === 0) return [];
+    const tagged = allTransactionsForChart.filter(t =>
+      t.tags?.split(",").map(x => x.trim()).includes(tagOverlayId)
+    );
+    if (tagged.length === 0) return [];
+
+    // Map: "YYYY-MM-DD" → total dépenses
+    const daily: Record<string, number> = {};
+    tagged.forEach(t => {
+      const d = t.date;
+      if (!d) return;
+      // Normalise en YYYY-MM-DD
+      let key: string | null = null;
+      const fr = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (fr) key = `${fr[3]}-${fr[2].padStart(2,"0")}-${fr[1].padStart(2,"0")}`;
+      else {
+        const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) key = `${iso[1]}-${iso[2]}-${iso[3]}`;
+        else {
+          const parsed = new Date(d);
+          if (!isNaN(parsed.getTime()))
+            key = `${parsed.getFullYear()}-${String(parsed.getMonth()+1).padStart(2,"0")}-${String(parsed.getDate()).padStart(2,"0")}`;
+        }
+      }
+      if (key) daily[key] = (daily[key] || 0) + (t.amount || 0);
+    });
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const points: { label: string; avg: number; date: Date }[] = [];
+    let current = new Date(year, 0, 7);
+    while (current <= now) {
+      let sum = 0;
+      for (let i = 0; i < 30; i++) {
+        const di = new Date(current);
+        di.setDate(di.getDate() - i);
+        const key = `${di.getFullYear()}-${String(di.getMonth()+1).padStart(2,"0")}-${String(di.getDate()).padStart(2,"0")}`;
+        sum += daily[key] || 0;
+      }
+      points.push({ label: `${current.getDate()}/${current.getMonth()+1}`, avg: sum / 30, date: new Date(current) });
+      const next = new Date(current);
+      next.setDate(next.getDate() + 7);
+      current = next;
+    }
+    return points;
+  }, [tagOverlayId, allTransactionsForChart]);
 
   /** Dépense mois en cours depuis analytics */
   const currentMonthSpending = analytics?.trends?.spendings?.current ?? null;
@@ -563,7 +621,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     return { pct, isGood: pct < 0 };
   }, [chartPoints]);
 
-  /** Rendu du graphique SVG */
+  /** Rendu du graphique SVG avec overlay de tag optionnel */
   const renderChart = () => {
     if (chartPoints.length < 2) return null;
 
@@ -572,11 +630,14 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     const CW = W - PL - PR;
     const CH = H - PT - PB;
 
-    const values = chartPoints.map(p => p.avg);
-    const minVal = Math.min(...values);
-    const maxVal = Math.max(...values);
+    // Combiner les deux séries pour déterminer min/max de l'axe Y
+    const allValues = [
+      ...chartPoints.map(p => p.avg),
+      ...(tagOverlayPoints.length > 0 ? tagOverlayPoints.map(p => p.avg) : []),
+    ];
+    const minVal = Math.min(...allValues);
+    const maxVal = Math.max(...allValues);
     const range = maxVal - minVal || 1;
-    // Ajouter un peu de marge verticale
     const yMin = Math.max(0, minVal - range * 0.1);
     const yMax = maxVal + range * 0.1;
     const yRange = yMax - yMin || 1;
@@ -584,10 +645,22 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     const toX = (i: number) => PL + (i / (chartPoints.length - 1)) * CW;
     const toY = (v: number) => PT + CH - ((v - yMin) / yRange) * CH;
 
+    // Pour l'overlay, les points peuvent avoir un nombre différent — on les aligne sur l'axe X du chart principal
+    const toXOverlay = tagOverlayPoints.length > 1
+      ? (i: number) => PL + (i / (tagOverlayPoints.length - 1)) * CW
+      : toX;
+
     const linePath = chartPoints
       .map((p, i) => `${i === 0 ? "M" : "L"} ${toX(i).toFixed(1)} ${toY(p.avg).toFixed(1)}`)
       .join(" ");
     const areaPath = `${linePath} L ${toX(chartPoints.length - 1).toFixed(1)} ${(PT + CH).toFixed(1)} L ${toX(0).toFixed(1)} ${(PT + CH).toFixed(1)} Z`;
+
+    // Overlay tag
+    const overlayLinePath = tagOverlayPoints.length >= 2
+      ? tagOverlayPoints
+          .map((p, i) => `${i === 0 ? "M" : "L"} ${toXOverlay(i).toFixed(1)} ${toY(p.avg).toFixed(1)}`)
+          .join(" ")
+      : null;
 
     // Labels de mois sur l'axe X
     const monthLabels: { x: number; label: string }[] = [];
@@ -602,6 +675,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
 
     // 3 labels sur l'axe Y
     const yLabelValues = [yMin + yRange * 0.05, yMin + yRange * 0.5, yMin + yRange * 0.95];
+
+    // Couleur overlay (vert lime pour alimentaire)
+    const OVERLAY_COLOR = "#84CC16";
 
     return (
       <svg
@@ -640,6 +716,19 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           strokeLinejoin="round"
         />
 
+        {/* Overlay tag */}
+        {overlayLinePath && (
+          <path
+            d={overlayLinePath}
+            fill="none"
+            stroke={OVERLAY_COLOR}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="4 2"
+          />
+        )}
+
         {/* Points de données (un sur deux + dernier) */}
         {chartPoints.map((p, i) => {
           if (i % 2 !== 0 && i !== chartPoints.length - 1) return null;
@@ -656,6 +745,18 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             />
           );
         })}
+
+        {/* Dernier point overlay */}
+        {overlayLinePath && tagOverlayPoints.length > 0 && (
+          <circle
+            cx={toXOverlay(tagOverlayPoints.length - 1).toFixed(1)}
+            cy={toY(tagOverlayPoints[tagOverlayPoints.length - 1].avg).toFixed(1)}
+            r="3.5"
+            fill={OVERLAY_COLOR}
+            stroke="#fff"
+            strokeWidth="1.5"
+          />
+        )}
 
         {/* Labels axe Y */}
         {yLabelValues.map((v, i) => (
@@ -792,8 +893,27 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
               </div>
             )
           }
-          <div style={{ fontSize: "10px", color: "#C7C7CC", marginTop: "4px", textAlign: "right" }}>
-            Moy. glissante 30j · par semaine
+          {/* Légende graphique */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "4px" }}>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                <div style={{ width: 16, height: 2.5, borderRadius: 2, background: "#FF2D78" }} />
+                <span style={{ fontSize: "10px", color: "#AEAEB2" }}>Total</span>
+              </div>
+              {tagOverlayPoints.length >= 2 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  <svg width="16" height="6" style={{ overflow: "visible" }}>
+                    <line x1="0" y1="3" x2="16" y2="3" stroke="#84CC16" strokeWidth="2" strokeDasharray="4 2" />
+                  </svg>
+                  <span style={{ fontSize: "10px", color: "#84CC16", fontWeight: 600 }}>
+                    🥗 {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)} €/j
+                  </span>
+                </div>
+              )}
+            </div>
+            <div style={{ fontSize: "10px", color: "#C7C7CC" }}>
+              Moy. 30j · par semaine
+            </div>
           </div>
         </div>
       </section>

@@ -6,6 +6,8 @@ import {
   deleteSpending, deleteRevenue,
 } from "../api";
 import { SearchSpendingResult, SearchRevenueResult, JarKey } from "../types";
+import { calculateTagStats } from "../tagStatsUtils";
+import { getTagById } from "../tagsUtils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -309,6 +311,21 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     reportSpendings.filter(s => s.subscription && s.subscription !== ""),
     [reportSpendings]
   );
+
+  /** Nombre de jours dans le mois du rapport */
+  const reportDaysInMonth = useMemo(() => {
+    const [y, m] = reportMonth.split("-").map(Number);
+    return new Date(y, m, 0).getDate();
+  }, [reportMonth]);
+
+  /** Stats par tag pour le rapport + avg/jour */
+  const reportTagStats = useMemo(() => {
+    const stats = calculateTagStats(reportSpendings);
+    return stats.map(s => ({
+      ...s,
+      avgPerDay: reportDaysInMonth > 0 ? s.totalAmount / reportDaysInMonth : 0,
+    }));
+  }, [reportSpendings, reportDaysInMonth]);
 
   // ── Styles ────────────────────────────────────────────────────────
 
@@ -733,6 +750,38 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Tag avg/day */}
+          {reportTagStats.length > 0 && (
+            <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
+                🏷️ Dépenses par tag
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>
+                Moyenne / jour sur {reportDaysInMonth} jours
+              </div>
+              {reportTagStats.map(tag => {
+                const barMax = reportTagStats[0]?.totalAmount || 1;
+                return (
+                  <div key={tag.tagId} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                      <span style={{ fontSize: 15, flexShrink: 0, width: 20, textAlign: "center" }}>{tag.emoji}</span>
+                      <span style={{ fontSize: 13, color: "var(--text-main)", flex: 1, fontWeight: 600 }}>{tag.tagName}</span>
+                      <div style={{ textAlign: "right", flexShrink: 0 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#FF3B30" }}>{fmt(tag.totalAmount)} €</span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
+                          ≈ {fmt(tag.avgPerDay, 1)} €/j
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ height: 5, background: "var(--border-color)", borderRadius: 3 }}>
+                      <div style={{ height: "100%", width: `${(tag.totalAmount / barMax) * 100}%`, background: tag.color, borderRadius: 3, transition: "width 0.5s ease" }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 

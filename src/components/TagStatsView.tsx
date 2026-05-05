@@ -50,12 +50,32 @@ const TagStatsView: React.FC = () => {
 
   // Filtrer les transactions selon les tags sélectionnés
   const tagFilteredTransactions = filterByTags(allTransactions, selectedTags);
-  
+
   // Appliquer les filtres avancés (période 30j / 90j / 6m / personnalisé, montant, jarres)
   const filteredTransactions = applyAdvancedFilters(tagFilteredTransactions, advancedFilters);
 
   // Calculer les stats sur les transactions filtrées
   const stats = calculateTagStats(filteredTransactions);
+
+  // Nombre de jours dans la période sélectionnée (pour avg/jour)
+  const periodDays = React.useMemo(() => {
+    const f = advancedFilters;
+    if (f.period === "all") {
+      // Utiliser la plage réelle des transactions filtrées
+      if (filteredTransactions.length === 0) return 30;
+      const dates = filteredTransactions.map(t => new Date(t.date).getTime()).filter(n => !isNaN(n));
+      if (dates.length === 0) return 30;
+      const earliest = Math.min(...dates);
+      const latest = Math.max(...dates);
+      return Math.max(1, Math.round((latest - earliest) / 86400000) + 1);
+    }
+    if (f.period === "custom" && f.customStartDate && f.customEndDate) {
+      const ms = new Date(f.customEndDate).getTime() - new Date(f.customStartDate).getTime();
+      return Math.max(1, Math.round(ms / 86400000) + 1);
+    }
+    const map: Record<string, number> = { "30d": 30, "90d": 90, "6m": 182, "year": 365 };
+    return map[f.period] ?? 30;
+  }, [advancedFilters, filteredTransactions]);
 
   // Total de toutes les dépenses filtrées
   const totalAmount = filteredTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
@@ -386,6 +406,14 @@ const TagStatsView: React.FC = () => {
                       marginBottom: "2px",
                     }}>
                       {stat.totalAmount.toFixed(2)}€
+                    </div>
+                    <div style={{
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      color: "var(--text-muted)",
+                      marginBottom: "2px",
+                    }}>
+                      ≈ {(stat.totalAmount / periodDays).toFixed(1)} €/j
                     </div>
                     <div style={{
                       fontSize: "13px",
