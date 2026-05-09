@@ -149,6 +149,30 @@ export async function fetchTotals(forceRefresh = false): Promise<TotalsResponse>
   return data;
 }
 
+// --------- TAGS - GET depuis Google Sheets ---------
+export async function fetchTagsFromSheet(): Promise<import("./tagsUtils").Tag[]> {
+  const url = `${API_URL}?action=getTags&key=${encodeURIComponent(API_KEY)}`;
+  const res = await fetch(url, { method: "GET" });
+  if (!res.ok) throw new Error(`API getTags (${res.status}): ${await res.text()}`);
+  const data = await res.json();
+  // Accepte { tags: [...] } ou directement [...]
+  const rows: any[] = data.tags ?? data.rows ?? data ?? [];
+  return rows
+    .filter(r => r && typeof r.id === "string" && r.id.trim())
+    .map(r => ({
+      id:        r.id.trim(),
+      name:      r.name || r.id,
+      emoji:     r.emoji || "🏷️",
+      color:     r.color || "#8E8E93",
+      categorie: r.categorie || undefined,
+      favori:    r.favori === true || String(r.favori).toUpperCase() === "OUI",
+    }));
+}
+
+export async function saveTags(tags: import("./tagsUtils").Tag[]): Promise<void> {
+  await callApi({ action: "saveTags", tags });
+}
+
 // --------- COMPTES (Accounts / RevenueAccounts) - GET ---------
 export async function getAccounts(): Promise<Account[]> {
   const url = `${API_URL}?action=getAccounts&key=${encodeURIComponent(API_KEY)}`;

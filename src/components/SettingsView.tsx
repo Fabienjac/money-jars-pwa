@@ -4,8 +4,8 @@ import { JarKey, Account, RevenueAccount } from "../types";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
-import { loadTags } from "../tagsUtils";
-import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi } from "../api";
+import { loadTags, setCachedTags, Tag } from "../tagsUtils";
+import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi, fetchTagsFromSheet, saveTags as saveTagsApi } from "../api";
 import { ALL_CURRENCIES, loadPreferredCurrencies, savePreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 
 const JAR_LABELS: Record<JarKey, string> = {
@@ -83,8 +83,58 @@ const SettingsView: React.FC = () => {
   const [rules, setRules] = useState<AutoRule[]>(loadAutoRules());
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([]);
-  const [tags] = useState(loadTags());
+  const [tags, setTags] = useState<Tag[]>(loadTags);
+  const [tagsLoading, setTagsLoading] = useState(false);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editTagDraft, setEditTagDraft] = useState<Partial<Tag>>({});
+  const [showAddTag, setShowAddTag] = useState(false);
+  const [newTagDraft, setNewTagDraft] = useState<Partial<Tag>>({ id: "", name: "", emoji: "🏷️", color: "#8E8E93", favori: true, categorie: "Intention" });
   const [accountsLoading, setAccountsLoading] = useState(true);
+
+  // Charger les tags depuis le Sheet
+  useEffect(() => {
+    setTagsLoading(true);
+    fetchTagsFromSheet()
+      .then(fetched => { if (fetched.length > 0) { setCachedTags(fetched); setTags(fetched); } })
+      .catch(() => {})
+      .finally(() => setTagsLoading(false));
+  }, []);
+
+  const handleSaveTags = async (updated: Tag[]) => {
+    setTagsLoading(true);
+    try {
+      await saveTagsApi(updated);
+      setCachedTags(updated);
+      setTags(updated);
+      setMessage("✅ Tags sauvegardés");
+    } catch (e: any) {
+      setMessage("❌ Erreur : " + e.message);
+    } finally {
+      setTagsLoading(false);
+      setTimeout(() => setMessage(null), 3000);
+    }
+  };
+
+  const handleEditTagSave = () => {
+    if (!editingTagId) return;
+    const updated = tags.map(t => t.id === editingTagId ? { ...t, ...editTagDraft } : t);
+    setEditingTagId(null);
+    handleSaveTags(updated);
+  };
+
+  const handleDeleteTag = (id: string) => {
+    if (!window.confirm(`Supprimer le tag "${id}" ?`)) return;
+    handleSaveTags(tags.filter(t => t.id !== id));
+  };
+
+  const handleAddTag = () => {
+    const id = (newTagDraft.id || "").trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+    if (!id || tags.some(t => t.id === id)) { setMessage("❌ ID invalide ou déjà existant"); return; }
+    const tag: Tag = { id, name: newTagDraft.name || id, emoji: newTagDraft.emoji || "🏷️", color: newTagDraft.color || "#8E8E93", favori: newTagDraft.favori ?? true, categorie: newTagDraft.categorie || "Intention" };
+    setShowAddTag(false);
+    setNewTagDraft({ id: "", name: "", emoji: "🏷️", color: "#8E8E93", favori: true, categorie: "Intention" });
+    handleSaveTags([...tags, tag]);
+  };
 
   // Charger comptes de dépenses et revenus depuis le Sheet (synchro Mac / iPhone)
   useEffect(() => {
@@ -918,6 +968,124 @@ const SettingsView: React.FC = () => {
           )}
         </div>
       </section>
+      {/* ── Section Tags ── */}
+      <section className="settings-section">
+        <h3 className="settings-section-title">🏷️ Tags</h3>
+
+        {tagsLoading && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Chargement…</p>}
+
+        {/* Liste des tags */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {tags.map(tag => (
+            <div key={tag.id}>
+              {editingTagId === tag.id ? (
+                /* ── Formulaire d'édition inline ── */
+                <div style={{ background: "var(--bg-body)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Emoji</div>
+                      <input type="text" value={editTagDraft.emoji ?? tag.emoji} onChange={e => setEditTagDraft(d => ({ ...d, emoji: e.target.value }))}
+                        style={{ width: "100%", padding: "8px 6px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 20, textAlign: "center", background: "var(--bg-card)", color: "var(--text-main)" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Nom</div>
+                      <input type="text" value={editTagDraft.name ?? tag.name} onChange={e => setEditTagDraft(d => ({ ...d, name: e.target.value }))}
+                        style={{ width: "100%", padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Couleur</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <input type="color" value={editTagDraft.color ?? tag.color} onChange={e => setEditTagDraft(d => ({ ...d, color: e.target.value }))}
+                          style={{ width: 36, height: 36, border: "none", borderRadius: 8, cursor: "pointer", padding: 2 }} />
+                        <span style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "monospace" }}>{editTagDraft.color ?? tag.color}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Favori</div>
+                      <button type="button" onClick={() => setEditTagDraft(d => ({ ...d, favori: !(d.favori ?? tag.favori) }))}
+                        style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid var(--border-color)", background: (editTagDraft.favori ?? tag.favori) ? "#FFF9C4" : "var(--bg-card)", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--text-main)" }}>
+                        {(editTagDraft.favori ?? tag.favori) ? "⭐ Oui" : "☆ Non"}
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={handleEditTagSave} className="settings-btn settings-btn-primary" style={{ flex: 2 }}>💾 Enregistrer</button>
+                    <button onClick={() => setEditingTagId(null)} className="settings-btn" style={{ flex: 1 }}>Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                /* ── Ligne tag normal ── */
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--bg-card)", borderRadius: 12, border: "1px solid var(--border-color)" }}>
+                  <span style={{ fontSize: 22, flexShrink: 0 }}>{tag.emoji}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-main)" }}>{tag.name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: tag.color, display: "inline-block", flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{tag.id}</span>
+                      {tag.favori && <span style={{ fontSize: 10, background: "#FFF9C4", color: "#B8860B", borderRadius: 6, padding: "1px 6px", fontWeight: 600 }}>⭐ Favori</span>}
+                    </div>
+                  </div>
+                  <button onClick={() => { setEditingTagId(tag.id); setEditTagDraft({}); }}
+                    className="settings-btn settings-btn-small" style={{ flexShrink: 0 }}>✏️</button>
+                  <button onClick={() => handleDeleteTag(tag.id)}
+                    className="settings-btn settings-btn-danger settings-btn-small" style={{ flexShrink: 0 }}>🗑️</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Formulaire ajout */}
+        {showAddTag ? (
+          <div style={{ background: "var(--bg-body)", borderRadius: 12, padding: 14, marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-main)" }}>Nouveau tag</div>
+            <div style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Emoji</div>
+                <input type="text" value={newTagDraft.emoji} onChange={e => setNewTagDraft(d => ({ ...d, emoji: e.target.value }))}
+                  style={{ width: "100%", padding: "8px 6px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 20, textAlign: "center", background: "var(--bg-card)", color: "var(--text-main)" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Nom</div>
+                <input type="text" placeholder="ex: Alimentation" value={newTagDraft.name} onChange={e => setNewTagDraft(d => ({ ...d, name: e.target.value }))}
+                  style={{ width: "100%", padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>ID (généré auto depuis le nom, modifiable)</div>
+              <input type="text" placeholder="ex: alimentation" value={newTagDraft.id}
+                onChange={e => setNewTagDraft(d => ({ ...d, id: e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") }))}
+                onBlur={() => { if (!newTagDraft.id && newTagDraft.name) setNewTagDraft(d => ({ ...d, id: (d.name || "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") })); }}
+                style={{ width: "100%", padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, fontFamily: "monospace", background: "var(--bg-card)", color: "var(--text-main)" }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Couleur</div>
+                <input type="color" value={newTagDraft.color} onChange={e => setNewTagDraft(d => ({ ...d, color: e.target.value }))}
+                  style={{ width: "100%", height: 36, border: "none", borderRadius: 8, cursor: "pointer", padding: 2 }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Favori</div>
+                <button type="button" onClick={() => setNewTagDraft(d => ({ ...d, favori: !d.favori }))}
+                  style={{ width: "100%", padding: "8px 14px", borderRadius: 8, border: "1.5px solid var(--border-color)", background: newTagDraft.favori ? "#FFF9C4" : "var(--bg-card)", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--text-main)" }}>
+                  {newTagDraft.favori ? "⭐ Oui" : "☆ Non"}
+                </button>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={handleAddTag} className="settings-btn settings-btn-primary" style={{ flex: 2 }}>➕ Ajouter</button>
+              <button onClick={() => setShowAddTag(false)} className="settings-btn" style={{ flex: 1 }}>Annuler</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowAddTag(true)} className="settings-btn settings-btn-primary" style={{ width: "100%", marginTop: 10 }}>
+            ➕ Ajouter un tag
+          </button>
+        )}
+      </section>
+
     </main>
   );
 };

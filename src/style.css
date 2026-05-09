@@ -3,6 +3,13 @@
    Version inspirée des apps iOS modernes
    ======================================== */
 
+/* ── Empêche le zoom automatique iOS sur les inputs (font-size >= 16px) ── */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 :root {
   /* Couleurs base */
   --bg-body: #f5f5f7;

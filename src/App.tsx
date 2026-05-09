@@ -14,7 +14,8 @@ import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { useOffline } from "./hooks/useOffline";
 import { loadAccounts } from "./accountsUtils";
-import { getAccounts } from "./api";
+import { getAccounts, fetchTagsFromSheet } from "./api";
+import { setCachedTags } from "./tagsUtils";
 import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
 import "./style.css";
@@ -95,6 +96,13 @@ function App() {
     getAccounts()
       .then(setAccounts)
       .catch(() => setAccounts(loadAccounts()));
+  }, []);
+
+  // Charger les tags depuis le Sheet au démarrage
+  useEffect(() => {
+    fetchTagsFromSheet()
+      .then(tags => { if (tags.length > 0) setCachedTags(tags); })
+      .catch(() => { /* silencieux — les défauts codés en dur sont utilisés */ });
   }, []);
 
   useEffect(() => {

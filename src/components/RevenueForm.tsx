@@ -178,7 +178,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
       (prefill.value && prefill.value !== "EUR");
     if (hasCrypto) setIsCryptoMode(true);
 
-    if (prefill.date) setDate(prefill.date);
+    // Date = aujourd'hui, pas celle de la transaction source
 
     if (prefill.source) {
       const matchedAccount = revenueAccounts.find(

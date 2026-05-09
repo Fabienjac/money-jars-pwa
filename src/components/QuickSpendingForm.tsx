@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { appendSpending, searchSpendings, getAccounts } from "../api";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
-import { tagsToString, tagsFromString } from "../tagsUtils";
+import { tagsToString, tagsFromString, loadTags } from "../tagsUtils";
 import { loadPreferredCurrencies } from "../currencyUtils";
 import { loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
 import { useExchangeRate } from "../hooks/useExchangeRate";
@@ -28,14 +28,12 @@ const JAR_LABELS: Record<JarKey, { label: string; emoji: string }> = {
   GIFT: { label: "GIFT", emoji: "🎁" },
 };
 
-const TAG_PRESETS = [
-  { id: "vie_quotidienne", emoji: "🛒", label: "Vie quotidienne" },
-  { id: "sante_corps", emoji: "🧘", label: "Santé & corps" },
-  { id: "transport", emoji: "🚗", label: "Transport" },
-  { id: "habitat", emoji: "🏠", label: "Habitat" },
-  { id: "loisirs", emoji: "🎉", label: "Loisirs" },
-  { id: "don_cadeau", emoji: "🎁", label: "Don / Cadeau" },
-];
+// Tags chargés dynamiquement depuis le cache (rempli au démarrage depuis Google Sheet)
+function getTagPresets() {
+  return loadTags()
+    .filter(t => t.favori !== false)
+    .map(t => ({ id: t.id, emoji: t.emoji, label: t.name }));
+}
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -129,10 +127,10 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     return () => window.removeEventListener("preferredCurrenciesUpdated", reload);
   }, []);
 
-  // ✅ Gérer le prefill depuis l'historique
+  // ✅ Gérer le prefill depuis l'historique (date = aujourd'hui, pas celle de la transaction source)
   useEffect(() => {
     if (prefill) {
-      if (prefill.date) setDate(prefill.date);
+      // On garde intentionnellement la date d'aujourd'hui — ne pas copier prefill.date
       if (prefill.jar) setJar(prefill.jar);
       if (prefill.account) setAccount(prefill.account);
       if (prefill.amount != null) setAmount(String(prefill.amount));
@@ -377,7 +375,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
         <div className="quick-tags-section">
           <p className="quick-tags-label">🏷️ Tags (optionnel)</p>
           <div className="quick-tags-grid">
-            {TAG_PRESETS.map((tag) => (
+            {getTagPresets().map((tag) => (
               <button
                 key={tag.id}
                 type="button"
