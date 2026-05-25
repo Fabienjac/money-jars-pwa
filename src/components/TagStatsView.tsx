@@ -491,77 +491,67 @@ const TagStatsView: React.FC = () => {
                     border: "1px solid var(--border-color)",
                     background: "var(--bg-card)",
                     display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
+                    flexDirection: "column",
+                    gap: "6px",
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* Ligne 1 : description + montant */}
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                     <div style={{
+                      flex: 1,
                       fontSize: "14px",
                       fontWeight: "600",
                       color: "var(--text-main)",
-                      marginBottom: "4px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      wordBreak: "break-word",
                     }}>
-                      {transaction.description}
+                      {transaction.description || "—"}
                     </div>
                     <div style={{
-                      display: "flex",
-                      gap: "8px",
-                      fontSize: "12px",
-                      color: "var(--text-muted)",
+                      fontSize: "15px",
+                      fontWeight: "700",
+                      color: "#FF3B30",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
                     }}>
-                      <span>{transaction.date}</span>
-                      <span>•</span>
-                      <span>{transaction.jar}</span>
-                      <span>•</span>
-                      <span>{transaction.account}</span>
+                      {transaction.amount?.toFixed(2)}€
                     </div>
                   </div>
 
-                  {/* Tags */}
-                  <div style={{
-                    display: "flex",
-                    gap: "6px",
-                    flexWrap: "wrap",
-                  }}>
-                    {tagIds.map(tagId => {
-                      const tag = getTagById(tagId);
-                      if (!tag) return null;
+                  {/* Ligne 2 : date • jarre • compte */}
+                  <div style={{ display: "flex", gap: "6px", fontSize: "12px", color: "var(--text-muted)", flexWrap: "wrap" }}>
+                    <span>{transaction.date}</span>
+                    <span>•</span>
+                    <span>{transaction.jar}</span>
+                    <span>•</span>
+                    <span>{transaction.account}</span>
+                  </div>
 
-                      return (
-                        <div
-                          key={tagId}
-                          style={{
-                            padding: "4px 8px",
-                            borderRadius: "6px",
-                            background: `${tag.color}20`,
-                            border: `1px solid ${tag.color}40`,
+                  {/* Ligne 3 : tags */}
+                  {tagIds.length > 0 && (
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: 2 }}>
+                      {tagIds.map(tagId => {
+                        const tag = getTagById(tagId);
+                        if (!tag) return null;
+                        return (
+                          <div key={tagId} style={{
+                            padding: "3px 8px",
+                            borderRadius: "20px",
+                            background: `${tag.color}18`,
+                            border: `1px solid ${tag.color}50`,
                             fontSize: "11px",
                             fontWeight: "600",
                             color: tag.color,
                             display: "flex",
                             alignItems: "center",
                             gap: "4px",
-                          }}
-                        >
-                          <span>{tag.emoji}</span>
-                          <span>{tag.name}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div style={{
-                    fontSize: "16px",
-                    fontWeight: "700",
-                    color: "#FF3B30",
-                    whiteSpace: "nowrap",
-                  }}>
-                    {transaction.amount?.toFixed(2)}€
-                  </div>
+                          }}>
+                            <span>{tag.emoji}</span>
+                            <span>{tag.name}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}

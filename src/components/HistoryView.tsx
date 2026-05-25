@@ -7,7 +7,8 @@ import {
 } from "../api";
 import { SearchSpendingResult, SearchRevenueResult, JarKey } from "../types";
 import { calculateTagStats } from "../tagStatsUtils";
-import { getTagById } from "../tagsUtils";
+import { getTagById, loadTags, tagsFromString, tagsToString } from "../tagsUtils";
+import { loadAccounts } from "../accountsUtils";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -432,14 +433,31 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
               Compte
-              <input type="text" value={editDraft.account || ""} onChange={e => setEditDraft(d => ({ ...d, account: e.target.value }))}
-                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
+              <select value={editDraft.account || ""} onChange={e => setEditDraft(d => ({ ...d, account: e.target.value }))}
+                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }}>
+                {loadAccounts().map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
+              </select>
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
               Tags
-              <input type="text" value={editDraft.tags || ""} onChange={e => setEditDraft(d => ({ ...d, tags: e.target.value }))} placeholder="id1,id2,…"
-                style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
-            </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, background: "var(--bg-card)", minHeight: 42 }}>
+                {loadTags().filter(t => t.favori !== false).map(tag => {
+                  const selected = tagsFromString(editDraft.tags || "").includes(tag.id);
+                  return (
+                    <button key={tag.id} type="button"
+                      onClick={() => {
+                        const cur = tagsFromString(editDraft.tags || "");
+                        const next = selected ? cur.filter(id => id !== tag.id) : [...cur, tag.id];
+                        setEditDraft(d => ({ ...d, tags: tagsToString(next) }));
+                      }}
+                      style={{ padding: "4px 10px", borderRadius: 20, border: `1.5px solid ${tag.color}`, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                        background: selected ? tag.color : "transparent", color: selected ? "#fff" : tag.color }}>
+                      {tag.emoji} {tag.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </>) : (<>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
               Source
