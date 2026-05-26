@@ -9,6 +9,8 @@ import { SearchSpendingResult, SearchRevenueResult, JarKey } from "../types";
 import { calculateTagStats } from "../tagStatsUtils";
 import { getTagById, loadTags, tagsFromString, tagsToString } from "../tagsUtils";
 import { loadAccounts } from "../accountsUtils";
+import { getAccounts } from "../api";
+import { Account } from "../types";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -85,6 +87,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  const [accountsList, setAccountsList] = useState<Account[]>(loadAccounts());
 
   // ── Report tab state ──────────────────────────────────────────────
   const now = new Date();
@@ -119,6 +122,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Charger les comptes depuis le Sheet au montage
+  useEffect(() => {
+    getAccounts().then(accs => { if (accs.length > 0) setAccountsList(accs); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -435,7 +443,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
               Compte
               <select value={editDraft.account || ""} onChange={e => setEditDraft(d => ({ ...d, account: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }}>
-                {loadAccounts().map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
+                {accountsList.map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
               </select>
             </label>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>

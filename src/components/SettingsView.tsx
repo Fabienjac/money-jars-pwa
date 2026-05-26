@@ -43,6 +43,15 @@ interface JarSetting {
 
 const SETTINGS_KEY = "mjars:jarSettings";
 const RULES_KEY = "mjars:autoRules";
+const DEFAULT_SPENDING_ACCOUNT_KEY = "mjars:defaultSpendingAccount";
+const DEFAULT_REVENUE_ACCOUNT_KEY = "mjars:defaultRevenueAccount";
+
+function loadDefaultAccount(key: string): string {
+  return localStorage.getItem(key) || "";
+}
+function saveDefaultAccount(key: string, value: string): void {
+  localStorage.setItem(key, value);
+}
 
 function loadSettings(): JarSetting[] {
   try {
@@ -90,6 +99,8 @@ const SettingsView: React.FC = () => {
   const [showAddTag, setShowAddTag] = useState(false);
   const [newTagDraft, setNewTagDraft] = useState<Partial<Tag>>({ id: "", name: "", emoji: "🏷️", color: "#8E8E93", favori: true, categorie: "Intention" });
   const [accountsLoading, setAccountsLoading] = useState(true);
+  const [defaultSpendingAccount, setDefaultSpendingAccount] = useState(() => loadDefaultAccount(DEFAULT_SPENDING_ACCOUNT_KEY));
+  const [defaultRevenueAccount, setDefaultRevenueAccount] = useState(() => loadDefaultAccount(DEFAULT_REVENUE_ACCOUNT_KEY));
 
   // Charger les tags depuis le Sheet
   useEffect(() => {
@@ -683,21 +694,24 @@ const SettingsView: React.FC = () => {
         {accounts.length > 0 && (
           <div className="accounts-grid">
             {accounts.map((acc) => (
-              <div key={acc.id} className="account-card">
+              <div key={acc.id} className="account-card" style={editingAccountId === acc.id ? { gridColumn: "1 / -1", alignItems: "stretch" } : {}}>
                 {editingAccountId === acc.id ? (
                   <>
-                    <div className="account-edit-inline">
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", width: "100%" }}>
                       <input
                         type="text"
                         className="form-emoji-input"
                         value={editingAccountIcon}
                         onChange={(e) => setEditingAccountIcon(e.target.value)}
+                        style={{ flexShrink: 0, width: 48 }}
                       />
                       <input
                         type="text"
                         className="form-input-inline"
                         value={editingAccountName}
                         onChange={(e) => setEditingAccountName(e.target.value)}
+                        style={{ flex: 1, minWidth: 0 }}
+                        autoFocus
                       />
                     </div>
                     <div className="account-edit-actions">
@@ -706,14 +720,14 @@ const SettingsView: React.FC = () => {
                         className="settings-btn settings-btn-add settings-btn-small"
                         onClick={handleSaveEditAccount}
                       >
-                        ✓
+                        ✓ Enregistrer
                       </button>
                       <button
                         type="button"
                         className="settings-btn settings-btn-secondary settings-btn-small"
                         onClick={handleCancelEditAccount}
                       >
-                        ✕
+                        ✕ Annuler
                       </button>
                     </div>
                   </>
@@ -796,21 +810,24 @@ const SettingsView: React.FC = () => {
         {revenueAccounts.length > 0 && (
           <div className="accounts-grid">
             {revenueAccounts.map((acc) => (
-              <div key={acc.id} className="account-card">
+              <div key={acc.id} className="account-card" style={editingRevenueAccountId === acc.id ? { gridColumn: "1 / -1", alignItems: "stretch" } : {}}>
                 {editingRevenueAccountId === acc.id ? (
                   <>
-                    <div className="account-edit-inline">
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", width: "100%" }}>
                       <input
                         type="text"
                         className="form-emoji-input"
                         value={editingRevenueAccountIcon}
                         onChange={(e) => setEditingRevenueAccountIcon(e.target.value)}
+                        style={{ flexShrink: 0, width: 48 }}
                       />
                       <input
                         type="text"
                         className="form-input-inline"
                         value={editingRevenueAccountName}
                         onChange={(e) => setEditingRevenueAccountName(e.target.value)}
+                        style={{ flex: 1, minWidth: 0 }}
+                        autoFocus
                       />
                     </div>
                     <div className="account-edit-actions">
@@ -819,14 +836,14 @@ const SettingsView: React.FC = () => {
                         className="settings-btn settings-btn-add settings-btn-small"
                         onClick={handleSaveEditRevenueAccount}
                       >
-                        ✓
+                        ✓ Enregistrer
                       </button>
                       <button
                         type="button"
                         className="settings-btn settings-btn-secondary settings-btn-small"
                         onClick={handleCancelEditRevenueAccount}
                       >
-                        ✕
+                        ✕ Annuler
                       </button>
                     </div>
                   </>
@@ -910,6 +927,50 @@ const SettingsView: React.FC = () => {
             </button>
           </div>
         )}
+      </section>
+
+      {/* ── Comptes par défaut ── */}
+      <section className="settings-section">
+        <h3 className="settings-section-title">⭐ Comptes par défaut</h3>
+        <p className="settings-section-desc">Pré-sélectionnés à l'ouverture des formulaires de saisie.</p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--text-muted)" }}>
+            💳 Dépenses
+            <select
+              value={defaultSpendingAccount}
+              onChange={e => {
+                setDefaultSpendingAccount(e.target.value);
+                saveDefaultAccount(DEFAULT_SPENDING_ACCOUNT_KEY, e.target.value);
+                window.dispatchEvent(new Event("defaultAccountsUpdated"));
+                setMessage("✅ Compte par défaut sauvegardé");
+                setTimeout(() => setMessage(null), 2000);
+              }}
+              style={{ padding: "10px 12px", border: "1.5px solid var(--border-color)", borderRadius: 10, fontSize: 15, background: "var(--bg-card)", color: "var(--text-main)" }}
+            >
+              <option value="">— Aucun (dernier utilisé) —</option>
+              {accounts.map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
+            </select>
+          </label>
+
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--text-muted)" }}>
+            💰 Revenus
+            <select
+              value={defaultRevenueAccount}
+              onChange={e => {
+                setDefaultRevenueAccount(e.target.value);
+                saveDefaultAccount(DEFAULT_REVENUE_ACCOUNT_KEY, e.target.value);
+                window.dispatchEvent(new Event("defaultAccountsUpdated"));
+                setMessage("✅ Compte par défaut sauvegardé");
+                setTimeout(() => setMessage(null), 2000);
+              }}
+              style={{ padding: "10px 12px", border: "1.5px solid var(--border-color)", borderRadius: 10, fontSize: 15, background: "var(--bg-card)", color: "var(--text-main)" }}
+            >
+              <option value="">— Aucun (dernier utilisé) —</option>
+              {revenueAccounts.map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
+            </select>
+          </label>
+        </div>
       </section>
 
       {/* ── Devises préférées ── */}

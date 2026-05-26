@@ -848,7 +848,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                   {rolling30dAverageSpending != null
                     ? `${formatMoney(rolling30dAverageSpending)} €`
                     : analytics === null
-                      ? <span style={{ fontSize: "16px", color: "#C7C7CC" }}>…</span>
+                      ? <span className="skeleton skeleton-amount" style={{ width: 100, display: "inline-block" }}>&nbsp;</span>
                       : <span style={{ fontSize: "16px", color: "#C7C7CC" }}>—</span>
                   }
                 </span>
@@ -912,8 +912,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           {chartPoints.length >= 2
             ? renderChart()
             : analytics === null && (
-              <div style={{ height: "60px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ fontSize: "12px", color: "#C7C7CC" }}>Chargement du graphique…</div>
+              <div style={{ height: "80px", borderRadius: 12, overflow: "hidden" }}>
+                <div className="skeleton" style={{ width: "100%", height: "100%" }} />
               </div>
             )
           }
@@ -1047,9 +1047,17 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             </div>
 
             {tagStatsLoading ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 0" }}>
-                <div style={{ width: "16px", height: "16px", borderRadius: "50%", border: "2px solid #E5E5EA", borderTopColor: "#FF2D78", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                <span style={{ fontSize: "12px", color: "#C7C7CC" }}>Chargement des catégories…</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "4px 0" }}>
+                {[80, 65, 50].map((w, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div className="skeleton" style={{ width: 28, height: 28, borderRadius: "50%", flexShrink: 0 }} />
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div className="skeleton skeleton-text" style={{ width: `${w}%` }} />
+                      <div className="skeleton" style={{ height: 4, borderRadius: 2, width: `${w * 0.7}%` }} />
+                    </div>
+                    <div className="skeleton skeleton-text" style={{ width: 50 }} />
+                  </div>
+                ))}
               </div>
             ) : topTags.length === 0 ? (
               <div style={{ fontSize: "12px", color: "#AEAEB2", padding: "8px 0", textAlign: "center" }}>
@@ -1388,7 +1396,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                     </div>
                     <span className="summary-value summary-value--highlight">
                       {netWorthLoading
-                        ? <span style={{ opacity: 0.4, fontSize: "14px" }}>…</span>
+                        ? <span className="skeleton skeleton-text" style={{ width: 90, display: "inline-block" }}>&nbsp;</span>
                         : netWorth !== null
                           ? `${netWorth.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
                           : <span style={{ opacity: 0.4, fontSize: "14px" }}>Indisponible</span>

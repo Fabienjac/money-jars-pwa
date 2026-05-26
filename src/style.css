@@ -3,6 +3,29 @@
    Version inspirée des apps iOS modernes
    ======================================== */
 
+/* ── Skeleton loading ── */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.skeleton {
+  background: var(--border-color);
+  border-radius: 8px;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+.skeleton-text   { height: 14px; border-radius: 4px; }
+.skeleton-title  { height: 22px; border-radius: 6px; }
+.skeleton-amount { height: 36px; border-radius: 8px; }
+.skeleton-card {
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border-color);
+}
+
 /* ── Empêche le zoom automatique iOS sur les inputs (font-size >= 16px) ── */
 @media (max-width: 768px) {
   input, select, textarea {

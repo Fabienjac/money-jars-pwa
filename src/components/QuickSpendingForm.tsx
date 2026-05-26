@@ -52,8 +52,9 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<string>(() => loadLastExpenseCurrency());
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backspaceLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [jar, setJar] = useState<JarKey>("NEC");
-  const [account, setAccount] = useState("Cash");
+  const [account, setAccount] = useState(() => localStorage.getItem("mjars:defaultSpendingAccount") || "Cash");
   const [description, setDescription] = useState("");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [preferredCurrencies, setPreferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
@@ -322,16 +323,23 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
         {/* Numpad + Jars */}
         <div className="quick-numpad-section">
           <div className="quick-numpad">
-            {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ".", "C"].map((key) => (
+            {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ".", "⌫"].map((key) => (
               <button
                 key={key}
                 type="button"
-                className={`quick-numpad-key ${key === "C" ? "quick-numpad-clear" : ""}`}
+                className={`quick-numpad-key ${key === "⌫" ? "quick-numpad-clear" : ""}`}
                 onClick={() => {
-                  if (key === "C") handleClear();
+                  if (key === "⌫") handleBackspace();
                   else if (key === ".") handleNumberClick(".");
                   else handleNumberClick(key);
                 }}
+                onPointerDown={() => {
+                  if (key === "⌫") {
+                    backspaceLongPressRef.current = setTimeout(() => handleClear(), 600);
+                  }
+                }}
+                onPointerUp={() => { if (backspaceLongPressRef.current) clearTimeout(backspaceLongPressRef.current); }}
+                onPointerLeave={() => { if (backspaceLongPressRef.current) clearTimeout(backspaceLongPressRef.current); }}
               >
                 {key}
               </button>

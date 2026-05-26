@@ -14,7 +14,7 @@ const API_URL = import.meta.env.VITE_API_URL as string;
 const API_KEY = import.meta.env.VITE_API_KEY as string;
 
 // --------- CACHE localStorage TTL 5 min ---------
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 30 * 60 * 1000; // 30 min (était 5 min)
 
 function getCached<T>(key: string): T | null {
   try {

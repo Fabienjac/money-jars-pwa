@@ -14,7 +14,7 @@ import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { useOffline } from "./hooks/useOffline";
 import { loadAccounts } from "./accountsUtils";
-import { getAccounts, fetchTagsFromSheet } from "./api";
+import { getAccounts, fetchTagsFromSheet, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings } from "./api";
 import { setCachedTags } from "./tagsUtils";
 import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
@@ -103,6 +103,24 @@ function App() {
     fetchTagsFromSheet()
       .then(tags => { if (tags.length > 0) setCachedTags(tags); })
       .catch(() => { /* silencieux — les défauts codés en dur sont utilisés */ });
+  }, []);
+
+  // ── Prefetch silencieux au démarrage ──────────────────────────────────────
+  // Chauffe le cache dès l'ouverture de l'app, en parallèle, sans bloquer l'UI.
+  // Quand l'utilisateur navigue vers l'écran d'accueil ou les rapports,
+  // les données sont déjà en cache → affichage quasi-instantané.
+  useEffect(() => {
+    const warmCache = () => {
+      Promise.allSettled([
+        fetchTotals(),
+        fetchAnalytics(),
+        fetchNetWorth(),
+        searchSpendings("", 500), // pour le graphique + tags du mois
+      ]);
+    };
+    // Délai de 1.5s pour ne pas concurrencer le rendu initial
+    const t = setTimeout(warmCache, 1500);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {

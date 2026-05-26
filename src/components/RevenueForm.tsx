@@ -75,7 +75,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
   const [method, setMethod] = useState<string>("");
   const [rate, setRate] = useState<string>("");
   const [cryptoAddress, setCryptoAddress] = useState<string>("");
-  const [destination, setDestination] = useState<string>("");
+  const [destination, setDestination] = useState<string>(() => localStorage.getItem("mjars:defaultRevenueAccount") || "");
   const [incomeType, setIncomeType] = useState<string>("");
 
   const [preferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
