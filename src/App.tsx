@@ -4,15 +4,17 @@ import SpendingForm from "./components/SpendingForm";
 import RevenueForm from "./components/RevenueForm";
 import type { HistoryUseEntry } from "./components/HistoryView";
 import JarsView from "./components/JarsView";
-// ✅ AJOUT : Nouveaux composants V2
 import JarsViewV2 from "./components/JarsViewV2";
 import QuickSpendingForm from "./components/QuickSpendingForm";
 import { VoiceSpendingModal } from "./components/VoiceSpendingModal";
-// Fin ajouts V2
 import { RecentTransactions } from "./components/RecentTransactions";
 import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
+import { AuthScreen } from "./components/AuthScreen";
+import { OnboardingFlow } from "./components/OnboardingFlow";
+import { PaywallModal } from "./components/PaywallModal";
 import { useOffline } from "./hooks/useOffline";
+import { useAuth } from "./contexts/AuthContext";
 import { loadAccounts } from "./accountsUtils";
 import { getAccounts, fetchTagsFromSheet, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings } from "./api";
 import { setCachedTags } from "./tagsUtils";
@@ -38,6 +40,8 @@ type Section = "home" | "history" | "settings" | "tags";
 type EntryMode = "spending" | "revenue";
 
 function App() {
+  const { user, loading: authLoading } = useAuth();
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const [section, setSection] = useState<Section>("home");
   const [darkMode, setDarkMode] = useState(false);
 
@@ -82,6 +86,15 @@ function App() {
   useEffect(() => {
     return offlineManager.subscribe((state) => setPendingCount(state.pendingTransactions.length));
   }, []);
+
+  // Vérifier si l'onboarding a déjà été fait (jar_settings présents)
+  useEffect(() => {
+    if (!user) return;
+    import("./lib/supabase").then(({ supabase }) => {
+      supabase.from("jar_settings").select("id").eq("user_id", user.id).limit(1)
+        .then(({ data }) => setOnboardingDone(!!(data && data.length > 0)));
+    });
+  }, [user]);
 
   // Thème
   useEffect(() => {
@@ -136,6 +149,38 @@ function App() {
       localStorage.setItem("mj-dark-mode", darkMode ? "1" : "0");
     } catch {}
   }, [darkMode]);
+
+  // ── Auth gate ─────────────────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: "100dvh", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "var(--bg-body)",
+      }}>
+        <div style={{ fontSize: "40px" }}>🏺</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  if (onboardingDone === null) {
+    return (
+      <div style={{
+        minHeight: "100dvh", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "var(--bg-body)",
+      }}>
+        <div style={{ fontSize: "40px" }}>🏺</div>
+      </div>
+    );
+  }
+
+  if (!onboardingDone) {
+    return <OnboardingFlow onComplete={() => setOnboardingDone(true)} />;
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   const openEntry = (mode: EntryMode, prefill?: any) => {
     setEntryMode(mode);
@@ -464,6 +509,9 @@ function App() {
 
   return (
     <div className={`app-shell ${darkMode ? "dark" : ""}`}>
+      {/* Paywall si essai expiré / abonnement inactif */}
+      <PaywallModal />
+
       {/* Indicateur de mode offline */}
       <OfflineIndicator />
 
