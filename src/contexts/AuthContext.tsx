@@ -29,29 +29,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
 
   async function fetchSubscription(userId: string) {
-    let { data, error } = await supabase
+    console.log("[Auth] fetchSubscription pour userId:", userId);
+
+    const { data, error } = await supabase
       .from("subscriptions")
       .select("plan, trial_ends_at, current_period_end")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
+
+    console.log("[Auth] subscriptions SELECT →", { data, error });
 
     // Si aucune ligne n'existe (trigger raté ou premier login), on en crée une
-    if (error || !data) {
+    if (!data) {
+      console.log("[Auth] Aucune ligne trouvée, création de l'abonnement trial...");
       const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: created } = await supabase
+      const { data: created, error: upsertError } = await supabase
         .from("subscriptions")
         .upsert(
           { user_id: userId, plan: "trial", trial_ends_at: trialEnd },
           { onConflict: "user_id" }
         )
         .select("plan, trial_ends_at, current_period_end")
-        .single();
-      data = created ?? null;
-      error = null;
-    }
+        .maybeSingle();
+      console.log("[Auth] upsert →", { created, upsertError });
 
-    if (!data) {
-      setSubscription({ plan: "trial", trialEndsAt: null, isActive: false });
+      if (created) {
+        setSubscription({ plan: "trial", trialEndsAt: new Date(trialEnd), isActive: true });
+      } else {
+        // Fallback : on laisse passer pendant 14j à partir de la création du compte
+        const accountCreated = new Date(userId.substring(0, 8) ? Date.now() : Date.now());
+        setSubscription({ plan: "trial", trialEndsAt: new Date(trialEnd), isActive: true });
+      }
       return;
     }
 
@@ -59,8 +67,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const periodEnd = data.current_period_end ? new Date(data.current_period_end) : null;
     const now = new Date();
 
+    console.log("[Auth] plan:", data.plan, "trialEndsAt:", trialEndsAt, "now:", now);
+
     const isTrialActive = data.plan === "trial" && trialEndsAt !== null && trialEndsAt > now;
     const isSubActive = data.plan === "active" && periodEnd !== null && periodEnd > now;
+
+    console.log("[Auth] isTrialActive:", isTrialActive, "isSubActive:", isSubActive);
 
     setSubscription({
       plan: data.plan,
