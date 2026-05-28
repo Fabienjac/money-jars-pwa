@@ -1,5 +1,26 @@
 // src/components/SettingsView.tsx - VERSION OPTIMISÉE COMPACTE
 import React, { useState, useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext";
+
+function LogoutButton() {
+  const { signOut, user } = useAuth();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {user && (
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0 }}>
+          Connecté en tant que <strong>{user.email}</strong>
+        </p>
+      )}
+      <button
+        onClick={signOut}
+        className="settings-btn"
+        style={{ color: "#FF3B30", borderColor: "#FF3B30", maxWidth: "200px" }}
+      >
+        Se déconnecter
+      </button>
+    </div>
+  );
+}
 import { JarKey, Account, RevenueAccount } from "../types";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
@@ -1145,6 +1166,12 @@ const SettingsView: React.FC = () => {
             ➕ Ajouter un tag
           </button>
         )}
+      </section>
+
+      {/* ── Compte ──────────────────────────────────────────────────── */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Compte</h2>
+        <LogoutButton />
       </section>
 
     </main>
