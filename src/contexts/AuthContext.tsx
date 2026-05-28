@@ -29,13 +29,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
 
   async function fetchSubscription(userId: string) {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("subscriptions")
       .select("plan, trial_ends_at, current_period_end")
       .eq("user_id", userId)
       .single();
 
+    // Si aucune ligne n'existe (trigger raté ou premier login), on en crée une
     if (error || !data) {
+      const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: created } = await supabase
+        .from("subscriptions")
+        .upsert(
+          { user_id: userId, plan: "trial", trial_ends_at: trialEnd },
+          { onConflict: "user_id" }
+        )
+        .select("plan, trial_ends_at, current_period_end")
+        .single();
+      data = created ?? null;
+      error = null;
+    }
+
+    if (!data) {
       setSubscription({ plan: "trial", trialEndsAt: null, isActive: false });
       return;
     }
