@@ -11,6 +11,7 @@ import { RecentTransactions } from "./components/RecentTransactions";
 import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { AuthScreen } from "./components/AuthScreen";
+import { LandingPage } from "./components/LandingPage";
 import { OnboardingFlow } from "./components/OnboardingFlow";
 import { PaywallModal } from "./components/PaywallModal";
 import { useOffline } from "./hooks/useOffline";
@@ -41,6 +42,7 @@ type EntryMode = "spending" | "revenue";
 
 function App() {
   const { user, loading: authLoading } = useAuth();
+  const [showAuth, setShowAuth] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const [section, setSection] = useState<Section>("home");
   const [darkMode, setDarkMode] = useState(false);
@@ -163,7 +165,9 @@ function App() {
   }
 
   if (!user) {
-    return <AuthScreen />;
+    return showAuth
+      ? <AuthScreen />
+      : <LandingPage onStart={() => setShowAuth(true)} />;
   }
 
   if (onboardingDone === null) {
