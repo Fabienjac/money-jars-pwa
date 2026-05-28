@@ -192,6 +192,22 @@ create policy "users_own_rules"         on auto_tag_rules for all using (auth.ui
 create policy "users_own_mappings"      on column_mappings for all using (auth.uid() = user_id);
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- GRANTS — permissions PostgreSQL pour le rôle authenticated
+-- (nécessaire EN PLUS des RLS policies)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON subscriptions         TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON jar_settings          TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON tags                  TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON accounts              TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON revenue_accounts      TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON transactions_spending TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON transactions_revenue  TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON auto_tag_rules        TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON column_mappings       TO authenticated;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- TRIGGER : créer automatiquement l'entrée subscription à l'inscription
 -- ═══════════════════════════════════════════════════════════════════════════
 create or replace function public.handle_new_user()
