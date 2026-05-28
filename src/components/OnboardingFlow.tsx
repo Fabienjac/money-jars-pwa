@@ -32,20 +32,27 @@ export function OnboardingFlow({ onComplete }: Props) {
     setPercents(prev => ({ ...prev, [key]: Math.max(0, Math.min(100, val)) }));
   }
 
-  async function save() {
-    if (!user || !isValid) return;
+  async function saveAndGo(customPercents?: Record<string, number>) {
+    if (!user) return;
     setSaving(true);
 
+    const p = customPercents ?? percents;
     const rows = DEFAULT_JARS.map(j => ({
       user_id:         user.id,
       jar_key:         j.key,
-      percent:         percents[j.key],
+      percent:         p[j.key],
       initial_balance: 0,
     }));
 
     await supabase.from("jar_settings").upsert(rows, { onConflict: "user_id,jar_key" });
     setSaving(false);
     onComplete();
+  }
+
+  // Raccourci : "Oui" → sauvegarde les % par défaut et va direct au dashboard
+  async function saveDefaults() {
+    const defaults = Object.fromEntries(DEFAULT_JARS.map(j => [j.key, j.percent]));
+    await saveAndGo(defaults);
   }
 
   // ── Étape 1 : Connais-tu la méthode ? ───────────────────────────────────────
@@ -57,13 +64,17 @@ export function OnboardingFlow({ onComplete }: Props) {
         <p style={sub}>Connaissez-vous déjà la méthode des 6 bocaux de T. Harv Eker ?</p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", maxWidth: 340 }}>
-          <button style={btnPrimary} onClick={() => setStep("config")}>
-            Oui, je connais la méthode
+          <button style={btnPrimary} onClick={saveDefaults} disabled={saving}>
+            {saving ? "Configuration…" : "Oui, je connais la méthode"}
           </button>
           <button style={btnSecondary} onClick={() => setStep("intro")}>
             Non, découvrir la méthode
           </button>
         </div>
+        <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "12px" }}>
+          Les bocaux sont configurés avec les % recommandés par T. Harv Eker.<br/>
+          Vous pourrez les ajuster dans Réglages.
+        </p>
       </Wrapper>
     );
   }
@@ -156,7 +167,7 @@ export function OnboardingFlow({ onComplete }: Props) {
         <button
           style={{ ...btnPrimary, flex: 2, opacity: !isValid || saving ? 0.5 : 1 }}
           disabled={!isValid || saving}
-          onClick={save}
+          onClick={() => saveAndGo()}
         >
           {saving ? "Enregistrement…" : "C'est parti !"}
         </button>
