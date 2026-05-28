@@ -16,7 +16,7 @@ import { PaywallModal } from "./components/PaywallModal";
 import { useOffline } from "./hooks/useOffline";
 import { useAuth } from "./contexts/AuthContext";
 import { loadAccounts } from "./accountsUtils";
-import { getAccounts, fetchTagsFromSheet, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings } from "./api";
+import { getAccounts, fetchTagsFromSheet, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings, appendSpending, appendRevenue } from "./api";
 import { setCachedTags } from "./tagsUtils";
 import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
@@ -402,81 +402,43 @@ function App() {
             }
           }
 
-          // Le Google Apps Script attend les données dans body.row !
-          const dataToSend = type === "spending" ? {
-            action: "append",
-            type: "spending",
-            row: {
-              date: formatDateForGoogleSheets(t.date),
-              jar: t.suggestedJar,
-              account: t.suggestedAccount,
-              amount: t.amount,
-              description: t.description,
-              tags: t.tags || "",
-            }
-          } : {
-            action: "append",
-            type: "revenue",
-            row: {
-              date: formatDateForGoogleSheets(t.date),
-              source: t.suggestedSource || t.suggestedAccount || t.description,
-              amount: t.amount,
-              valeur: t.valeur || t.currency || "",
-              quantiteCrypto: t.quantiteCrypto || "",
-              method: t.methodeCrypto || t.suggestedMethod || "",
-              tauxUSDEUR: t.usdEurRate || t.tauxUSDEUR || "",
-              adresseCrypto: t.adresseCrypto || "",
-              compteDestination: t.compteDestination || t.suggestedMethod || "",
-              type: t.type || "",
-            }
-          };
+          // Envoi vers Supabase via api.ts
+          const date = formatDateForGoogleSheets(t.date); // DD/MM/YYYY attendu par api.ts
 
-          console.log(`📤 Envoi: ${JSON.stringify(dataToSend)}`);
+          let result: { ok: boolean; error?: string };
 
-          // Vérifier si en ligne
-          if (offline.isOnline) {
-            // Mode online : envoi direct
-            const response = await fetch("/.netlify/functions/gsheetProxy", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(dataToSend),
+          if (type === "spending") {
+            result = await appendSpending({
+              date,
+              jar:          t.suggestedJar,
+              account:      t.suggestedAccount || "",
+              amount:       t.amount,
+              description:  t.description || "",
+              tags:         t.tags || "",
+              subscription: "",
             });
-
-            const responseText = await response.text();
-            const isHtml = /^\s*<!DOCTYPE/i.test(responseText) || /^\s*<html/i.test(responseText);
-            if (responseText.length < 500) console.log(`📥 Réponse: ${responseText}`);
-            else console.log(`📥 Réponse: ${responseText.slice(0, 200)}...`);
-
-            if (!response.ok) {
-              logImportFailure(i, t, `HTTP ${response.status}: ${responseText.slice(0, 150)}`);
-              errorCount++;
-            } else if (isHtml) {
-              logImportFailure(i, t, "Réponse invalide (page HTML). Le script Google a peut-être renvoyé une erreur ou le lien du script est incorrect.");
-              errorCount++;
-            } else {
-              try {
-                const responseData = JSON.parse(responseText);
-                if (responseData.ok === false || responseData.error) {
-                  const msg = responseData.error || responseData.message || JSON.stringify(responseData);
-                  logImportFailure(i, t, msg);
-                  errorCount++;
-                } else {
-                  console.log(`✅ Imported #${i + 1}: ${t.description || t.suggestedSource}`);
-                  successCount++;
-                }
-              } catch (e) {
-                logImportFailure(i, t, "Réponse non-JSON (parser error). Vérifiez que le script Google renvoie bien du JSON.");
-                errorCount++;
-              }
-            }
-
-            // Petit délai pour ne pas surcharger l'API
-            await new Promise(resolve => setTimeout(resolve, 200));
           } else {
-            // Mode offline : ajouter à la file d'attente
-            offline.addPendingTransaction(type, dataToSend.row);
+            result = await appendRevenue({
+              date,
+              source:         t.suggestedSource || t.suggestedAccount || t.description || "",
+              amount:         t.amount || null,
+              value:          t.valeur || t.currency || null,
+              cryptoQuantity: t.quantiteCrypto || null,
+              method:         t.methodeCrypto || t.suggestedMethod || null,
+              rate:           t.usdEurRate || t.tauxUSDEUR || null,
+              cryptoAddress:  t.adresseCrypto || null,
+              destination:    t.compteDestination || t.suggestedMethod || null,
+              incomeType:     t.type || null,
+              tags:           t.tags || "",
+            });
+          }
+
+          if (result.ok) {
+            console.log(`✅ Imported #${i + 1}: ${t.description || t.suggestedSource}`);
             successCount++;
-            console.log(`📴 Transaction ajoutée à la file (offline): ${t.description || t.suggestedSource}`);
+          } else {
+            logImportFailure(i, t, result.error || "Erreur Supabase");
+            errorCount++;
           }
 
         } catch (error: any) {
