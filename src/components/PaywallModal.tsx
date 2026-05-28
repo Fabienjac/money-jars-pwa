@@ -1,10 +1,15 @@
 import React from "react";
 import { useAuth } from "../contexts/AuthContext";
 
-const LEMONSQUEEZY_URL = import.meta.env.VITE_LEMONSQUEEZY_CHECKOUT_URL as string | undefined;
+const LEMONSQUEEZY_BASE_URL = import.meta.env.VITE_LEMONSQUEEZY_CHECKOUT_URL as string | undefined;
 
 export function PaywallModal() {
-  const { subscription, signOut } = useAuth();
+  const { subscription, signOut, user } = useAuth();
+
+  // Ajoute le user_id en custom data pour que le webhook sache quel user a payé
+  const LEMONSQUEEZY_URL = LEMONSQUEEZY_BASE_URL && user
+    ? `${LEMONSQUEEZY_BASE_URL}?checkout[custom][user_id]=${user.id}`
+    : LEMONSQUEEZY_BASE_URL;
   if (!subscription || subscription.isActive) return null;
 
   const isExpiredTrial = subscription.plan === "trial";
