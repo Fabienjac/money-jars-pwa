@@ -1,19 +1,35 @@
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-
-const LEMONSQUEEZY_BASE_URL = import.meta.env.VITE_LEMONSQUEEZY_CHECKOUT_URL as string | undefined;
 
 export function PaywallModal() {
   const { subscription, signOut, user } = useAuth();
+  const [loading, setLoading] = useState<"monthly" | "yearly" | null>(null);
 
-  // Ajoute le user_id en custom data pour que le webhook sache quel user a payé
-  const LEMONSQUEEZY_URL = LEMONSQUEEZY_BASE_URL && user
-    ? `${LEMONSQUEEZY_BASE_URL}?checkout[custom][user_id]=${user.id}`
-    : LEMONSQUEEZY_BASE_URL;
   if (!subscription || subscription.isActive) return null;
 
   const isExpiredTrial = subscription.plan === "trial";
-  const isCancelled = subscription.plan === "cancelled" || subscription.plan === "expired";
+
+  async function handleSubscribe(plan: "monthly" | "yearly") {
+    if (!user) return;
+    setLoading(plan);
+    try {
+      const res = await fetch("/.netlify/functions/createCheckoutSession", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, plan }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert("Erreur : " + (data.error ?? "Impossible de créer la session de paiement"));
+      }
+    } catch (e) {
+      alert("Erreur réseau, réessayez.");
+    } finally {
+      setLoading(null);
+    }
+  }
 
   return (
     <div style={{
@@ -68,31 +84,49 @@ export function PaywallModal() {
           </div>
         </div>
 
-        {LEMONSQUEEZY_URL ? (
-          <a
-            href={LEMONSQUEEZY_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "15px",
-              borderRadius: "14px",
-              background: "linear-gradient(135deg, #007AFF 0%, #0062CC 100%)",
-              color: "white",
-              fontSize: "16px",
-              fontWeight: "700",
-              textDecoration: "none",
-              marginBottom: "12px",
-            }}
-          >
-            S'abonner maintenant
-          </a>
-        ) : (
-          <div style={{ padding: "14px", background: "#fef9c3", borderRadius: "12px", color: "#854d0e", fontSize: "14px", marginBottom: "12px" }}>
-            Lien de paiement non configuré (VITE_LEMONSQUEEZY_CHECKOUT_URL)
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => handleSubscribe("monthly")}
+          disabled={loading !== null}
+          style={{
+            display: "block",
+            width: "100%",
+            padding: "15px",
+            borderRadius: "14px",
+            border: "none",
+            background: "linear-gradient(135deg, #007AFF 0%, #0062CC 100%)",
+            color: "white",
+            fontSize: "16px",
+            fontWeight: "700",
+            cursor: loading !== null ? "not-allowed" : "pointer",
+            opacity: loading !== null ? 0.7 : 1,
+            marginBottom: "10px",
+          }}
+        >
+          {loading === "monthly" ? "Chargement…" : "S'abonner — 7,90€/mois"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleSubscribe("yearly")}
+          disabled={loading !== null}
+          style={{
+            display: "block",
+            width: "100%",
+            padding: "13px",
+            borderRadius: "14px",
+            border: "1.5px solid var(--border-color, #e5e5ea)",
+            background: "transparent",
+            color: "var(--text-main)",
+            fontSize: "15px",
+            fontWeight: "600",
+            cursor: loading !== null ? "not-allowed" : "pointer",
+            opacity: loading !== null ? 0.7 : 1,
+            marginBottom: "16px",
+          }}
+        >
+          {loading === "yearly" ? "Chargement…" : "Plan annuel — 69€/an (−27%)"}
+        </button>
 
         <button
           type="button"
