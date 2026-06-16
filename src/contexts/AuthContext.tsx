@@ -13,11 +13,14 @@ interface AuthContextValue {
   session: Session | null;
   loading: boolean;
   subscription: SubscriptionStatus | null;
+  needsPasswordUpdate: boolean;
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
   signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithGoogle: () => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshSubscription: () => Promise<void>;
+  resetPasswordForEmail: (email: string) => Promise<{ error: string | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -27,6 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
+  const [needsPasswordUpdate, setNeedsPasswordUpdate] = useState(false);
 
   async function fetchSubscription(userId: string) {
     const { data } = await supabase
@@ -78,10 +82,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: { subscription: authListener } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
-        if (session?.user) {
+        if (event === "PASSWORD_RECOVERY") {
+          setNeedsPasswordUpdate(true);
+        } else if (session?.user) {
           fetchSubscription(session.user.id);
         } else {
           setSubscription(null);
@@ -118,11 +124,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user) await fetchSubscription(user.id);
   }
 
+  async function resetPasswordForEmail(email: string) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    return { error: error?.message ?? null };
+  }
+
+  async function updatePassword(newPassword: string) {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (!error) setNeedsPasswordUpdate(false);
+    return { error: error?.message ?? null };
+  }
+
   return (
     <AuthContext.Provider value={{
-      user, session, loading, subscription,
+      user, session, loading, subscription, needsPasswordUpdate,
       signInWithEmail, signUpWithEmail, signInWithGoogle, signOut,
-      refreshSubscription,
+      refreshSubscription, resetPasswordForEmail, updatePassword,
     }}>
       {children}
     </AuthContext.Provider>

@@ -26,7 +26,7 @@ import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import { loadTags, setCachedTags, Tag } from "../tagsUtils";
-import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi, fetchTagsFromSheet, saveTags as saveTagsApi } from "../api";
+import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi, fetchTagsFromSheet, saveTags as saveTagsApi, bulkRenameSpendingAccount, bulkRenameRevenueSource, fetchJarSettings, saveJarSettings } from "../api";
 import { ALL_CURRENCIES, loadPreferredCurrencies, savePreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 
 const JAR_LABELS: Record<JarKey, string> = {
@@ -122,6 +122,24 @@ const SettingsView: React.FC = () => {
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [defaultSpendingAccount, setDefaultSpendingAccount] = useState(() => loadDefaultAccount(DEFAULT_SPENDING_ACCOUNT_KEY));
   const [defaultRevenueAccount, setDefaultRevenueAccount] = useState(() => loadDefaultAccount(DEFAULT_REVENUE_ACCOUNT_KEY));
+
+  // Charger les paramètres des jarres depuis Supabase (synchro cross-device)
+  useEffect(() => {
+    fetchJarSettings()
+      .then(remote => {
+        if (!remote || remote.length === 0) return;
+        // Reconstruire dans le bon ordre
+        const JAR_ORDER: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
+        const map = new Map(remote.map(r => [r.key, r]));
+        const ordered: JarSetting[] = JAR_ORDER.map(k => {
+          const r = map.get(k);
+          return r ? { key: k, percent: r.percent, initialBalance: r.initialBalance } : { key: k, percent: 0, initialBalance: 0 };
+        });
+        setJarSettings(ordered);
+        saveSettings(ordered); // mise à jour du cache localStorage
+      })
+      .catch(() => {}); // silencieux — on garde localStorage si erreur réseau
+  }, []);
 
   // Charger les tags depuis le Sheet
   useEffect(() => {
@@ -261,17 +279,25 @@ const SettingsView: React.FC = () => {
     );
   };
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     if (totalPercent !== 100) {
       setMessage("⚠️ Le total doit être exactement 100%");
       return;
     }
-    saveSettings(jarSettings);
-    setMessage("✅ Paramètres sauvegardés");
+    saveSettings(jarSettings); // localStorage immédiat
+    setMessage("⏳ Synchronisation…");
+    const result = await saveJarSettings(
+      jarSettings.map(j => ({ key: j.key, percent: j.percent, initialBalance: j.initialBalance }))
+    );
+    if (result.ok) {
+      setMessage("✅ Paramètres sauvegardés (synchro cloud OK)");
+    } else {
+      setMessage(`⚠️ Local OK, erreur cloud : ${result.error}`);
+    }
     setTimeout(() => setMessage(null), 3000);
   };
 
-  const handleResetSettings = () => {
+  const handleResetSettings = async () => {
     if (!confirm("Réinitialiser les pourcentages par défaut ?")) return;
     const defaults: JarSetting[] = [
       { key: "NEC", percent: 55, initialBalance: 0 },
@@ -282,8 +308,15 @@ const SettingsView: React.FC = () => {
       { key: "GIFT", percent: 5, initialBalance: 0 },
     ];
     setJarSettings(defaults);
-    saveSettings(defaults);
-    setMessage("✅ Réinitialisé aux valeurs par défaut");
+    saveSettings(defaults); // localStorage immédiat
+    const result = await saveJarSettings(
+      defaults.map(j => ({ key: j.key, percent: j.percent, initialBalance: j.initialBalance }))
+    );
+    if (result.ok) {
+      setMessage("✅ Réinitialisé aux valeurs par défaut (synchro cloud OK)");
+    } else {
+      setMessage(`⚠️ Local OK, erreur cloud : ${result.error}`);
+    }
     setTimeout(() => setMessage(null), 3000);
   };
 
@@ -369,16 +402,18 @@ const SettingsView: React.FC = () => {
     setEditingAccountIcon("💳");
   };
 
-  const handleSaveEditAccount = () => {
+  const handleSaveEditAccount = async () => {
     if (!editingAccountId) return;
     if (!editingAccountName.trim()) {
       alert("Le nom du compte est obligatoire");
       return;
     }
+    const oldName = accounts.find((a) => a.id === editingAccountId)?.name ?? "";
+    const newName = editingAccountName.trim();
 
     const updated = accounts.map((a) =>
       a.id === editingAccountId
-        ? { ...a, name: editingAccountName.trim(), icon: editingAccountIcon || a.icon }
+        ? { ...a, name: newName, icon: editingAccountIcon || a.icon }
         : a
     );
     setAccounts(updated);
@@ -386,8 +421,19 @@ const SettingsView: React.FC = () => {
     setAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("spendingAccountsUpdated"));
     setEditingAccountId(null);
-    setMessage("✅ Compte mis à jour");
-    setTimeout(() => setMessage(null), 2000);
+
+    if (oldName && oldName !== newName) {
+      setMessage("⏳ Mise à jour des transactions…");
+      const result = await bulkRenameSpendingAccount(oldName, newName);
+      if (result.ok) {
+        setMessage(`✅ Renommé · ${result.count} transaction${result.count !== 1 ? "s" : ""} mise${result.count !== 1 ? "s" : ""} à jour`);
+      } else {
+        setMessage(`⚠️ Liste OK mais erreur transactions : ${result.error}`);
+      }
+    } else {
+      setMessage("✅ Compte mis à jour");
+    }
+    setTimeout(() => setMessage(null), 3000);
   };
 
   const handleDeleteAccount = (id: string) => {
@@ -441,20 +487,18 @@ const SettingsView: React.FC = () => {
     setEditingRevenueAccountIcon("💰");
   };
 
-  const handleSaveEditRevenueAccount = () => {
+  const handleSaveEditRevenueAccount = async () => {
     if (!editingRevenueAccountId) return;
     if (!editingRevenueAccountName.trim()) {
       alert("Le nom du compte est obligatoire");
       return;
     }
+    const oldName = revenueAccounts.find((a) => a.id === editingRevenueAccountId)?.name ?? "";
+    const newName = editingRevenueAccountName.trim();
 
     const updated = revenueAccounts.map((a) =>
       a.id === editingRevenueAccountId
-        ? {
-            ...a,
-            name: editingRevenueAccountName.trim(),
-            icon: editingRevenueAccountIcon || a.icon,
-          }
+        ? { ...a, name: newName, icon: editingRevenueAccountIcon || a.icon }
         : a
     );
     setRevenueAccounts(updated);
@@ -462,8 +506,19 @@ const SettingsView: React.FC = () => {
     setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("revenueAccountsUpdated"));
     setEditingRevenueAccountId(null);
-    setMessage("✅ Compte de revenu mis à jour");
-    setTimeout(() => setMessage(null), 2000);
+
+    if (oldName && oldName !== newName) {
+      setMessage("⏳ Mise à jour des transactions…");
+      const result = await bulkRenameRevenueSource(oldName, newName);
+      if (result.ok) {
+        setMessage(`✅ Renommé · ${result.count} transaction${result.count !== 1 ? "s" : ""} mise${result.count !== 1 ? "s" : ""} à jour`);
+      } else {
+        setMessage(`⚠️ Liste OK mais erreur transactions : ${result.error}`);
+      }
+    } else {
+      setMessage("✅ Source de revenu mise à jour");
+    }
+    setTimeout(() => setMessage(null), 3000);
   };
 
   const handleDeleteRevenueAccount = (id: string) => {

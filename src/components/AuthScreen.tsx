@@ -1,22 +1,42 @@
 import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
-type Mode = "login" | "signup";
+type Mode = "login" | "signup" | "reset" | "update_password";
 
 export function AuthScreen() {
-  const { signInWithEmail, signUpWithEmail, signInWithGoogle } = useAuth();
-  const [mode, setMode] = useState<Mode>("login");
+  const { signInWithEmail, signUpWithEmail, signInWithGoogle, needsPasswordUpdate, resetPasswordForEmail, updatePassword } = useAuth();
+  const [mode, setMode] = useState<Mode>(needsPasswordUpdate ? "update_password" : "login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Sync avec le flag PASSWORD_RECOVERY
+  React.useEffect(() => {
+    if (needsPasswordUpdate) setMode("update_password");
+  }, [needsPasswordUpdate]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setInfo(null);
     setLoading(true);
+
+    if (mode === "reset") {
+      const { error } = await resetPasswordForEmail(email);
+      setLoading(false);
+      if (error) setError(translateError(error));
+      else setInfo("Un lien de réinitialisation a été envoyé à " + email);
+      return;
+    }
+
+    if (mode === "update_password") {
+      const { error } = await updatePassword(password);
+      setLoading(false);
+      if (error) setError(translateError(error));
+      return;
+    }
 
     const fn = mode === "login" ? signInWithEmail : signUpWithEmail;
     const { error } = await fn(email, password);
@@ -68,6 +88,66 @@ export function AuthScreen() {
         padding: "28px 24px",
         boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
       }}>
+
+        {/* ── Vue : nouveau mot de passe (après clic email) ── */}
+        {mode === "update_password" && (
+          <form onSubmit={handleSubmit}>
+            <h2 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", margin: "0 0 8px" }}>
+              Nouveau mot de passe
+            </h2>
+            <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: "0 0 20px" }}>
+              Choisissez un nouveau mot de passe pour votre compte.
+            </p>
+            <input
+              type="password"
+              placeholder="Nouveau mot de passe"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+              minLength={6}
+              style={{ ...inputStyle, marginBottom: "16px" }}
+            />
+            {error && <div style={errorStyle}>{error}</div>}
+            <button type="submit" disabled={loading} style={btnPrimaryStyle}>
+              {loading ? "…" : "Enregistrer"}
+            </button>
+          </form>
+        )}
+
+        {/* ── Vue : réinitialisation mot de passe ── */}
+        {mode === "reset" && (
+          <form onSubmit={handleSubmit}>
+            <h2 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", margin: "0 0 8px" }}>
+              Mot de passe oublié
+            </h2>
+            <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: "0 0 20px" }}>
+              Entrez votre email et nous vous enverrons un lien pour réinitialiser votre mot de passe.
+            </p>
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              style={{ ...inputStyle, marginBottom: "16px" }}
+            />
+            {error && <div style={errorStyle}>{error}</div>}
+            {info && <div style={infoStyle}>{info}</div>}
+            <button type="submit" disabled={loading} style={btnPrimaryStyle}>
+              {loading ? "…" : "Envoyer le lien"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode("login"); setError(null); setInfo(null); }}
+              style={{ ...btnLinkStyle, marginTop: "14px" }}
+            >
+              ← Retour à la connexion
+            </button>
+          </form>
+        )}
+
+        {/* ── Vues login / signup ── */}
+        {(mode === "login" || mode === "signup") && <>
         {/* Tabs */}
         <div style={{
           display: "flex",
@@ -155,7 +235,7 @@ export function AuthScreen() {
               style={inputStyle}
             />
           </div>
-          <div style={{ marginBottom: "20px" }}>
+          <div style={{ marginBottom: "8px" }}>
             <input
               type="password"
               placeholder="Mot de passe"
@@ -167,48 +247,22 @@ export function AuthScreen() {
             />
           </div>
 
-          {error && (
-            <div style={{
-              padding: "12px",
-              borderRadius: "10px",
-              background: "#fef2f2",
-              color: "#dc2626",
-              fontSize: "14px",
-              marginBottom: "16px",
-            }}>
-              {error}
-            </div>
+          {mode === "login" && (
+            <button
+              type="button"
+              onClick={() => { setMode("reset"); setError(null); setInfo(null); }}
+              style={{ ...btnLinkStyle, marginBottom: "16px" }}
+            >
+              Mot de passe oublié ?
+            </button>
           )}
 
-          {info && (
-            <div style={{
-              padding: "12px",
-              borderRadius: "10px",
-              background: "#f0fdf4",
-              color: "#16a34a",
-              fontSize: "14px",
-              marginBottom: "16px",
-            }}>
-              {info}
-            </div>
-          )}
+          {mode === "signup" && <div style={{ marginBottom: "16px" }} />}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "14px",
-              borderRadius: "12px",
-              border: "none",
-              background: "linear-gradient(135deg, #007AFF 0%, #0062CC 100%)",
-              color: "white",
-              fontSize: "16px",
-              fontWeight: "700",
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
+          {error && <div style={errorStyle}>{error}</div>}
+          {info && <div style={infoStyle}>{info}</div>}
+
+          <button type="submit" disabled={loading} style={btnPrimaryStyle}>
             {loading ? "…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
           </button>
         </form>
@@ -225,6 +279,7 @@ export function AuthScreen() {
             14 jours gratuits · Sans carte bancaire
           </p>
         )}
+        </>}
       </div>
     </div>
   );
@@ -240,6 +295,47 @@ const inputStyle: React.CSSProperties = {
   fontSize: "15px",
   outline: "none",
   boxSizing: "border-box",
+};
+
+const btnPrimaryStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "14px",
+  borderRadius: "12px",
+  border: "none",
+  background: "linear-gradient(135deg, #007AFF 0%, #0062CC 100%)",
+  color: "white",
+  fontSize: "16px",
+  fontWeight: "700",
+  cursor: "pointer",
+};
+
+const btnLinkStyle: React.CSSProperties = {
+  display: "block",
+  background: "none",
+  border: "none",
+  cursor: "pointer",
+  color: "var(--text-muted)",
+  fontSize: "13px",
+  padding: 0,
+  textAlign: "left",
+};
+
+const errorStyle: React.CSSProperties = {
+  padding: "12px",
+  borderRadius: "10px",
+  background: "#fef2f2",
+  color: "#dc2626",
+  fontSize: "14px",
+  marginBottom: "16px",
+};
+
+const infoStyle: React.CSSProperties = {
+  padding: "12px",
+  borderRadius: "10px",
+  background: "#f0fdf4",
+  color: "#16a34a",
+  fontSize: "14px",
+  marginBottom: "16px",
 };
 
 function translateError(msg: string): string {

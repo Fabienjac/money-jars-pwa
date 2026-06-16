@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { appendRevenue, getAccounts, getRevenueAccounts } from "../api";
+import { appendRevenue, getAccounts, getRevenueAccounts, setRevenueAccounts as setRevenueAccountsApi, setAccounts as setAccountsApi } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
@@ -31,6 +31,7 @@ function detectCoin(methodStr: string): string | null {
 interface RevenueFormProps {
   prefill?: any | null;
   onClearPrefill?: () => void;
+  onSuccess?: () => void;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -60,7 +61,7 @@ const labelStyle: React.CSSProperties = {
   color: "var(--text-main)",
 };
 
-const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) => {
+const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSuccess }) => {
   // ── Mode toggle ──────────────────────────────────────────────────────────────
   const [isCryptoMode, setIsCryptoMode] = useState(false);
 
@@ -224,6 +225,8 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
     const updated = [...revenueAccounts, { id: `revaccount_${Date.now()}`, name: name.trim(), icon: "💰", type: incomeType.trim() || "" }];
     saveRevenueAccounts(updated);
     setRevenueAccounts(updated);
+    // Sync Supabase pour que les Réglages voient le nouveau compte
+    setRevenueAccountsApi(updated).catch(() => {});
     window.dispatchEvent(new CustomEvent("revenueAccountsUpdated"));
   };
 
@@ -233,6 +236,8 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
     const updated = [...spendingAccounts, { id: `account_${Date.now()}`, name: name.trim(), icon: "💳" }];
     saveAccounts(updated);
     setSpendingAccounts(updated);
+    // Sync Supabase pour que les Réglages voient le nouveau compte
+    setAccountsApi(updated).catch(() => {});
     window.dispatchEvent(new CustomEvent("spendingAccountsUpdated"));
   };
 
@@ -250,7 +255,8 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
     try {
       setLoading(true);
       ensureRevenueAccountExists(source);
-      if (isCryptoMode && destination.trim()) ensureSpendingAccountExists(destination);
+      // Compte de destination : s'applique en mode simple ET crypto
+      if (destination.trim()) ensureSpendingAccountExists(destination);
 
       if (isCryptoMode) {
         const numCryptoQty = cryptoQuantity.trim() === "" ? null : parseFloat(cryptoQuantity.replace(",", "."));
@@ -279,9 +285,12 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
         });
       }
 
-      setMessage("✅ Revenu enregistré avec succès");
+      setMessage("✅ Revenu enregistré !");
 
-      // Reset
+      // Notifie le dashboard pour rafraîchir analytics + jar projections
+      window.dispatchEvent(new CustomEvent("mjars:revenueSaved"));
+
+      // Reset puis fermeture automatique
       setSource("");
       setAmount("");
       setValue("USD");
@@ -294,6 +303,9 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill }) =>
       setDate(todayISO());
       setRevenueAccounts(loadRevenueAccounts());
       setSpendingAccounts(loadAccounts());
+
+      // Fermeture automatique après 800ms (laisse le message se lire)
+      setTimeout(() => onSuccess?.(), 800);
 
     } catch (err: any) {
       setMessage("❌ Erreur : " + (err.message || String(err)));

@@ -2,6 +2,7 @@
 // FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { appendSpending, searchSpendings, getAccounts } from "../api";
+import { updateStreak } from "../streakUtils";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
 import { tagsToString, tagsFromString, loadTags } from "../tagsUtils";
@@ -214,7 +215,9 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       });
 
       saveLastExpenseCurrency(currency);
-      
+      updateStreak();
+      window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
+
       setMessage("✅ Enregistré !");
       
       // Reset form

@@ -1,9 +1,10 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo } from "react";
-import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, searchSpendings } from "../api";
+import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, searchSpendings, fetchUserBudgetPrefs, saveUserBudgetPrefs } from "../api";
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
+import { getStreak, StreakState } from "../streakUtils";
 
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: "Nécessités",
@@ -12,6 +13,15 @@ const JAR_LABELS: Record<JarKey, string> = {
   PLAY: "Fun / Play",
   EDUC: "Éducation",
   GIFT: "Don / Gift",
+};
+
+const JAR_EMPTY_COPY: Record<JarKey, string> = {
+  NEC: "Mois vierge — tout démarre ici",
+  FFA: "Votre futur vous remercie",
+  LTSS: "Chaque euro ici, c'est la liberté demain",
+  PLAY: "Du plaisir sans culpabilité — quand vous voulez",
+  EDUC: "Investir en vous, le meilleur ROI",
+  GIFT: "Donner, c'est recevoir — jar prêt",
 };
 
 const JAR_EMOJIS: Record<JarKey, string> = {
@@ -386,6 +396,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   // Dernier import
   const [lastImportLabel] = useState<string>(getLastImportLabel);
 
+  // Streak de saisie quotidienne
+  const [streak, setStreak] = useState<StreakState>(() => getStreak());
+
   /** Charge uniquement les totaux (lazy, au clic "Voir le détail") */
   const loadTotals = async () => {
     try {
@@ -402,9 +415,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   };
 
   /** Charge les analytics (au mount, pour le graphique) */
-  const loadAnalytics = async () => {
+  const loadAnalytics = async (force = false) => {
     try {
-      const analyticsData = await fetchAnalytics();
+      const analyticsData = await fetchAnalytics(force);
       setAnalytics(analyticsData ?? null);
     } catch {
       // silencieux — le graphique ne s'affichera pas
@@ -414,6 +427,31 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   useEffect(() => {
     setCustomSplit(loadJarSplitFromSettings());
     loadAnalytics();
+
+    // Charger les préférences budget depuis Supabase (cross-device)
+    fetchUserBudgetPrefs().then(prefs => {
+      if (prefs.monthlyBudget != null) {
+        setMonthlyBudget(prefs.monthlyBudget);
+        localStorage.setItem("mjars:monthlyBudget", String(prefs.monthlyBudget));
+      }
+      if (prefs.tagBudgets != null) {
+        setTagBudgets(prefs.tagBudgets);
+        try { localStorage.setItem("mjars:tagBudgets", JSON.stringify(prefs.tagBudgets)); } catch {}
+      }
+    }).catch(() => {}); // silencieux — on garde localStorage si erreur réseau
+
+    // Rafraîchit le badge streak quand une dépense vient d'être enregistrée
+    const onSaved = () => setStreak(getStreak());
+    window.addEventListener("mjars:transactionSaved", onSaved);
+
+    // Rafraîchit les analytics (revenus, projections jars) après un nouveau revenu
+    const onRevenueSaved = () => loadAnalytics(true); // force = ignore cache
+    window.addEventListener("mjars:revenueSaved", onRevenueSaved);
+
+    return () => {
+      window.removeEventListener("mjars:transactionSaved", onSaved);
+      window.removeEventListener("mjars:revenueSaved", onRevenueSaved);
+    };
   }, []);
 
   // Un seul fetch pour les tags du mois, la détection des abonnements ET l'overlay graphique
@@ -581,20 +619,67 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   /** Top 5 tags du mois */
   const topTags = useMemo(() => monthlyTagStats.slice(0, 5), [monthlyTagStats]);
 
+  /** Dépenses par jar pour le mois courant + projection fin de mois */
+  const jarMonthlyProjections = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const daysElapsed = now.getDate();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
+    const result: Partial<Record<JarKey, { spent: number; projected: number }>> = {};
+    for (const jarKey of JAR_KEYS) {
+      const jarTxns = allTransactionsForChart.filter(t => {
+        if (t.jar !== jarKey) return false;
+        const d = t.date;
+        if (!d) return false;
+        const fr = d.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (fr) return parseInt(fr[2]) === month && parseInt(fr[3]) === year;
+        const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) return parseInt(iso[2]) === month && parseInt(iso[1]) === year;
+        const parsed = new Date(d);
+        if (!isNaN(parsed.getTime()))
+          return parsed.getMonth() + 1 === month && parsed.getFullYear() === year;
+        return false;
+      });
+      const spent = jarTxns.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
+      const projected = daysElapsed > 0 ? (spent / daysElapsed) * daysInMonth : 0;
+      result[jarKey] = { spent, projected };
+    }
+    return result;
+  }, [allTransactionsForChart]);
+
+  /** Allocation mensuelle par jar = revenu du mois × % jar (méthode Harv Eker) */
+  const jarMonthlyAllocations = useMemo(() => {
+    const monthlyRevenue = analytics?.trends?.revenues?.current ?? 0;
+    if (monthlyRevenue <= 0 || !customSplit) return null;
+    const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
+    const result: Partial<Record<JarKey, number>> = {};
+    for (const jarKey of JAR_KEYS) {
+      result[jarKey] = monthlyRevenue * (customSplit[jarKey] ?? 0);
+    }
+    return result;
+  }, [analytics, customSplit]);
+
   /** Sauvegarde du budget par tag */
   const handleSaveTagBudget = (tagId: string) => {
     const v = parseFloat(tagBudgetInput.replace(",", "."));
+    let updated: Record<string, number>;
     if (!isNaN(v) && v > 0) {
-      const updated = { ...tagBudgets, [tagId]: v };
-      saveTagBudgets(updated);
-      setTagBudgets(updated);
+      updated = { ...tagBudgets, [tagId]: v };
     } else if (tagBudgetInput === "" || tagBudgetInput === "0") {
       // Supprimer le budget si vide ou 0
-      const updated = { ...tagBudgets };
+      updated = { ...tagBudgets };
       delete updated[tagId];
-      saveTagBudgets(updated);
-      setTagBudgets(updated);
+    } else {
+      setEditingTagBudget(null);
+      setTagBudgetInput("");
+      return;
     }
+    saveTagBudgets(updated);
+    setTagBudgets(updated);
+    // Synchro Supabase (fire-and-forget)
+    saveUserBudgetPrefs({ monthlyBudget: monthlyBudget ?? undefined, tagBudgets: updated }).catch(() => {});
     setEditingTagBudget(null);
     setTagBudgetInput("");
   };
@@ -605,6 +690,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     if (!isNaN(v) && v > 0) {
       saveMonthlyBudget(v);
       setMonthlyBudget(v);
+      // Synchro Supabase (fire-and-forget)
+      saveUserBudgetPrefs({ monthlyBudget: v, tagBudgets }).catch(() => {});
     }
     setEditingBudget(false);
     setBudgetInput("");
@@ -817,6 +904,54 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           </div>
         </button>
       </section>
+
+      {/* 🔥 Streak de saisie quotidienne */}
+      <div style={{ display: "flex", justifyContent: "center", padding: "0 16px 10px" }}>
+        {streak.count > 0 ? (
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "5px 14px",
+            borderRadius: "20px",
+            background: streak.isAlive
+              ? "linear-gradient(90deg, rgba(52,199,89,0.12) 0%, rgba(52,199,89,0.06) 100%)"
+              : "rgba(142,142,147,0.1)",
+            border: `1px solid ${streak.isAlive ? "rgba(52,199,89,0.3)" : "rgba(142,142,147,0.2)"}`,
+          }}>
+            <span style={{ fontSize: "16px", lineHeight: 1 }}>
+              {streak.isAlive ? "🔥" : "💤"}
+            </span>
+            <span style={{
+              fontSize: "13px",
+              fontWeight: "700",
+              color: streak.isAlive ? "#34C759" : "#8E8E93",
+              letterSpacing: "-0.2px",
+            }}>
+              {streak.count === 1
+                ? "1er jour — bonne habitude !"
+                : streak.isAlive
+                  ? `${streak.count} jours de suite !`
+                  : `${streak.count} jours — reprenez aujourd'hui`}
+            </span>
+          </div>
+        ) : (
+          <div style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "5px 14px",
+            borderRadius: "20px",
+            background: "rgba(255,149,0,0.08)",
+            border: "1px solid rgba(255,149,0,0.2)",
+          }}>
+            <span style={{ fontSize: "16px", lineHeight: 1 }}>✨</span>
+            <span style={{ fontSize: "13px", fontWeight: "600", color: "#FF9500", letterSpacing: "-0.2px" }}>
+              Commencez votre série aujourd'hui
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* 📉 Widget dépenses / jour — toujours visible */}
       <section style={{ padding: "0 16px 12px" }}>
@@ -1150,6 +1285,122 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                 )}
               </>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* 🏺 Projection par jar — mois en cours */}
+      {allTransactionsForChart.length > 0 && (
+        <section style={{ padding: "0 16px 12px" }}>
+          <div style={{
+            background: "#fff",
+            borderRadius: "16px",
+            padding: "16px",
+            border: "1px solid #E5E5EA",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+          }}>
+            <div style={{ fontSize: "11px", color: "#8E8E93", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "14px" }}>
+              🏺 Jars — {currentMonthLabel}
+            </div>
+
+            {(["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"] as JarKey[]).map(jarKey => {
+              const data = jarMonthlyProjections[jarKey];
+              if (!data) return null;
+              const { spent, projected } = data;
+              // Allocation = revenu du mois × % jar (méthode Harv Eker)
+              const allocation = jarMonthlyAllocations?.[jarKey] ?? null;
+              const projPct = allocation ? (projected / allocation) * 100 : null;
+              const spentPct = allocation ? (spent / allocation) * 100 : null;
+              const barColor = projPct == null
+                ? JAR_COLORS[jarKey]
+                : projPct >= 100 ? "#FF3B30"
+                : projPct >= 80  ? "#FF9500"
+                : "#34C759";
+
+              return (
+                <div key={jarKey} style={{ marginBottom: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "15px", width: "20px", textAlign: "center", flexShrink: 0, opacity: spent === 0 ? 0.5 : 1 }}>
+                      {JAR_EMOJIS[jarKey]}
+                    </span>
+                    <span style={{ fontSize: "12px", fontWeight: "700", color: spent === 0 ? "#AEAEB2" : "#3C3C43", flex: "0 0 44px" }}>
+                      {jarKey}
+                    </span>
+                    <div style={{ flex: 1, background: "#F2F2F7", borderRadius: "4px", height: "6px", overflow: "hidden" }}>
+                      <div style={{
+                        width: allocation
+                          ? `${Math.min((projected / allocation) * 100, 100)}%`
+                          : spent > 0 ? "20%" : "0%",
+                        height: "100%",
+                        borderRadius: "4px",
+                        background: barColor,
+                        transition: "width 0.5s ease",
+                      }} />
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0, minWidth: "80px" }}>
+                      {spent > 0 ? (
+                        <>
+                          <div style={{ fontSize: "12px", color: "#8E8E93" }}>
+                            {formatMoney(spent)} €
+                            {spentPct != null && (
+                              <span style={{ color: "#AEAEB2", fontSize: "10px" }}> ({spentPct.toFixed(0)}%)</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: "11px", fontWeight: "700", color: barColor }}>
+                            ≈ {formatMoney(projected)} €
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: "10px", color: "#AEAEB2" }}>0,00 €</div>
+                      )}
+                    </div>
+                  </div>
+                  {spent === 0 ? (
+                    <div style={{ paddingLeft: "28px", marginTop: "3px" }}>
+                      <span style={{ fontSize: "10px", color: "#AEAEB2", fontStyle: "italic" }}>
+                        {JAR_EMPTY_COPY[jarKey]}
+                      </span>
+                    </div>
+                  ) : allocation && (
+                    <div style={{ paddingLeft: "28px", display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
+                      <span style={{ fontSize: "10px", color: "#AEAEB2" }}>
+                        alloué {formatMoney(allocation)} €
+                      </span>
+                      <span style={{ fontSize: "10px", fontWeight: "700", color: barColor }}>
+                        proj. {projPct!.toFixed(0)}%
+                        {projPct! >= 100 ? " 🚨" : projPct! >= 80 ? " ⚠️" : " ✓"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Légende revenus du mois */}
+            <div style={{ borderTop: "1px solid #F2F2F7", paddingTop: "10px", marginTop: "4px" }}>
+              {jarMonthlyAllocations ? (
+                <div style={{ fontSize: "11px", color: "#8E8E93", textAlign: "center" }}>
+                  Basé sur {formatMoney(analytics?.trends?.revenues?.current ?? 0)} € de revenus ce mois
+                </div>
+              ) : (
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: "12px", color: "#8E8E93", marginBottom: "8px" }}>
+                    🌱 Vos jarres s'activent dès votre premier revenu
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onOpenRevenue}
+                    style={{
+                      fontSize: "12px", fontWeight: "700", color: "#34C759",
+                      background: "rgba(52,199,89,0.1)", border: "1px solid rgba(52,199,89,0.3)",
+                      borderRadius: "12px", padding: "6px 16px", cursor: "pointer",
+                    }}
+                  >
+                    + Enregistrer un revenu
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </section>
       )}

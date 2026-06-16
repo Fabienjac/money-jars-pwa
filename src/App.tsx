@@ -21,6 +21,7 @@ import { getAccounts, fetchTagsFromSheet, fetchTotals, fetchAnalytics, fetchNetW
 import { setCachedTags } from "./tagsUtils";
 import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
+import { updateStreak } from "./streakUtils";
 import "./style.css";
 
 // Lazy-loaded heavy views
@@ -791,9 +792,7 @@ function App() {
             setShowQuickSpending(false);
             setPrefillSpending(null); // Réinitialiser
           }}
-          onSuccess={() => {
-            console.log("✅ Dépense enregistrée avec succès");
-          }}
+          onSuccess={() => {}}
         />
       )}
 
@@ -823,6 +822,10 @@ function App() {
               <RevenueForm
                 prefill={prefillRevenue}
                 onClearPrefill={() => setPrefillRevenue(null)}
+                onSuccess={() => {
+                  setShowQuickRevenue(false);
+                  setPrefillRevenue(null);
+                }}
               />
             </div>
           </div>

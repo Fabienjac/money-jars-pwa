@@ -93,6 +93,24 @@ export async function deleteSpending(rowIndex: number): Promise<{ ok: boolean; e
   return { ok: true };
 }
 
+/** Renomme un compte de dépense dans TOUTES les transactions existantes */
+export async function bulkRenameSpendingAccount(
+  oldName: string,
+  newName: string
+): Promise<{ ok: boolean; count: number; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, count: 0, error: "Non connecté" };
+  const { data, error } = await supabase
+    .from("transactions_spending")
+    .update({ account: newName })
+    .eq("user_id", user.id)
+    .eq("account", oldName)
+    .select("id");
+  if (error) return { ok: false, count: 0, error: error.message };
+  clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
+  return { ok: true, count: data?.length ?? 0 };
+}
+
 export async function searchSpendings(q: string, max = 50): Promise<{ rows: SearchSpendingResult[] }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { rows: [] };
@@ -176,6 +194,24 @@ export async function deleteRevenue(rowIndex: number): Promise<{ ok: boolean; er
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
   return { ok: true };
+}
+
+/** Renomme une source de revenu dans TOUTES les transactions existantes */
+export async function bulkRenameRevenueSource(
+  oldName: string,
+  newName: string
+): Promise<{ ok: boolean; count: number; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, count: 0, error: "Non connecté" };
+  const { data, error } = await supabase
+    .from("transactions_revenue")
+    .update({ source: newName })
+    .eq("user_id", user.id)
+    .eq("source", oldName)
+    .select("id");
+  if (error) return { ok: false, count: 0, error: error.message };
+  clearCache("mjars:cache:totals", "mjars:cache:analytics");
+  return { ok: true, count: data?.length ?? 0 };
 }
 
 export async function searchRevenues(q: string, max = 50): Promise<{ rows: SearchRevenueResult[] }> {
@@ -402,6 +438,59 @@ export async function setRevenueAccounts(accounts: RevenueAccount[]): Promise<{ 
 
   const { error } = await supabase.from("revenue_accounts").upsert(rows, { onConflict: "user_id,account_id" });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// ── Paramètres des jarres ──────────────────────────────────────────────────────
+
+export async function fetchJarSettings(): Promise<Array<{key: JarKey; percent: number; initialBalance: number}> | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from("jar_settings")
+    .select("jar_key, percent, initial_balance")
+    .eq("user_id", user.id);
+  if (error || !data || data.length === 0) return null;
+  return data.map(r => ({
+    key: r.jar_key as JarKey,
+    percent: Number(r.percent),
+    initialBalance: Number(r.initial_balance),
+  }));
+}
+
+export async function saveJarSettings(
+  settings: Array<{key: JarKey; percent: number; initialBalance: number}>
+): Promise<{ok: boolean; error?: string}> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Non connecté" };
+  const rows = settings.map(s => ({
+    user_id:         user.id,
+    jar_key:         s.key,
+    percent:         s.percent,
+    initial_balance: s.initialBalance,
+  }));
+  const { error } = await supabase
+    .from("jar_settings")
+    .upsert(rows, { onConflict: "user_id,jar_key" });
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// ── Préférences budget (mensuel + par tag) ─────────────────────────────────────
+// Stockées dans column_mappings (JSONB) sous la clé "user_budget_prefs"
+
+const BUDGET_PREFS_MAPPING_KEY = "user_budget_prefs";
+
+export async function fetchUserBudgetPrefs(): Promise<{monthlyBudget?: number; tagBudgets?: Record<string, number>}> {
+  try {
+    const mappings = await fetchColumnMappings();
+    const prefs = mappings[BUDGET_PREFS_MAPPING_KEY] as {monthlyBudget?: number; tagBudgets?: Record<string, number>} | undefined;
+    return prefs ?? {};
+  } catch { return {}; }
+}
+
+export async function saveUserBudgetPrefs(
+  prefs: {monthlyBudget?: number; tagBudgets?: Record<string, number>}
+): Promise<void> {
+  await saveColumnMappingToSheet(BUDGET_PREFS_MAPPING_KEY, prefs);
 }
 
 // ── Analytics ──────────────────────────────────────────────────────────────────
