@@ -1,35 +1,18 @@
-import React, { useState } from "react";
+import React from "react";
 import { useAuth } from "../contexts/AuthContext";
+
+const LINK_MONTHLY = "https://buy.stripe.com/7sY14m7g13Ur6Bl0hL7g404";
+const LINK_YEARLY  = "https://buy.stripe.com/cNi5kC2ZLfD94td7Kd7g403";
 
 export function PaywallModal() {
   const { subscription, signOut, user } = useAuth();
-  const [loading, setLoading] = useState<"monthly" | "yearly" | null>(null);
 
   if (!subscription || subscription.isActive) return null;
 
   const isExpiredTrial = subscription.plan === "trial";
 
-  async function handleSubscribe(plan: "monthly" | "yearly") {
-    if (!user) return;
-    setLoading(plan);
-    try {
-      const res = await fetch("/.netlify/functions/createCheckoutSession", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, plan }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert("Erreur : " + (data.error ?? "Impossible de créer la session de paiement"));
-      }
-    } catch (e) {
-      alert("Erreur réseau, réessayez.");
-    } finally {
-      setLoading(null);
-    }
-  }
+  const monthlyUrl = user ? `${LINK_MONTHLY}?client_reference_id=${user.id}` : LINK_MONTHLY;
+  const yearlyUrl  = user ? `${LINK_YEARLY}?client_reference_id=${user.id}`  : LINK_YEARLY;
 
   return (
     <div style={{
@@ -84,10 +67,8 @@ export function PaywallModal() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => handleSubscribe("monthly")}
-          disabled={loading !== null}
+        <a
+          href={monthlyUrl}
           style={{
             display: "block",
             width: "100%",
@@ -98,18 +79,17 @@ export function PaywallModal() {
             color: "white",
             fontSize: "16px",
             fontWeight: "700",
-            cursor: loading !== null ? "not-allowed" : "pointer",
-            opacity: loading !== null ? 0.7 : 1,
+            cursor: "pointer",
             marginBottom: "10px",
+            textDecoration: "none",
+            boxSizing: "border-box",
           }}
         >
-          {loading === "monthly" ? "Chargement…" : "S'abonner — 7,90€/mois"}
-        </button>
+          S'abonner — 7,90€/mois
+        </a>
 
-        <button
-          type="button"
-          onClick={() => handleSubscribe("yearly")}
-          disabled={loading !== null}
+        <a
+          href={yearlyUrl}
           style={{
             display: "block",
             width: "100%",
@@ -120,13 +100,14 @@ export function PaywallModal() {
             color: "var(--text-main)",
             fontSize: "15px",
             fontWeight: "600",
-            cursor: loading !== null ? "not-allowed" : "pointer",
-            opacity: loading !== null ? 0.7 : 1,
+            cursor: "pointer",
             marginBottom: "16px",
+            textDecoration: "none",
+            boxSizing: "border-box",
           }}
         >
-          {loading === "yearly" ? "Chargement…" : "Plan annuel — 69€/an (−27%)"}
-        </button>
+          Plan annuel — 69€/an (−27%)
+        </a>
 
         <button
           type="button"
