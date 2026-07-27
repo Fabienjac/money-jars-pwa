@@ -418,12 +418,12 @@ const SettingsView: React.FC = () => {
     );
     setAccounts(updated);
     saveAccounts(updated);
-    setAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("spendingAccountsUpdated"));
     setEditingAccountId(null);
 
     if (oldName && oldName !== newName) {
       setMessage("⏳ Mise à jour des transactions…");
+      await setAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
       const result = await bulkRenameSpendingAccount(oldName, newName);
       if (result.ok) {
         setMessage(`✅ Renommé · ${result.count} transaction${result.count !== 1 ? "s" : ""} mise${result.count !== 1 ? "s" : ""} à jour`);
@@ -503,12 +503,12 @@ const SettingsView: React.FC = () => {
     );
     setRevenueAccounts(updated);
     saveRevenueAccounts(updated);
-    setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("revenueAccountsUpdated"));
     setEditingRevenueAccountId(null);
 
     if (oldName && oldName !== newName) {
       setMessage("⏳ Mise à jour des transactions…");
+      await setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
       const result = await bulkRenameRevenueSource(oldName, newName);
       if (result.ok) {
         setMessage(`✅ Renommé · ${result.count} transaction${result.count !== 1 ? "s" : ""} mise${result.count !== 1 ? "s" : ""} à jour`);

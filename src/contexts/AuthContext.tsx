@@ -74,10 +74,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchSubscription(session.user.id);
+      if (session?.user) await fetchSubscription(session.user.id);
       setLoading(false);
     });
 

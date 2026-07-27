@@ -75,51 +75,82 @@ exports.handler = async (event) => {
   if (eventType === "checkout.session.completed") {
     const userId = obj.client_reference_id;
     const subscriptionId = obj.subscription ?? null;
+    const customerId = obj.customer ?? null;
 
     if (!userId) {
       console.error("checkout.session.completed : client_reference_id manquant");
       return { statusCode: 400, body: "Missing client_reference_id" };
     }
 
-    // current_period_end sera mis à jour précisément par customer.subscription.updated
+    if (!subscriptionId) {
+      console.warn("checkout.session.completed : subscription ID absent (paiement one-time ?)");
+    }
+
+    // current_period_end sera précisé par customer.subscription.updated
     const approxPeriodEnd = new Date(Date.now() + 32 * 24 * 60 * 60 * 1000).toISOString();
 
     const { error } = await supabase.from("subscriptions").upsert({
       user_id:            userId,
       plan:               "active",
       lemonsqueezy_id:    subscriptionId,
+      stripe_customer_id: customerId,
       current_period_end: approxPeriodEnd,
       updated_at:         new Date().toISOString(),
     }, { onConflict: "user_id" });
 
     if (error) console.error("Supabase upsert error:", error);
-    else console.log("Subscription activated:", userId);
+    else console.log("Subscription activated:", userId, "sub:", subscriptionId);
 
   // ── customer.subscription.updated : renouvellement ───────────────────────
   } else if (eventType === "customer.subscription.updated") {
     const subscriptionId = obj.id;
+    const customerId = obj.customer ?? null;
     const periodEnd = obj.current_period_end
       ? new Date(obj.current_period_end * 1000).toISOString()
       : null;
     const plan = obj.status === "active" ? "active" : "expired";
+    const payload = { plan, current_period_end: periodEnd, updated_at: new Date().toISOString() };
 
-    const { error } = await supabase.from("subscriptions")
-      .update({ plan, current_period_end: periodEnd, updated_at: new Date().toISOString() })
-      .eq("lemonsqueezy_id", subscriptionId);
+    // Tentative 1 : lookup par subscription ID
+    const { error, count } = await supabase.from("subscriptions")
+      .update(payload)
+      .eq("lemonsqueezy_id", subscriptionId)
+      .select("user_id", { count: "exact", head: true });
 
-    if (error) console.error("Supabase update error:", error);
-    else console.log("Subscription updated:", subscriptionId, "→", plan);
+    if (error) {
+      console.error("Supabase update error (by sub id):", error);
+    } else if ((count ?? 0) === 0 && customerId) {
+      // Race condition : checkout.session.completed n'est pas encore arrivé.
+      // Fallback : update via stripe_customer_id
+      const { error: err2, count: c2 } = await supabase.from("subscriptions")
+        .update(payload)
+        .eq("stripe_customer_id", customerId)
+        .select("user_id", { count: "exact", head: true });
+
+      if (err2) console.error("Supabase update error (by customer id):", err2);
+      else if ((c2 ?? 0) === 0) console.warn("customer.subscription.updated : aucune ligne trouvée pour sub", subscriptionId, "customer", customerId);
+      else console.log("Subscription updated via customer_id:", customerId, "→", plan);
+    } else {
+      console.log("Subscription updated:", subscriptionId, "→", plan);
+    }
 
   // ── customer.subscription.deleted : résiliation ──────────────────────────
   } else if (eventType === "customer.subscription.deleted") {
     const subscriptionId = obj.id;
+    const customerId = obj.customer ?? null;
+    const payload = { plan: "cancelled", updated_at: new Date().toISOString() };
 
-    const { error } = await supabase.from("subscriptions")
-      .update({ plan: "cancelled", updated_at: new Date().toISOString() })
-      .eq("lemonsqueezy_id", subscriptionId);
+    const { error, count } = await supabase.from("subscriptions")
+      .update(payload)
+      .eq("lemonsqueezy_id", subscriptionId)
+      .select("user_id", { count: "exact", head: true });
 
-    if (error) console.error("Supabase update error:", error);
-    else console.log("Subscription cancelled:", subscriptionId);
+    if (error) {
+      console.error("Supabase update error (cancelled):", error);
+    } else if ((count ?? 0) === 0 && customerId) {
+      await supabase.from("subscriptions").update(payload).eq("stripe_customer_id", customerId);
+    }
+    console.log("Subscription cancelled:", subscriptionId);
   }
 
   return { statusCode: 200, body: "ok" };

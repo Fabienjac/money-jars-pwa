@@ -602,7 +602,8 @@ export async function fetchAnalytics(forceRefresh = false): Promise<AnalyticsRes
 function emptyAnalytics(): AnalyticsResponse {
   const now = new Date();
   const cm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const pm = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, "0")}`;
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const pm = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
   return {
     monthlyData: [],
     sourcesData: [],

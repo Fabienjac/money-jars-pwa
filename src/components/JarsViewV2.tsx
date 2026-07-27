@@ -418,7 +418,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   const loadAnalytics = async (force = false) => {
     try {
       const analyticsData = await fetchAnalytics(force);
-      setAnalytics(analyticsData ?? null);
+      if (analyticsData) setAnalytics(analyticsData);
     } catch {
       // silencieux — le graphique ne s'affichera pas
     }
@@ -490,12 +490,13 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   }, []);
 
   useEffect(() => {
+    if (!showJarsDetail || netWorth !== null) return;
     setNetWorthLoading(true);
     fetchNetWorth()
       .then(res => setNetWorth(typeof res.value === "number" ? res.value : null))
       .catch(() => setNetWorth(null))
       .finally(() => setNetWorthLoading(false));
-  }, []);
+  }, [showJarsDetail]);
 
   useEffect(() => {
     if (showJarsDetail && !totals && !loading) loadTotals();

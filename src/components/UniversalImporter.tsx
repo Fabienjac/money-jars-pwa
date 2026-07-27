@@ -6,6 +6,7 @@ import { TransactionEditor } from "./TransactionEditor";
 import { RevenueTransactionEditor } from "./RevenueTransactionEditor";
 import { loadRevenueSources } from "../revenueSourcesUtils";
 import { getRevenueAccounts } from "../api";
+import { supabase } from "../lib/supabase";
 import { loadTags } from "../tagsUtils";
 import { AutoTagRule, findRule, upsertRule, loadCachedRules } from "../autoTagRules";
 import { fetchAutoTagRules, saveAutoTagRulesToSheet } from "../api";
@@ -644,9 +645,14 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   // Vérifier les doublons via l'API
   const checkDuplicates = async (txns: Transaction[]): Promise<Transaction[]> => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
       const response = await fetch("/.netlify/functions/checkDuplicates", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ transactions: txns }),
       });
 

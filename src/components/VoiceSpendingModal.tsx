@@ -2,6 +2,7 @@
 // Modal de saisie vocale d'une dépense — Web Speech API + Gemini + appendSpending
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { appendSpending } from "../api";
+import { updateStreak } from "../streakUtils";
 import { loadTags } from "../tagsUtils";
 import { loadAccounts } from "../accountsUtils";
 
@@ -132,6 +133,8 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
         account: parsed.account,
         tags: parsed.tags.join(","),
       });
+      updateStreak();
+      window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
       setStep("done");
       setSaved(true);
       setTimeout(() => {

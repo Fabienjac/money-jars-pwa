@@ -16,6 +16,7 @@ create table if not exists subscriptions (
   plan                  text not null default 'trial', -- 'trial' | 'active' | 'expired' | 'cancelled'
   trial_ends_at         timestamptz not null default (now() + interval '14 days'),
   lemonsqueezy_id       text,
+  stripe_customer_id    text,
   current_period_end    timestamptz,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()

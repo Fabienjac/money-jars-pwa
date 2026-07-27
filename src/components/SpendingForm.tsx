@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { appendSpending } from "../api";
+import { updateStreak } from "../streakUtils";
 import { JarKey, SpendingRow } from "../types";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadAccounts } from "../accountsUtils";
@@ -66,6 +67,8 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
           description: t.description,
         });
         successCount++;
+        updateStreak();
+        window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
       } catch (err) {
         console.error("Erreur import transaction:", err);
         errorCount++;
@@ -164,7 +167,9 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
         tags: tagsString,
         subscription: subscription || undefined,
       });
-      
+
+      updateStreak();
+      window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
       setMessage("Dépense enregistrée ✅");
 
       // Reset
