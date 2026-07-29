@@ -726,58 +726,31 @@ function App() {
         </button>
       </nav>
 
-      {/* ✅ MODIFICATION : Boutons flottants UNIQUEMENT si V1 */}
-      {!useV2 && (
-        <>
-          {/* Floating Action Button - Principal (violet) */}
-          <button
-            type="button"
-            className="fab"
-            onClick={() => openEntry("spending")}
-            style={{
-              position: "fixed",
-              bottom: "100px",
-              right: "20px",
-              width: "56px",
-              height: "56px",
-              borderRadius: "50%",
-              zIndex: 999,
-            }}
-          >
-            +
-          </button>
-
-          {/* Bouton Import (vert) */}
-          <button
-            type="button"
-            onClick={() => setImporterOpen(true)}
-            style={{
-              position: "fixed",
-              bottom: "170px",
-              right: "20px",
-              width: "56px",
-              height: "56px",
-              borderRadius: "50%",
-              border: "none",
-              background: "linear-gradient(135deg, #34C759 0%, #30B350 100%)",
-              color: "white",
-              fontSize: "24px",
-              cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-              zIndex: 999,
-              transition: "transform 0.2s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = "scale(1.05)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-            }}
-          >
-            📂
-          </button>
-        </>
-      )}
+      {/* FAB global — visible sur tous les onglets, V1 et V2 */}
+      <button
+        type="button"
+        className="fab"
+        aria-label="Ajouter une dépense"
+        onClick={() => {
+          if (useV2) {
+            setPrefillSpending(null);
+            setShowQuickSpending(true);
+          } else {
+            openEntry("spending");
+          }
+        }}
+        style={{
+          position: "fixed",
+          bottom: "90px",
+          right: "20px",
+          width: "56px",
+          height: "56px",
+          borderRadius: "50%",
+          zIndex: 999,
+        }}
+      >
+        +
+      </button>
 
       {/* 🎙️ Modal saisie vocale */}
       {voiceOpen && (

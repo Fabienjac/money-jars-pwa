@@ -1682,11 +1682,12 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                     const jar = totals.jars[key];
                     const backendSplit = totals.split?.[key];
                     const settingsSplit = customSplit?.[key];
+                    // settingsSplit est en fraction (0.55), backendSplit est en entier (55)
                     const effectiveSplit =
                       settingsSplit != null
                         ? settingsSplit
                         : backendSplit != null
-                        ? backendSplit
+                        ? backendSplit / 100
                         : 0;
                     const allocated = jar.revenues || 0;
                     const spent = jar.spendings || 0;
