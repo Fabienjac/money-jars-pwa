@@ -121,12 +121,8 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
     if (!parsed) return;
     setStep("saving");
     try {
-      // Convertit YYYY-MM-DD en DD/MM/YYYY pour Google Sheets
-      const [y, m, d] = parsed.date.split("-");
-      const dateForSheet = `${d}/${m}/${y}`;
-
       await appendSpending({
-        date: dateForSheet,
+        date: parsed.date,
         description: parsed.description,
         amount: parsed.amount,
         jar: parsed.jar,

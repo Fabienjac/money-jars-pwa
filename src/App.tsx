@@ -95,7 +95,11 @@ function App() {
     if (!user) return;
     import("./lib/supabase").then(({ supabase }) => {
       supabase.from("jar_settings").select("id").eq("user_id", user.id).limit(1)
-        .then(({ data }) => setOnboardingDone(!!(data && data.length > 0)));
+        .then(({ data, error }) => {
+          // En cas d'erreur réseau, on ne touche pas à l'état existant
+          // pour éviter de relancer l'onboarding sur un compte déjà configuré
+          if (!error) setOnboardingDone(!!(data && data.length > 0));
+        });
     });
   }, [user]);
 
@@ -226,20 +230,21 @@ function App() {
   const handleImportTransactions = async (transactions: any[], type: "spending" | "revenue" = "spending") => {
     console.log(`📦 Importing ${transactions.length} ${type === "revenue" ? "revenues" : "transactions"}...`);
     
-    // Fonction pour convertir la date au format DD/MM/YYYY (attendu par le Google Sheet)
-    const formatDateForGoogleSheets = (dateStr: string) => {
+    // Normalise n'importe quel format de date vers YYYY-MM-DD (attendu par Supabase)
+    const normalizeToISO = (dateStr: string): string => {
       if (!dateStr) return "";
+      const cleaned = dateStr.replace(/\s*:\s*/g, ":").replace(/\s*,\s*/g, ", ").trim();
 
-      const cleaned = dateStr.replace(/\s*:\s*/g, ":").replace(/\s*,\s*/g, ", ");
+      // Déjà YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(cleaned)) return cleaned.slice(0, 10);
 
-      // Déjà au format ISO (YYYY-MM-DD) → convertir en DD/MM/YYYY
-      const isoMatch = cleaned.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (isoMatch) {
-        const [, year, month, day] = isoMatch;
-        return `${day}/${month}/${year}`;
+      // DD/MM/YYYY
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cleaned)) {
+        const [d, m, y] = cleaned.split("/");
+        return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
       }
 
-      // Parser "04 September 2025, 12:00pm" → "04/09/2025"
+      // "04 September 2025, 12:00pm"
       const months: { [key: string]: string } = {
         January: "01", February: "02", March: "03", April: "04",
         May: "05", June: "06", July: "07", August: "08",
@@ -249,13 +254,10 @@ function App() {
       if (match) {
         const day = match[1].padStart(2, "0");
         const month = months[match[2]];
-        if (month) return `${day}/${month}/${match[3]}`;
+        if (month) return `${match[3]}-${month}-${day}`;
       }
 
-      // Déjà DD/MM/YYYY
-      if (cleaned.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) return cleaned;
-
-      console.warn(`⚠️ Could not parse date: ${dateStr}, using cleaned version`);
+      console.warn(`⚠️ Could not parse date: ${dateStr}`);
       return cleaned;
     };
     
@@ -294,7 +296,7 @@ function App() {
       const getHistoricalRate = async (fromCurrency: string, dateStr: string): Promise<number | null> => {
         try {
           // Convertir la date au format DD/MM/YYYY d'abord
-          const formattedDate = formatDateForGoogleSheets(dateStr);
+          const formattedDate = normalizeToISO(dateStr);
           
           // Puis convertir DD/MM/YYYY en ISO (YYYY-MM-DD)
           let isoDate: string;
@@ -408,7 +410,7 @@ function App() {
           }
 
           // Envoi vers Supabase via api.ts
-          const date = formatDateForGoogleSheets(t.date); // DD/MM/YYYY attendu par api.ts
+          const date = normalizeToISO(t.date); // DD/MM/YYYY attendu par api.ts
 
           let result: { ok: boolean; error?: string };
 
@@ -441,6 +443,7 @@ function App() {
           if (result.ok) {
             console.log(`✅ Imported #${i + 1}: ${t.description || t.suggestedSource}`);
             successCount++;
+            if (type === "spending") updateStreak();
           } else {
             logImportFailure(i, t, result.error || "Erreur Supabase");
             errorCount++;

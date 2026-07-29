@@ -770,11 +770,6 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     setEditingRevenueIndex(null);
   };
 
-  const toggleAll = () => {
-    const allSelected = transactions.every(t => t.selected);
-    setTransactions(prev => prev.map(t => ({ ...t, selected: !allSelected })));
-  };
-
   const filteredTransactions = transactions.filter(t => {
     const desc = t.description != null ? String(t.description) : "";
     const date = t.date != null ? String(t.date) : "";
@@ -782,6 +777,15 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       date.includes(searchQuery) ||
       String(t.amount ?? "").includes(searchQuery);
   });
+
+  // N'agit que sur les transactions visibles (filtre de recherche actif)
+  const toggleAll = () => {
+    const allVisibleSelected = filteredTransactions.every(t => t.selected);
+    const visibleSet = new Set(filteredTransactions);
+    setTransactions(prev => prev.map(t =>
+      visibleSet.has(t) ? { ...t, selected: !allVisibleSelected } : t
+    ));
+  };
 
   // ÉTAPE 1 : Sélection du type
   if (step === "selectType") {

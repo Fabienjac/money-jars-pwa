@@ -88,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === "PASSWORD_RECOVERY") {
           setNeedsPasswordUpdate(true);
         } else if (session?.user) {
-          fetchSubscription(session.user.id);
+          fetchSubscription(session.user.id).catch(() => {});
         } else {
           setSubscription(null);
         }

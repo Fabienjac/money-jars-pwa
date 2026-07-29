@@ -47,7 +47,13 @@ const fmt = (value: number | undefined | null, dec = 2) => {
 };
 
 const parseDate = (v: string): Date | null => {
-  const d = new Date(v);
+  if (!v) return null;
+  // DD/MM/YYYY → forcer l'interprétation correcte
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+    const [d, m, y] = v.split("/");
+    return new Date(`${y}-${m}-${d}T00:00:00`);
+  }
+  const d = new Date(v.includes("T") ? v : v + "T00:00:00");
   return isNaN(d.getTime()) ? null : d;
 };
 
@@ -57,7 +63,16 @@ const fmtDate = (v: string): string => {
   return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 };
 
-const getYearMonth = (dateStr: string) => dateStr?.slice(0, 7) ?? "";
+const getYearMonth = (dateStr: string): string => {
+  if (!dateStr) return "";
+  // DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    const [, m, y] = dateStr.split("/");
+    return `${y}-${m}`;
+  }
+  // YYYY-MM-DD (Supabase default)
+  return dateStr.slice(0, 7);
+};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
