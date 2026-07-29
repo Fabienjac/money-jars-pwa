@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { appendRevenue, getAccounts, getRevenueAccounts, setRevenueAccounts as setRevenueAccountsApi, setAccounts as setAccountsApi } from "../api";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
@@ -167,11 +167,14 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
     getAccounts().then(setSpendingAccounts).catch(() => setSpendingAccounts(loadAccounts()));
   }, []);
 
+  // Mémorise la source du prefill pour le matching différé (chargement Supabase async)
+  const pendingPrefillSource = useRef<string | null>(null);
+  const pendingPrefillIncomeType = useRef<string | null>(null);
+
   // ── Prefill ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!prefill) return;
 
-    // Si des champs crypto sont présents → basculer en mode crypto
     const hasCrypto =
       prefill.cryptoQuantity != null ||
       prefill.cryptoAddress ||
@@ -179,9 +182,9 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
       (prefill.value && prefill.value !== "EUR");
     if (hasCrypto) setIsCryptoMode(true);
 
-    // Date = aujourd'hui, pas celle de la transaction source
-
     if (prefill.source) {
+      pendingPrefillSource.current = prefill.source;
+      pendingPrefillIncomeType.current = prefill.incomeType ?? null;
       const matchedAccount = revenueAccounts.find(
         (acc) => acc.name.trim().toLowerCase() === prefill.source.trim().toLowerCase()
       );
@@ -204,7 +207,21 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
 
     setAppliedRule(null);
     onClearPrefill?.();
-  }, [prefill, onClearPrefill, revenueAccounts]);
+  }, [prefill]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Relance le matching de source quand les comptes Supabase arrivent après le prefill
+  useEffect(() => {
+    const src = pendingPrefillSource.current;
+    if (!src || !revenueAccounts.length) return;
+    const matchedAccount = revenueAccounts.find(
+      (acc) => acc.name.trim().toLowerCase() === src.trim().toLowerCase()
+    );
+    if (matchedAccount) {
+      setSource(matchedAccount.name);
+      if (matchedAccount.type && !pendingPrefillIncomeType.current) setIncomeType(matchedAccount.type);
+      pendingPrefillSource.current = null;
+    }
+  }, [revenueAccounts]);
 
   // ── Source change (auto-rules) ───────────────────────────────────────────────
   const handleSourceChange = (v: string) => {

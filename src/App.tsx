@@ -394,18 +394,13 @@ function App() {
         const t = transactions[i];
         try {
           // Pour les REVENUS : calculer automatiquement le taux si nécessaire
-          if (type === "revenue" && (!t.usdEurRate || t.usdEurRate === 0)) {
+          let resolvedRate = t.usdEurRate || t.tauxUSDEUR || null;
+          if (type === "revenue" && (!resolvedRate || resolvedRate === 0)) {
             const method = t.methodeCrypto || t.suggestedMethod || "";
             const currency = extractCurrencyFromMethod(method);
-            
             if (currency && currency !== "EUR") {
-              console.log(`💱 Calcul auto du taux ${currency}/EUR pour ${t.date}...`);
-              const rate = await getHistoricalRate(currency, t.date);
-              
-              if (rate) {
-                t.usdEurRate = rate;
-                console.log(`✅ Taux calculé: ${rate}`);
-              }
+              const fetchedRate = await getHistoricalRate(currency, t.date);
+              if (fetchedRate) resolvedRate = fetchedRate;
             }
           }
 
@@ -432,7 +427,7 @@ function App() {
               value:          t.valeur || t.currency || null,
               cryptoQuantity: t.quantiteCrypto || null,
               method:         t.methodeCrypto || t.suggestedMethod || null,
-              rate:           t.usdEurRate || t.tauxUSDEUR || null,
+              rate:           resolvedRate,
               cryptoAddress:  t.adresseCrypto || null,
               destination:    t.compteDestination || t.suggestedMethod || null,
               incomeType:     t.type || null,

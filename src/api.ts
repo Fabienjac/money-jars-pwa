@@ -71,6 +71,8 @@ export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; e
 }
 
 export async function updateSpending(rowIndex: number, row: SpendingRow): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Non connecté" };
   const { error } = await supabase.from("transactions_spending").update({
     date:         toISO(row.date),
     jar:          row.jar,
@@ -79,7 +81,7 @@ export async function updateSpending(rowIndex: number, row: SpendingRow): Promis
     description:  row.description,
     tags:         row.tags ?? "",
     subscription: row.subscription ?? "",
-  }).eq("id", rowIndex);
+  }).eq("id", rowIndex).eq("user_id", user.id);
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
@@ -87,7 +89,9 @@ export async function updateSpending(rowIndex: number, row: SpendingRow): Promis
 }
 
 export async function deleteSpending(rowIndex: number): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("transactions_spending").delete().eq("id", rowIndex);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Non connecté" };
+  const { error } = await supabase.from("transactions_spending").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
   return { ok: true };
@@ -170,6 +174,8 @@ export async function appendRevenue(row: RevenueRow): Promise<{ ok: boolean; err
 }
 
 export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Non connecté" };
   const { error } = await supabase.from("transactions_revenue").update({
     date:            toISO(row.date),
     source:          row.source,
@@ -182,7 +188,7 @@ export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<
     destination:     row.destination ?? null,
     income_type:     row.incomeType ?? null,
     tags:            row.tags ?? "",
-  }).eq("id", rowIndex);
+  }).eq("id", rowIndex).eq("user_id", user.id);
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
@@ -190,7 +196,9 @@ export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<
 }
 
 export async function deleteRevenue(rowIndex: number): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("transactions_revenue").delete().eq("id", rowIndex);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Non connecté" };
+  const { error } = await supabase.from("transactions_revenue").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
   return { ok: true };
@@ -704,18 +712,33 @@ export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<voi
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  // Remplacement complet : supprimer puis réinsérer
-  await supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
+  // Upsert d'abord (les anciennes règles restent intactes si ça échoue),
+  // puis suppression des patterns obsolètes.
+  if (rules.length > 0) {
+    const rows = rules.map(r => ({
+      user_id: user.id,
+      pattern: r.originalKey,
+      jar:     r.jar ?? null,
+      tags:    r.tags.join(","),
+    }));
+    const { error } = await supabase
+      .from("auto_tag_rules")
+      .upsert(rows, { onConflict: "user_id,pattern" });
+    if (error) {
+      console.warn("saveAutoTagRules: erreur upsert", error.message);
+      return;
+    }
+  }
 
-  if (rules.length === 0) return;
-
-  const rows = rules.map(r => ({
-    user_id: user.id,
-    pattern: r.originalKey,
-    jar:     r.jar ?? null,
-    tags:    r.tags.join(","),
-  }));
-
-  const { error } = await supabase.from("auto_tag_rules").insert(rows);
-  if (error) console.warn("saveAutoTagRules: erreur Supabase", error.message);
+  // Supprimer les règles qui n'existent plus dans le nouveau jeu
+  const activePatterns = rules.map(r => r.originalKey);
+  if (activePatterns.length > 0) {
+    await supabase
+      .from("auto_tag_rules")
+      .delete()
+      .eq("user_id", user.id)
+      .not("pattern", "in", `(${activePatterns.map(p => `"${p}"`).join(",")})`);
+  } else {
+    await supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
+  }
 }
