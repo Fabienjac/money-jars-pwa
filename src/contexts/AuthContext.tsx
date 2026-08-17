@@ -32,7 +32,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [needsPasswordUpdate, setNeedsPasswordUpdate] = useState(false);
 
-  async function fetchSubscription(userId: string) {
+  const ADMIN_EMAILS = ["fcjacquet@gmail.com"];
+
+  async function fetchSubscription(userId: string, email?: string) {
+    if (email && ADMIN_EMAILS.includes(email)) {
+      setSubscription({ plan: "active", trialEndsAt: null, isActive: true });
+      return;
+    }
+
     const { data } = await supabase
       .from("subscriptions")
       .select("plan, trial_ends_at, current_period_end")
@@ -77,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) await fetchSubscription(session.user.id);
+      if (session?.user) await fetchSubscription(session.user.id, session.user.email ?? undefined);
       setLoading(false);
     });
 
@@ -88,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === "PASSWORD_RECOVERY") {
           setNeedsPasswordUpdate(true);
         } else if (session?.user) {
-          fetchSubscription(session.user.id).catch(() => {});
+          fetchSubscription(session.user.id, session.user.email ?? undefined).catch(() => {});
         } else {
           setSubscription(null);
         }
@@ -121,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function refreshSubscription() {
-    if (user) await fetchSubscription(user.id);
+    if (user) await fetchSubscription(user.id, user.email ?? undefined);
   }
 
   async function resetPasswordForEmail(email: string) {
