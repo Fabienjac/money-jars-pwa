@@ -1,35 +1,24 @@
 // src/components/QuickSpendingForm.tsx
-// FORMULAIRE DÉPENSE OPTIMISÉ - Quick Input avec Numpad Intégré
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { appendSpending, searchSpendings, getAccounts } from "../api";
+import React, { useState, useEffect, useRef } from "react";
+import { appendSpending, getAccounts } from "../api";
 import { updateStreak } from "../streakUtils";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
-import { tagsToString, tagsFromString, loadTags } from "../tagsUtils";
+import { tagsToString, loadTags } from "../tagsUtils";
 import { loadPreferredCurrencies } from "../currencyUtils";
 import { loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
 import { useExchangeRate } from "../hooks/useExchangeRate";
 import CurrencySelector from "./CurrencySelector";
 
-interface RecentTransaction {
-  description: string;
-  amount: number;
-  jar: JarKey;
-  account: string;
-  date: string;
-  tags?: string;
-}
-
-const JAR_LABELS: Record<JarKey, { label: string; emoji: string }> = {
-  NEC: { label: "NEC", emoji: "🏺" },
-  FFA: { label: "FFA", emoji: "🌱" },
-  LTSS: { label: "LTSS", emoji: "🏦" },
-  PLAY: { label: "PLAY", emoji: "🎮" },
-  EDUC: { label: "EDUC", emoji: "📚" },
-  GIFT: { label: "GIFT", emoji: "🎁" },
+const JAR_LABELS: Record<JarKey, { label: string; emoji: string; color: string }> = {
+  NEC: { label: "NEC", emoji: "🏺", color: "var(--jar-nec, #007AFF)" },
+  FFA: { label: "FFA", emoji: "🌱", color: "var(--jar-ffa, #34C759)" },
+  LTSS: { label: "LTSS", emoji: "🏦", color: "var(--jar-ltss, #FFD60A)" },
+  PLAY: { label: "PLAY", emoji: "🎮", color: "var(--jar-play, #FF9500)" },
+  EDUC: { label: "EDUC", emoji: "📚", color: "var(--jar-educ, #AF52DE)" },
+  GIFT: { label: "GIFT", emoji: "🎁", color: "var(--jar-gift, #5AC8FA)" },
 };
 
-// Tags chargés dynamiquement depuis le cache (rempli au démarrage depuis Google Sheet)
 function getTagPresets() {
   return loadTags()
     .filter(t => t.favori !== false)
@@ -38,21 +27,16 @@ function getTagPresets() {
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-function formatEur(value: number): string {
-  return value.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 interface QuickSpendingFormProps {
   onClose: () => void;
   onSuccess?: () => void;
-  prefill?: any | null; // ✅ Ajouté pour pré-remplir depuis historique
+  prefill?: any | null;
 }
 
 const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess, prefill }) => {
   const [date, setDate] = useState<string>(todayISO());
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<string>(() => loadLastExpenseCurrency());
-  const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backspaceLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [jar, setJar] = useState<JarKey>("NEC");
   const [account, setAccount] = useState(() => localStorage.getItem("mjars:defaultSpendingAccount") || "Cash");
@@ -61,57 +45,9 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [preferredCurrencies, setPreferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date);
-  
-  // Les 2 dernières dépenses (chargées depuis le Google Sheet)
-  const [recentTransactions, setRecentTransactions] = useState<RecentTransaction[]>([]);
-  const [recentLoading, setRecentLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setRecentLoading(true);
-    searchSpendings("", 10)
-      .then((res) => {
-        if (cancelled || !res.rows?.length) return;
-        const rows = res.rows as Array<{ date: string; description: string; amount: number; jar: string; account: string; tags?: string }>;
-        const sorted = [...rows].sort((a, b) => {
-          const dA = parseSheetDate(a.date);
-          const dB = parseSheetDate(b.date);
-          return dB.getTime() - dA.getTime();
-        });
-        const two: RecentTransaction[] = sorted.slice(0, 2).map((r) => ({
-          description: r.description || "",
-          amount: Number(r.amount) || 0,
-          jar: (r.jar as JarKey) || "NEC",
-          account: r.account || "Cash",
-          date: toInputDate(r.date),
-          tags: r.tags,
-        }));
-        setRecentTransactions(two);
-      })
-      .catch(() => setRecentTransactions([]))
-      .finally(() => { if (!cancelled) setRecentLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  function parseSheetDate(s: string): Date {
-    if (!s) return new Date(0);
-    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return new Date(parseInt(iso[1], 10), parseInt(iso[2], 10) - 1, parseInt(iso[3], 10));
-    const dmy = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (dmy) return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
-    return new Date(s);
-  }
-
-  function toInputDate(s: string): string {
-    if (!s) return todayISO();
-    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return s.slice(0, 10);
-    const dmy = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
-    return todayISO();
-  }
 
   const [accounts, setAccountsState] = useState(loadAccounts());
   useEffect(() => {
@@ -129,15 +65,12 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     return () => window.removeEventListener("preferredCurrenciesUpdated", reload);
   }, []);
 
-  // ✅ Gérer le prefill depuis l'historique (date = aujourd'hui, pas celle de la transaction source)
   useEffect(() => {
     if (prefill) {
-      // On garde intentionnellement la date d'aujourd'hui — ne pas copier prefill.date
       if (prefill.jar) setJar(prefill.jar);
       if (prefill.account) setAccount(prefill.account);
       if (prefill.amount != null) setAmount(String(prefill.amount));
       if (prefill.description) setDescription(prefill.description);
-      // Tags : à parser si présents
       if (prefill.tags && typeof prefill.tags === "string") {
         const tagIds = prefill.tags.split(",").map((t: string) => t.trim()).filter(Boolean);
         setSelectedTags(tagIds);
@@ -145,7 +78,6 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     }
   }, [prefill]);
 
-  // Auto-dismiss message
   useEffect(() => {
     if (message) {
       const timer = setTimeout(() => setMessage(null), 2000);
@@ -158,28 +90,12 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     setAmount(prev => prev + num);
   };
 
-  const handleBackspace = () => {
-    setAmount(prev => prev.slice(0, -1));
-  };
-
-  const handleClear = () => {
-    setAmount("");
-  };
-
-  const handleRecentClick = (recent: RecentTransaction) => {
-    setDescription(recent.description);
-    setAmount(recent.amount.toString());
-    setJar(recent.jar);
-    setAccount(recent.account);
-    setDate(recent.date);
-    setSelectedTags(recent.tags ? tagsFromString(recent.tags) : []);
-  };
+  const handleBackspace = () => setAmount(prev => prev.slice(0, -1));
+  const handleClear = () => setAmount("");
 
   const toggleTag = (tagId: string) => {
     setSelectedTags(prev =>
-      prev.includes(tagId)
-        ? prev.filter(t => t !== tagId)
-        : [...prev, tagId]
+      prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]
     );
   };
 
@@ -219,17 +135,16 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
 
       setMessage("✅ Enregistré !");
-      
-      // Reset form
+
       setTimeout(() => {
-        setDate(todayISO()); // ✅ Réinitialiser à aujourd'hui
+        setDate(todayISO());
         setAmount("");
         setDescription("");
         setSelectedTags([]);
         onSuccess?.();
         onClose();
       }, 800);
-      
+
     } catch (error: any) {
       console.error("Erreur:", error);
       setMessage(`❌ ${error.message || "Erreur"}`);
@@ -238,194 +153,152 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     }
   };
 
+  const tagPresets = getTagPresets();
+  const hasDetails = account !== (localStorage.getItem("mjars:defaultSpendingAccount") || "Cash")
+    || selectedTags.length > 0
+    || !!description
+    || date !== todayISO();
+
   return (
-    <div className="quick-spending-modal">
-      <div className="quick-spending-overlay" onClick={onClose} />
-      
-      <div className="quick-spending-sheet">
-        {/* Header */}
-        <div className="quick-spending-header">
-          <h2 className="quick-spending-title">💰 Nouvelle dépense</h2>
+    <div className="qsf-screen">
+      {/* Header */}
+      <div className="qsf-header">
+        <button type="button" className="qsf-close" onClick={onClose} aria-label="Fermer">✕</button>
+        <h2 className="qsf-title">Dépense</h2>
+        <div className="qsf-currency-slot">
+          <CurrencySelector value={currency} preferred={preferredCurrencies} onChange={setCurrency} />
+        </div>
+      </div>
+
+      {/* Amount */}
+      <div className="qsf-amount-area">
+        <div className="qsf-amount-row">
+          <span className="qsf-amount-number">{amount || "0"}</span>
+          <span className="qsf-amount-unit">{currency}</span>
+        </div>
+        {currency !== "EUR" && amount && parseFloat(amount) > 0 && (
+          <div className="qsf-rate-hint">
+            {rateLoading && <span>⏳</span>}
+            {!rateLoading && rate && <span>≈ {(parseFloat(amount) * rate).toFixed(2)} €</span>}
+            {!rateLoading && rateError && <span className="qsf-rate-error">⚠️ {rateError}</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Jar selector — 3×2 grid */}
+      <div className="qsf-jars">
+        {(Object.keys(JAR_LABELS) as JarKey[]).map((jarKey) => (
           <button
+            key={jarKey}
             type="button"
-            className="quick-spending-close"
-            onClick={onClose}
+            className={`qsf-jar${jar === jarKey ? " qsf-jar--active" : ""}`}
+            style={{ "--jar-color": JAR_LABELS[jarKey].color } as React.CSSProperties}
+            onClick={() => setJar(jarKey)}
           >
-            ✕
+            <span className="qsf-jar-emoji">{JAR_LABELS[jarKey].emoji}</span>
+            <span className="qsf-jar-label">{JAR_LABELS[jarKey].label}</span>
           </button>
-        </div>
+        ))}
+      </div>
 
-        {/* Les 2 dernières dépenses (cliquables pour pré-remplir) */}
-        <div className="quick-recent-section">
-          <p className="quick-recent-label">📝 Récentes</p>
-          {recentLoading ? (
-            <p className="quick-recent-loading">Chargement...</p>
-          ) : recentTransactions.length > 0 ? (
-            <div className="quick-recent-list">
-              {recentTransactions.map((r, idx) => (
-                <button
-                  key={`${r.date}-${r.description}-${idx}`}
-                  type="button"
-                  className="quick-recent-item"
-                  onClick={() => handleRecentClick(r)}
-                >
-                  <span className="quick-recent-desc">{r.description || "Sans description"}</span>
-                  <span className="quick-recent-amount">{r.amount.toFixed(2)} €</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="quick-recent-empty">Aucune dépense récente</p>
-          )}
-        </div>
+      {/* Numpad — 4×3 grid */}
+      <div className="qsf-numpad">
+        {["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "⌫"].map((key) => (
+          <button
+            key={key}
+            type="button"
+            className={`qsf-key${key === "⌫" ? " qsf-key--back" : ""}`}
+            onClick={() => key === "⌫" ? handleBackspace() : handleNumberClick(key)}
+            onPointerDown={() => {
+              if (key === "⌫") backspaceLongPressRef.current = setTimeout(handleClear, 600);
+            }}
+            onPointerUp={() => { if (backspaceLongPressRef.current) clearTimeout(backspaceLongPressRef.current); }}
+            onPointerLeave={() => { if (backspaceLongPressRef.current) clearTimeout(backspaceLongPressRef.current); }}
+          >
+            {key}
+          </button>
+        ))}
+      </div>
 
-        {/* Date */}
-        <div className="quick-date-section">
-          <label className="quick-date-label">
-            📅
-            <input
-              type="date"
-              className="quick-date-input"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
-        </div>
+      {/* Collapsible details */}
+      <div className="qsf-details">
+        <button
+          type="button"
+          className="qsf-details-toggle"
+          onClick={() => setDetailsOpen(o => !o)}
+        >
+          <span className="qsf-details-chevron">{detailsOpen ? "▲" : "▼"}</span>
+          <span>Détails</span>
+          {hasDetails && <span className="qsf-details-dot" />}
+        </button>
 
-        {/* Devise */}
-        <div className="quick-currency-section">
-          <CurrencySelector
-            value={currency}
-            preferred={preferredCurrencies}
-            onChange={setCurrency}
-          />
-        </div>
+        {detailsOpen && (
+          <div className="qsf-details-body">
+            <label className="qsf-field">
+              <span className="qsf-field-icon">💳</span>
+              <select className="qsf-select" value={account} onChange={(e) => setAccount(e.target.value)}>
+                {accounts.map((acc) => (
+                  <option key={acc.id} value={acc.name}>{acc.icon} {acc.name}</option>
+                ))}
+              </select>
+            </label>
 
-        {/* Montant */}
-        <div className="quick-amount-section">
-          <p className="quick-amount-label">💰 Montant</p>
-          <div className="quick-amount-display">
-            {amount || "0"}
-            <span className="quick-amount-currency">{currency}</span>
+            {tagPresets.length > 0 && (
+              <div className="qsf-field qsf-field--wrap">
+                <span className="qsf-field-icon">🏷️</span>
+                <div className="qsf-tags-wrap">
+                  {tagPresets.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      className={`qsf-tag${selectedTags.includes(tag.id) ? " qsf-tag--active" : ""}`}
+                      onClick={() => toggleTag(tag.id)}
+                    >
+                      {tag.emoji} {tag.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <label className="qsf-field">
+              <span className="qsf-field-icon">📝</span>
+              <input
+                type="text"
+                className="qsf-input"
+                placeholder="Description (optionnel)"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </label>
+
+            <label className="qsf-field">
+              <span className="qsf-field-icon">📅</span>
+              <input
+                type="date"
+                className="qsf-input"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </label>
           </div>
-          {currency !== "EUR" && amount && parseFloat(amount) > 0 && (
-            <div className="quick-amount-eur-estimate">
-              {rateLoading && <span className="quick-rate-loading">⏳ Taux…</span>}
-              {!rateLoading && rate && (
-                <span className="quick-rate-result">
-                  ≈ {(parseFloat(amount) * rate).toFixed(2)} €
-                </span>
-              )}
-              {!rateLoading && rateError && (
-                <span className="quick-rate-error">⚠️ {rateError}</span>
-              )}
-            </div>
-          )}
-        </div>
+        )}
+      </div>
 
-        {/* Numpad + Jars */}
-        <div className="quick-numpad-section">
-          <div className="quick-numpad">
-            {["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ".", "⌫"].map((key) => (
-              <button
-                key={key}
-                type="button"
-                className={`quick-numpad-key ${key === "⌫" ? "quick-numpad-clear" : ""}`}
-                onClick={() => {
-                  if (key === "⌫") handleBackspace();
-                  else if (key === ".") handleNumberClick(".");
-                  else handleNumberClick(key);
-                }}
-                onPointerDown={() => {
-                  if (key === "⌫") {
-                    backspaceLongPressRef.current = setTimeout(() => handleClear(), 600);
-                  }
-                }}
-                onPointerUp={() => { if (backspaceLongPressRef.current) clearTimeout(backspaceLongPressRef.current); }}
-                onPointerLeave={() => { if (backspaceLongPressRef.current) clearTimeout(backspaceLongPressRef.current); }}
-              >
-                {key}
-              </button>
-            ))}
-          </div>
-
-          <div className="quick-jars-grid">
-            {(Object.keys(JAR_LABELS) as JarKey[]).map((jarKey) => (
-              <button
-                key={jarKey}
-                type="button"
-                className={`quick-jar-btn ${jar === jarKey ? "quick-jar-btn--active" : ""}`}
-                onClick={() => setJar(jarKey)}
-              >
-                <span className="quick-jar-emoji">{JAR_LABELS[jarKey].emoji}</span>
-                <span className="quick-jar-label">{JAR_LABELS[jarKey].label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Compte */}
-        <div className="quick-account-section">
-          <label className="quick-account-label">
-            💳
-            <select
-              className="quick-account-select"
-              value={account}
-              onChange={(e) => setAccount(e.target.value)}
-            >
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.name}>
-                  {acc.icon} {acc.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {/* Tags (optionnel) */}
-        <div className="quick-tags-section">
-          <p className="quick-tags-label">🏷️ Tags (optionnel)</p>
-          <div className="quick-tags-grid">
-            {getTagPresets().map((tag) => (
-              <button
-                key={tag.id}
-                type="button"
-                className={`quick-tag-btn ${selectedTags.includes(tag.id) ? "quick-tag-btn--active" : ""}`}
-                onClick={() => toggleTag(tag.id)}
-              >
-                <span>{tag.emoji}</span>
-                <span>{tag.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Description (optionnel) */}
-        <div className="quick-desc-section">
-          <input
-            type="text"
-            className="quick-desc-input"
-            placeholder="Description (optionnel)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-
-        {/* Message */}
+      {/* Footer */}
+      <div className="qsf-footer">
         {message && (
-          <div className={`quick-message ${message.includes("✅") ? "quick-message--success" : "quick-message--error"}`}>
+          <div className={`qsf-message${message.includes("✅") ? " qsf-message--ok" : " qsf-message--err"}`}>
             {message}
           </div>
         )}
-
-        {/* Submit */}
         <button
           type="button"
-          className="quick-submit-btn"
+          className="qsf-submit"
           onClick={handleSubmit}
           disabled={loading || !amount}
         >
-          {loading ? "⏳ Enregistrement..." : "✓ Enregistrer"}
+          {loading ? "⏳ Enregistrement…" : "✓ Enregistrer"}
         </button>
       </div>
     </div>
