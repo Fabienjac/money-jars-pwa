@@ -32,6 +32,8 @@ interface RevenueFormProps {
   prefill?: any | null;
   onClearPrefill?: () => void;
   onSuccess?: () => void;
+  fullscreen?: boolean;
+  onClose?: () => void;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -61,7 +63,7 @@ const labelStyle: React.CSSProperties = {
   color: "var(--text-main)",
 };
 
-const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSuccess }) => {
+const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSuccess, fullscreen, onClose }) => {
   // ── Mode toggle ──────────────────────────────────────────────────────────────
   const [isCryptoMode, setIsCryptoMode] = useState(false);
 
@@ -155,16 +157,18 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
   const [spendingAccounts, setSpendingAccounts] = useState(loadAccounts());
 
   useEffect(() => {
-    getRevenueAccounts().then(setRevenueAccounts).catch(() => setRevenueAccounts(loadRevenueAccounts()));
-  }, []);
-  useEffect(() => {
     const reload = () =>
-      getRevenueAccounts().then(setRevenueAccounts).catch(() => setRevenueAccounts(loadRevenueAccounts()));
+      getRevenueAccounts()
+        .then((list) => setRevenueAccounts(list.length > 0 ? list : loadRevenueAccounts()))
+        .catch(() => setRevenueAccounts(loadRevenueAccounts()));
+    reload();
     window.addEventListener("revenueAccountsUpdated", reload);
     return () => window.removeEventListener("revenueAccountsUpdated", reload);
   }, []);
   useEffect(() => {
-    getAccounts().then(setSpendingAccounts).catch(() => setSpendingAccounts(loadAccounts()));
+    getAccounts()
+      .then((list) => setSpendingAccounts(list.length > 0 ? list : loadAccounts()))
+      .catch(() => setSpendingAccounts(loadAccounts()));
   }, []);
 
   // Mémorise la source du prefill pour le matching différé (chargement Supabase async)
@@ -332,11 +336,8 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  return (
-    <form
-      onSubmit={handleSubmit}
-      style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px", backgroundColor: "var(--bg-card)", borderRadius: "12px" }}
-    >
+  const fields = (
+    <>
       {/* ── Toggle Simple / Crypto ── */}
       <div style={{
         display: "flex",
@@ -389,18 +390,6 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
         </button>
       </div>
 
-      {/* ── Date ── */}
-      <div>
-        <label htmlFor="rev-date" style={labelStyle}>📅 Date</label>
-        <input
-          id="rev-date"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          style={fieldStyle}
-        />
-      </div>
-
       {/* ── Source ── */}
       <div>
         <label htmlFor="rev-source" style={labelStyle}>💰 Source de revenu</label>
@@ -434,6 +423,18 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           placeholder={isCryptoMode ? "ex: 1500" : "ex: 1500"}
+          style={fieldStyle}
+        />
+      </div>
+
+      {/* ── Date ── */}
+      <div>
+        <label htmlFor="rev-date" style={labelStyle}>📅 Date</label>
+        <input
+          id="rev-date"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
           style={fieldStyle}
         />
       </div>
@@ -621,51 +622,83 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
         </>
       )}
 
-      {/* ── Règle appliquée ── */}
-      {appliedRule && (
-        <div style={{ padding: "10px", borderRadius: "8px", backgroundColor: "rgba(52,199,89,0.1)", border: "1px solid rgba(52,199,89,0.3)", fontSize: "13px", color: "var(--text-main)" }}>
-          ✅ Règle appliquée : "{appliedRule.keyword}"{appliedRule.destination && ` → ${appliedRule.destination}`}
-        </div>
-      )}
+    </>
+  );
 
-      {/* ── Message ── */}
-      {message && (
-        <div style={{
-          padding: "10px",
-          borderRadius: "8px",
-          backgroundColor: message.includes("✅") ? "rgba(52,199,89,0.1)" : "rgba(255,59,48,0.1)",
-          color: message.includes("✅") ? "#34C759" : "#FF3B30",
-          fontSize: "14px",
-          fontWeight: "600",
-        }}>
-          {message}
-        </div>
-      )}
+  const ruleEl = appliedRule ? (
+    <div style={{ padding: "10px", borderRadius: "8px", backgroundColor: "rgba(52,199,89,0.1)", border: "1px solid rgba(52,199,89,0.3)", fontSize: "13px", color: "var(--text-main)" }}>
+      ✅ Règle appliquée : "{appliedRule.keyword}"{appliedRule.destination && ` → ${appliedRule.destination}`}
+    </div>
+  ) : null;
 
-      {/* ── Bouton ── */}
-      <button
-        type="submit"
-        disabled={loading}
-        style={{
-          padding: "14px",
-          borderRadius: "12px",
-          border: "none",
-          background: loading
-            ? "#999"
-            : isCryptoMode
-              ? "linear-gradient(135deg, #FF9500 0%, #E08600 100%)"
-              : "linear-gradient(135deg, #34C759 0%, #30B350 100%)",
-          color: "white",
-          fontSize: "16px",
-          fontWeight: "700",
-          cursor: loading ? "not-allowed" : "pointer",
-          boxShadow: loading ? "none" : isCryptoMode
-            ? "0 2px 8px rgba(255,149,0,0.35)"
-            : "0 2px 8px rgba(52,199,89,0.35)",
-        }}
-      >
-        {loading ? "Enregistrement..." : isCryptoMode ? "Enregistrer le revenu crypto" : "Enregistrer le revenu"}
-      </button>
+  const messageEl = message ? (
+    <div style={{
+      padding: "10px",
+      borderRadius: "8px",
+      backgroundColor: message.includes("✅") ? "rgba(52,199,89,0.1)" : "rgba(255,59,48,0.1)",
+      color: message.includes("✅") ? "#34C759" : "#FF3B30",
+      fontSize: "14px",
+      fontWeight: "600",
+    }}>
+      {message}
+    </div>
+  ) : null;
+
+  const submitBtn = (
+    <button
+      type="submit"
+      disabled={loading}
+      style={{
+        padding: "14px",
+        borderRadius: "12px",
+        border: "none",
+        background: loading
+          ? "#999"
+          : isCryptoMode
+            ? "linear-gradient(135deg, #FF9500 0%, #E08600 100%)"
+            : "linear-gradient(135deg, #34C759 0%, #30B350 100%)",
+        color: "white",
+        fontSize: "16px",
+        fontWeight: "700",
+        cursor: loading ? "not-allowed" : "pointer",
+        boxShadow: loading ? "none" : isCryptoMode
+          ? "0 2px 8px rgba(255,149,0,0.35)"
+          : "0 2px 8px rgba(52,199,89,0.35)",
+      }}
+    >
+      {loading ? "Enregistrement..." : isCryptoMode ? "Enregistrer le revenu crypto" : "Enregistrer le revenu"}
+    </button>
+  );
+
+  if (fullscreen) {
+    return (
+      <form className="rsf-screen" onSubmit={handleSubmit}>
+        <div className="rsf-header">
+          <button type="button" className="qsf-close" onClick={onClose} aria-label="Fermer">✕</button>
+          <h2 className="qsf-title">Revenu</h2>
+          <span className="rsf-header-spacer" />
+        </div>
+        <div className="rsf-body">
+          {fields}
+          {ruleEl}
+        </div>
+        <div className="rsf-footer">
+          {messageEl}
+          {submitBtn}
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "16px", backgroundColor: "var(--bg-card)", borderRadius: "12px" }}
+    >
+      {fields}
+      {ruleEl}
+      {messageEl}
+      {submitBtn}
     </form>
   );
 };

@@ -769,38 +769,19 @@ function App() {
 
       {/* ✅ AJOUT : Modal RevenueForm avec prefill */}
       {showQuickRevenue && (
-        <div className="entry-sheet-backdrop" onClick={() => {
-          setShowQuickRevenue(false);
-          setPrefillRevenue(null);
-        }}>
-          <div className="entry-sheet" onClick={(e) => e.stopPropagation()}>
-            <header className="entry-sheet-header">
-              <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700" }}>
-                💵 Nouveau revenu
-              </h2>
-              <button
-                type="button"
-                className="entry-close-btn"
-                onClick={() => {
-                  setShowQuickRevenue(false);
-                  setPrefillRevenue(null);
-                }}
-              >
-                ×
-              </button>
-            </header>
-            <div className="entry-sheet-body">
-              <RevenueForm
-                prefill={prefillRevenue}
-                onClearPrefill={() => setPrefillRevenue(null)}
-                onSuccess={() => {
-                  setShowQuickRevenue(false);
-                  setPrefillRevenue(null);
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        <RevenueForm
+          fullscreen
+          prefill={prefillRevenue}
+          onClearPrefill={() => setPrefillRevenue(null)}
+          onClose={() => {
+            setShowQuickRevenue(false);
+            setPrefillRevenue(null);
+          }}
+          onSuccess={() => {
+            setShowQuickRevenue(false);
+            setPrefillRevenue(null);
+          }}
+        />
       )}
 
       {/* Bottom sheet "Nouvelle entrée" (V1 uniquement) */}
