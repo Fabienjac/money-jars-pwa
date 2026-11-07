@@ -32,13 +32,17 @@ exports.handler = async (event) => {
   }
 
   const { text, today } = body;
+  const accountsList = Array.isArray(body.accounts) && body.accounts.length > 0
+    ? body.accounts.map((a) => String(a).slice(0, 60)).slice(0, 20)
+    : ["Cash"];
+  const baseCurrency = /^[A-Z]{3}$/.test(String(body.baseCurrency || "")) ? body.baseCurrency : "EUR";
   if (!text || typeof text !== "string" || text.trim().length === 0) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: "Le champ 'text' est requis" }) };
   }
 
   const todayStr = today || new Date().toISOString().slice(0, 10);
 
-  const prompt = `Tu es un assistant financier personnel. Analyse ce texte en français et extrais les informations d'une dépense.
+  const prompt = `Tu es un assistant financier personnel. Analyse ce texte (en français ou en anglais) et extrais les informations d'une dépense. La description reste dans la langue du texte.
 
 Tags disponibles (utilise exactement ces IDs):
 - "alimentaire" : nourriture, fruits, légumes, marché, épicerie, boulangerie, poisson, viande, boisson alimentaire
@@ -59,11 +63,9 @@ Jarres (codes exacts):
 - "FFA" : investissements, liberté financière
 - "LTSS" : épargne long terme
 
-Comptes de paiement: "Cash", "Revolut", "N26"
-- "cash", "espèces", "liquide", "en liquide" → "Cash"
-- "revolut" → "Revolut"
-- "n26" → "N26"
-- Non mentionné → "Cash" par défaut
+Comptes de paiement de l'utilisateur: ${accountsList.map((a) => `"${a}"`).join(", ")}
+- Si le texte mentionne (même approximativement) l'un de ces comptes, renvoie EXACTEMENT son nom ci-dessus.
+- Non mentionné → "${accountsList[0]}" par défaut
 
 Date actuelle: ${todayStr}
 - "aujourd'hui" → ${todayStr}
@@ -72,7 +74,9 @@ Date actuelle: ${todayStr}
 Texte: "${text.replace(/"/g, "'")}"
 
 Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans backticks):
-{"description":"description courte max 50 chars","amount":0.00,"date":"YYYY-MM-DD","jar":"NEC","tags":["tag1"],"account":"Cash","currency":"EUR"}`;
+{"description":"description courte max 50 chars","amount":0.00,"date":"YYYY-MM-DD","jar":"NEC","tags":["tag1"],"account":"${accountsList[0]}","currency":"${baseCurrency}"}
+
+Devise ("currency") : code ISO 4217 de la devise prononcée (dollars → USD, euros → EUR, livres → GBP, francs suisses → CHF, yens → JPY, etc.). Si aucune devise n'est mentionnée, utilise "${baseCurrency}".`;
 
   // Essaie les modèles dans l'ordre (fallback si surchargé)
   const MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
@@ -135,8 +139,8 @@ Réponds UNIQUEMENT avec un objet JSON valide (sans markdown, sans backticks):
       date: /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) ? parsed.date : todayStr,
       jar: ["NEC", "PLAY", "EDUC", "GIFT", "FFA", "LTSS"].includes(parsed.jar) ? parsed.jar : "NEC",
       tags: Array.isArray(parsed.tags) ? parsed.tags.filter(t => typeof t === "string") : [],
-      account: ["Cash", "Revolut", "N26"].includes(parsed.account) ? parsed.account : "Cash",
-      currency: String(parsed.currency || "EUR"),
+      account: accountsList.includes(parsed.account) ? parsed.account : accountsList[0],
+      currency: String(parsed.currency || baseCurrency).toUpperCase(),
     };
 
     console.log(`✅ Parsed via ${model}:`, result);

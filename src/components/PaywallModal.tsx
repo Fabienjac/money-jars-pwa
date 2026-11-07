@@ -1,10 +1,12 @@
 import React from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { t as tr, useLang } from "../i18n";
 
 const LINK_MONTHLY = "https://buy.stripe.com/7sY14m7g13Ur6Bl0hL7g404";
 const LINK_YEARLY  = "https://buy.stripe.com/cNi5kC2ZLfD94td7Kd7g403";
 
 export function PaywallModal() {
+  useLang();
   const { subscription, signOut, user } = useAuth();
 
   if (!subscription || subscription.isActive) return null;
@@ -34,13 +36,13 @@ export function PaywallModal() {
         <div style={{ fontSize: "52px", marginBottom: "16px" }}>🏺</div>
 
         <h2 style={{ fontSize: "22px", fontWeight: "700", color: "var(--text-main)", margin: "0 0 10px" }}>
-          {isExpiredTrial ? "Votre essai est terminé" : "Abonnement inactif"}
+          {isExpiredTrial ? tr("pw.trialEnded") : tr("pw.inactive")}
         </h2>
 
         <p style={{ color: "var(--text-muted)", fontSize: "15px", lineHeight: "1.6", margin: "0 0 28px" }}>
           {isExpiredTrial
-            ? "Vous avez profité de 14 jours gratuits. Continuez à pratiquer la méthode des 6 bocaux avec Money Jars."
-            : "Votre abonnement a expiré. Renouvelez pour continuer à utiliser l'application."
+            ? tr("pw.trialText")
+            : tr("pw.expiredText")
           }
         </p>
 
@@ -52,14 +54,14 @@ export function PaywallModal() {
           marginBottom: "20px",
         }}>
           <div style={{ fontSize: "32px", fontWeight: "800", color: "var(--text-main)" }}>
-            7,90€
-            <span style={{ fontSize: "16px", fontWeight: "500", color: "var(--text-muted)" }}>/mois</span>
+            {tr("pw.price")}
+            <span style={{ fontSize: "16px", fontWeight: "500", color: "var(--text-muted)" }}>{tr("pw.perMonth")}</span>
           </div>
           <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "4px" }}>
-            ou 69€/an · Annulable à tout moment
+            {tr("pw.orYear")}
           </div>
           <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "6px", textAlign: "left" }}>
-            {["Import IA (PDF, CSV, Excel)", "Saisie vocale", "Analytics complets", "Détection d'abonnements", "Crypto & multi-devises"].map(f => (
+            {[tr("pw.f1"), tr("pw.f2"), tr("pw.f3"), tr("pw.f4"), tr("pw.f5")].map(f => (
               <div key={f} style={{ fontSize: "14px", color: "var(--text-main)", display: "flex", gap: "8px", alignItems: "center" }}>
                 <span style={{ color: "#34C759" }}>✓</span> {f}
               </div>
@@ -85,7 +87,7 @@ export function PaywallModal() {
             boxSizing: "border-box",
           }}
         >
-          S'abonner — 7,90€/mois
+          {tr("pw.subscribe")}
         </a>
 
         <a
@@ -106,7 +108,7 @@ export function PaywallModal() {
             boxSizing: "border-box",
           }}
         >
-          Plan annuel — 69€/an (−27%)
+          {tr("pw.yearly")}
         </a>
 
         <button
@@ -117,7 +119,7 @@ export function PaywallModal() {
             color: "var(--text-muted)", fontSize: "14px",
           }}
         >
-          Se déconnecter
+          {tr("pw.signOut")}
         </button>
       </div>
     </div>

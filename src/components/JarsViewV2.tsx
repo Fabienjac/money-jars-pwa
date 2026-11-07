@@ -6,24 +6,8 @@ import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, StreakState } from "../streakUtils";
 
-const JAR_LABELS: Record<JarKey, string> = {
-  NEC: "Nécessités",
-  FFA: "Liberté Financière",
-  LTSS: "Épargne Long Terme",
-  PLAY: "Fun / Play",
-  EDUC: "Éducation",
-  GIFT: "Don / Gift",
-};
-
-const JAR_EMPTY_COPY: Record<JarKey, string> = {
-  NEC: "Mois vierge — tout démarre ici",
-  FFA: "Votre futur vous remercie",
-  LTSS: "Chaque euro ici, c'est la liberté demain",
-  PLAY: "Du plaisir sans culpabilité — quand vous voulez",
-  EDUC: "Investir en vous, le meilleur ROI",
-  GIFT: "Donner, c'est recevoir — jar prêt",
-};
-
+import { currencySymbol as curSym } from "../baseCurrency";
+import { t, useT, type TKey, localeTag, monthShort, monthLong, JAR_LABELS, JAR_EMPTY_COPY } from "../i18n";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
   FFA: "🌱",
@@ -44,11 +28,10 @@ const JAR_COLORS: Record<JarKey, string> = {
 
 const JAR_SETTINGS_STORAGE_KEY = "mjars:jarSettings";
 
-const MONTH_LABELS_FR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Août", "Sep", "Oct", "Nov", "Déc"];
 
 function formatMoney(value: number | null | undefined): string {
   const v = typeof value === "number" && !isNaN(value) ? value : 0;
-  return v.toLocaleString("fr-FR", {
+  return v.toLocaleString(localeTag(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -97,9 +80,10 @@ type SubscriptionFreq = "mensuel" | "trimestriel" | "semestriel" | "annuel";
 const FREQ_DIVISOR: Record<SubscriptionFreq, number> = {
   mensuel: 1, trimestriel: 3, semestriel: 6, annuel: 12,
 };
-const FREQ_LABEL: Record<SubscriptionFreq, string> = {
-  mensuel: "mensuel", trimestriel: "trimestriel", semestriel: "semestriel", annuel: "annuel",
-};
+const FREQ_LABEL = {} as Record<SubscriptionFreq, string>;
+for (const k of ["mensuel", "trimestriel", "semestriel", "annuel"] as SubscriptionFreq[]) {
+  Object.defineProperty(FREQ_LABEL, k, { get: () => t(`freq.${k}` as TKey), enumerable: true });
+}
 
 interface RecurringItem {
   description: string;
@@ -260,21 +244,20 @@ function saveTagBudgets(budgets: Record<string, number>): void {
 function getLastImportLabel(): string {
   try {
     const ts = localStorage.getItem("mjars:lastImport");
-    if (!ts) return "jamais";
+    if (!ts) return t("home.never");
     const diffMs = Date.now() - parseInt(ts, 10);
     const diffMin = Math.floor(diffMs / 60000);
     const diffH = Math.floor(diffMs / 3600000);
     const diffD = Math.floor(diffMs / 86400000);
-    if (diffMin < 2) return "à l'instant";
-    if (diffMin < 60) return `il y a ${diffMin} min`;
-    if (diffH < 24) return `il y a ${diffH}h`;
-    if (diffD === 1) return "hier";
-    if (diffD < 7) return `il y a ${diffD} jours`;
-    return `il y a ${Math.floor(diffD / 7)} sem.`;
-  } catch { return "jamais"; }
+    if (diffMin < 2) return t("home.justNow");
+    if (diffMin < 60) return t("home.minAgo", { n: diffMin });
+    if (diffH < 24) return t("home.hAgo", { n: diffH });
+    if (diffD === 1) return t("home.yesterday");
+    if (diffD < 7) return t("home.daysAgo", { n: diffD });
+    return t("home.weeksAgo", { n: Math.floor(diffD / 7) });
+  } catch { return t("home.never"); }
 }
 
-const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
 /** Dépenses totales depuis le 1er janv. de l'année en cours et nombre de jours écoulés */
 function getYtdSpendingsAndDays(analytics: AnalyticsResponse | null): { ytdSpendings: number; daysElapsed: number } {
@@ -361,11 +344,10 @@ function computeWeeklyRolling30dAvg(
 }
 
 interface JarsViewV2Props {
-  onOpenSpending: () => void;
   onOpenRevenue: () => void;
 }
 
-const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }) => {
+const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
   const [netWorth, setNetWorth] = useState<number | null>(null);
@@ -408,7 +390,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
       setTotals(totalsData);
     } catch (err: any) {
       console.error("Erreur chargement totals:", err);
-      setError(err?.message || "Erreur lors du chargement des totaux.");
+      setError(err?.message || t("home.errTotals"));
     } finally {
       setLoading(false);
     }
@@ -614,7 +596,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
   /** Label mois courant ex: "Avril 2026" */
   const currentMonthLabel = useMemo(() => {
     const now = new Date();
-    return `${MONTHS_FR[now.getMonth()]} ${now.getFullYear()}`;
+    return `${monthLong(now.getMonth())} ${now.getFullYear()}`;
   }, []);
 
   /** Top 5 tags du mois */
@@ -756,7 +738,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
     chartPoints.forEach((p, i) => {
       const m = p.date.getMonth();
       if (m !== lastMonth) {
-        monthLabels.push({ x: Math.min(toX(i), W - PR - 12), label: MONTH_LABELS_FR[m] });
+        monthLabels.push({ x: Math.min(toX(i), W - PR - 12), label: monthShort(m) });
         lastMonth = m;
       }
     });
@@ -856,7 +838,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             fontSize="9"
             fill="#AEAEB2"
           >
-            {Math.round(v)}€
+            {Math.round(v)}{curSym()}
           </text>
         ))}
 
@@ -879,30 +861,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
 
   return (
     <main className="jars-v2-page">
-      {/* 🎯 Actions rapides */}
-      <section className="jars-v2-quick-actions">
-        <button
-          type="button"
-          className="quick-action-btn quick-action-spending"
-          onClick={onOpenSpending}
-        >
-          <span className="quick-action-icon">💰</span>
-          <div className="quick-action-text">
-            <span className="quick-action-label">Dépense</span>
-            <span className="quick-action-sub">Rapide</span>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          className="quick-action-btn quick-action-revenue"
-          onClick={onOpenRevenue}
-        >
-          <span className="quick-action-icon">💵</span>
-          <div className="quick-action-text">
-            <span className="quick-action-label">Revenu</span>
-            <span className="quick-action-sub">Ajouter</span>
-          </div>
+      {/* Revenu (saisie rare, mensuelle) — les dépenses passent par le bouton + */}
+      <section className="jars-v2-revenue-row">
+        <button type="button" className="revenue-link" onClick={onOpenRevenue}>
+          {t("home.addIncome")}
         </button>
       </section>
 
@@ -930,10 +892,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
               letterSpacing: "-0.2px",
             }}>
               {streak.count === 1
-                ? "1er jour — bonne habitude !"
+                ? t("home.streakDay1")
                 : streak.isAlive
-                  ? `${streak.count} jours de suite !`
-                  : `${streak.count} jours — reprenez aujourd'hui`}
+                  ? t("home.streakDays", { n: streak.count })
+                  : t("home.streakResume", { n: streak.count })}
             </span>
           </div>
         ) : (
@@ -948,7 +910,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           }}>
             <span style={{ fontSize: "16px", lineHeight: 1 }}>✨</span>
             <span style={{ fontSize: "13px", fontWeight: "600", color: "#FF9500", letterSpacing: "-0.2px" }}>
-              Commencez votre série aujourd'hui
+              {t("home.streakStart")}
             </span>
           </div>
         )}
@@ -957,18 +919,18 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
       {/* 📉 Widget dépenses / jour — toujours visible */}
       <section style={{ padding: "0 16px 12px" }}>
         <div style={{
-          background: "#fff",
+          background: "var(--bg-card)",
           borderRadius: "16px",
           padding: "16px 16px 10px",
-          border: "1px solid #E5E5EA",
-          boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+          border: "1px solid var(--border-color)",
+          boxShadow: "var(--shadow-md)",
         }}>
           {/* Titre */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-            <div style={{ fontSize: "11px", color: "#8E8E93", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              📉 Dépenses moyennes / jour
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              {t("home.avgPerDay")}
             </div>
-            <div style={{ fontSize: "10px", color: lastImportLabel === "jamais" ? "#FF9500" : "#C7C7CC", display: "flex", alignItems: "center", gap: "3px" }}>
+            <div style={{ fontSize: "10px", color: lastImportLabel === t("home.never") ? "#FF9500" : "#C7C7CC", display: "flex", alignItems: "center", gap: "3px" }}>
               <span>🔄</span>
               <span>{lastImportLabel}</span>
             </div>
@@ -978,14 +940,14 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "10px" }}>
             {/* Glissant 30j */}
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "11px", color: "#8E8E93", marginBottom: "2px" }}>Glissant 30j</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>{t("home.rolling30")}</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "26px", fontWeight: "800", color: "#1C1C1E", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
+                <span style={{ fontSize: "26px", fontWeight: "800", color: "var(--text-main)", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
                   {rolling30dAverageSpending != null
-                    ? `${formatMoney(rolling30dAverageSpending)} €`
+                    ? `${formatMoney(rolling30dAverageSpending)} ${curSym()}`
                     : analytics === null
                       ? <span className="skeleton skeleton-amount" style={{ width: 100, display: "inline-block" }}>&nbsp;</span>
-                      : <span style={{ fontSize: "16px", color: "#C7C7CC" }}>—</span>
+                      : <span style={{ fontSize: "16px", color: "var(--text-light)" }}>—</span>
                   }
                 </span>
                 {spendingTrend && (
@@ -1001,22 +963,22 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: "10px", color: "#AEAEB2", marginTop: "2px" }}>vs 4 semaines</div>
+              <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>{t("home.vs4w")}</div>
             </div>
 
             {/* Séparateur vertical */}
-            <div style={{ width: "1px", background: "#E5E5EA", alignSelf: "stretch", margin: "0 4px" }} />
+            <div style={{ width: "1px", background: "var(--border-color)", alignSelf: "stretch", margin: "0 4px" }} />
 
             {/* Moyenne YTD */}
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "11px", color: "#8E8E93", marginBottom: "2px" }}>Moyenne YTD</div>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>{t("home.ytdAvg")}</div>
               <div style={{ fontSize: "26px", fontWeight: "800", color: "#FF2D78", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
                 {averageDailySpending != null
-                  ? `${formatMoney(averageDailySpending)} €`
-                  : <span style={{ fontSize: "16px", color: "#C7C7CC" }}>—</span>
+                  ? `${formatMoney(averageDailySpending)} ${curSym()}`
+                  : <span style={{ fontSize: "16px", color: "var(--text-light)" }}>—</span>
                 }
               </div>
-              <div style={{ fontSize: "10px", color: "#AEAEB2", marginTop: "2px" }}>depuis jan. {new Date().getFullYear()}</div>
+              <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>{t("home.sinceJan", { year: new Date().getFullYear() })}</div>
             </div>
           </div>
 
@@ -1035,10 +997,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
               <span style={{ fontSize: "22px", flexShrink: 0 }}>🥗</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: "11px", color: "#84CC16", fontWeight: "700", marginBottom: "2px" }}>
-                  Alimentation · Glissant 30j
+                  {t("home.foodRolling")}
                 </div>
                 <div style={{ fontSize: "26px", fontWeight: "800", color: "#84CC16", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
-                  {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)} €<span style={{ fontSize: "13px", fontWeight: "600", color: "#84CC16", opacity: 0.8 }}> /jour</span>
+                  {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)} {curSym()}<span style={{ fontSize: "13px", fontWeight: "600", color: "#84CC16", opacity: 0.8 }}> {t("home.perDay")}</span>
                 </div>
               </div>
             </div>
@@ -1058,7 +1020,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                 <div style={{ width: 16, height: 2.5, borderRadius: 2, background: "#FF2D78" }} />
-                <span style={{ fontSize: "10px", color: "#AEAEB2" }}>Total</span>
+                <span style={{ fontSize: "10px", color: "var(--text-light)" }}>{t("home.total")}</span>
               </div>
               {tagOverlayPoints.length >= 2 && (
                 <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
@@ -1066,13 +1028,13 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                     <line x1="0" y1="3" x2="16" y2="3" stroke="#84CC16" strokeWidth="2" strokeDasharray="4 2" />
                   </svg>
                   <span style={{ fontSize: "10px", color: "#84CC16", fontWeight: 600 }}>
-                    🥗 {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)} €/j
+                    🥗 {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)} {curSym()}/j
                   </span>
                 </div>
               )}
             </div>
-            <div style={{ fontSize: "10px", color: "#C7C7CC" }}>
-              Moy. 30j · par semaine
+            <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
+              {t("home.avg30week")}
             </div>
           </div>
         </div>
@@ -1082,50 +1044,50 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
       {(currentMonthSpending != null || tagStatsLoading) && (
         <section style={{ padding: "0 16px 12px" }}>
           <div style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: "16px",
             padding: "16px",
-            border: "1px solid #E5E5EA",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+            border: "1px solid var(--border-color)",
+            boxShadow: "var(--shadow-md)",
           }}>
             {/* Titre */}
-            <div style={{ fontSize: "11px", color: "#8E8E93", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "14px" }}>
-              📅 Ce mois — {currentMonthLabel}
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "14px" }}>
+              {t("home.thisMonth", { label: currentMonthLabel })}
             </div>
 
             {/* 3 colonnes : Dépensé | Projection | Objectif */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px", marginBottom: "14px" }}>
               {/* Dépensé */}
               <div>
-                <div style={{ fontSize: "10px", color: "#8E8E93", marginBottom: "3px" }}>Dépensé</div>
-                <div style={{ fontSize: "20px", fontWeight: "800", color: "#1C1C1E", letterSpacing: "-0.5px" }}>
-                  {currentMonthSpending != null ? `${formatMoney(currentMonthSpending)}€` : "—"}
+                <div style={{ fontSize: "10px", color: "var(--text-muted)", marginBottom: "3px" }}>{t("home.spent")}</div>
+                <div style={{ fontSize: "20px", fontWeight: "800", color: "var(--text-main)", letterSpacing: "-0.5px" }}>
+                  {currentMonthSpending != null ? `${formatMoney(currentMonthSpending)}${curSym()}` : "—"}
                 </div>
               </div>
 
               {/* Projection */}
               <div>
-                <div style={{ fontSize: "10px", color: "#8E8E93", marginBottom: "3px" }}>Projection</div>
+                <div style={{ fontSize: "10px", color: "var(--text-muted)", marginBottom: "3px" }}>{t("home.projection")}</div>
                 <div style={{
                   fontSize: "20px", fontWeight: "800", letterSpacing: "-0.5px",
                   color: monthlyBudget && projectedMonthSpending != null
                     ? projectedMonthSpending > monthlyBudget ? "#FF3B30"
                     : projectedMonthSpending > monthlyBudget * 0.85 ? "#FF9500"
-                    : "#1C1C1E"
-                    : "#1C1C1E",
+                    : "var(--text-main)"
+                    : "var(--text-main)",
                 }}>
-                  {projectedMonthSpending != null ? `≈ ${formatMoney(projectedMonthSpending)}€` : "—"}
+                  {projectedMonthSpending != null ? `≈ ${formatMoney(projectedMonthSpending)}${curSym()}` : "—"}
                 </div>
               </div>
 
               {/* Objectif (éditable) */}
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: "4px", marginBottom: "3px" }}>
-                  <span style={{ fontSize: "10px", color: "#8E8E93" }}>Objectif</span>
+                  <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{t("home.goal")}</span>
                   <button
                     onClick={() => { setEditingBudget(true); setBudgetInput(monthlyBudget ? String(monthlyBudget) : ""); }}
                     style={{ background: "none", border: "none", padding: "0", cursor: "pointer", fontSize: "11px", lineHeight: 1 }}
-                    title="Modifier l'objectif"
+                    title={t("home.editGoal")}
                   >✏️</button>
                 </div>
                 {editingBudget ? (
@@ -1136,15 +1098,15 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                     onBlur={handleSaveBudget}
                     onKeyDown={e => { if (e.key === "Enter") handleSaveBudget(); if (e.key === "Escape") { setEditingBudget(false); setBudgetInput(""); } }}
                     autoFocus
-                    placeholder="ex: 2000"
-                    style={{ width: "100%", fontSize: "17px", fontWeight: "800", border: "none", borderBottom: "2px solid #007AFF", background: "transparent", outline: "none", color: "#1C1C1E" }}
+                    placeholder={t("home.goalPlaceholder")}
+                    style={{ width: "100%", fontSize: "17px", fontWeight: "800", border: "none", borderBottom: "2px solid #007AFF", background: "transparent", outline: "none", color: "var(--text-main)" }}
                   />
                 ) : (
                   <div
-                    style={{ fontSize: "20px", fontWeight: "800", color: monthlyBudget ? "#1C1C1E" : "#C7C7CC", letterSpacing: "-0.5px", cursor: "pointer" }}
+                    style={{ fontSize: "20px", fontWeight: "800", color: monthlyBudget ? "var(--text-main)" : "var(--text-light)", letterSpacing: "-0.5px", cursor: "pointer" }}
                     onClick={() => { setEditingBudget(true); setBudgetInput(monthlyBudget ? String(monthlyBudget) : ""); }}
                   >
-                    {monthlyBudget ? `${formatMoney(monthlyBudget)}€` : "Fixer →"}
+                    {monthlyBudget ? `${formatMoney(monthlyBudget)}${curSym()}` : t("home.setGoal")}
                   </div>
                 )}
               </div>
@@ -1153,7 +1115,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             {/* Jauge budget */}
             {monthlyBudget != null && budgetPercent != null && (
               <div style={{ marginBottom: "16px" }}>
-                <div style={{ background: "#F2F2F7", borderRadius: "6px", height: "8px", overflow: "hidden" }}>
+                <div style={{ background: "var(--bg-body)", borderRadius: "6px", height: "8px", overflow: "hidden" }}>
                   <div style={{
                     width: `${Math.min(budgetPercent, 100)}%`,
                     height: "100%",
@@ -1167,10 +1129,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                   color: budgetPercent < 70 ? "#34C759" : budgetPercent < 90 ? "#FF9500" : "#FF3B30",
                 }}>
                   {budgetPercent.toFixed(0)}%{" "}
-                  {budgetPercent < 70 ? "✓ Bien" : budgetPercent < 90 ? "⚠️ Attention" : "🚨 Dépassé"}
+                  {budgetPercent < 70 ? t("home.budgetGood") : budgetPercent < 90 ? t("home.budgetWarn") : t("home.budgetOver")}
                   {projectedMonthSpending != null && monthlyBudget && projectedMonthSpending > monthlyBudget && (
                     <span style={{ color: "#FF3B30", marginLeft: "6px" }}>
-                      · Projection : +{formatMoney(projectedMonthSpending - monthlyBudget)}€ de dépassement
+                      {t("home.projOver", { amount: `${formatMoney(projectedMonthSpending - monthlyBudget)}${curSym()}` })}
                     </span>
                   )}
                 </div>
@@ -1178,8 +1140,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             )}
 
             {/* Séparateur tags — toujours visible */}
-            <div style={{ fontSize: "10px", color: "#AEAEB2", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px", marginTop: "4px" }}>
-              Par catégorie
+            <div style={{ fontSize: "10px", color: "var(--text-light)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "10px", marginTop: "4px" }}>
+              {t("home.byCategory")}
             </div>
 
             {tagStatsLoading ? (
@@ -1196,9 +1158,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                 ))}
               </div>
             ) : topTags.length === 0 ? (
-              <div style={{ fontSize: "12px", color: "#AEAEB2", padding: "8px 0", textAlign: "center" }}>
-                🏷️ Aucune transaction tagguée ce mois<br />
-                <span style={{ fontSize: "11px" }}>Ajoutez des tags lors de l'import pour voir les catégories</span>
+              <div style={{ fontSize: "12px", color: "var(--text-light)", padding: "8px 0", textAlign: "center" }}>
+                {t("home.noTagged")}<br />
+                <span style={{ fontSize: "11px" }}>{t("home.noTaggedHint")}</span>
               </div>
             ) : (
               <>
@@ -1218,8 +1180,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                       {/* Ligne principale */}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <span style={{ fontSize: "15px", flexShrink: 0, width: "20px", textAlign: "center" }}>{tag.emoji}</span>
-                        <span style={{ fontSize: "12px", color: "#3C3C43", flex: "0 0 72px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tag.tagName}</span>
-                        <div style={{ flex: 1, background: "#F2F2F7", borderRadius: "4px", height: "6px", overflow: "hidden" }}>
+                        <span style={{ fontSize: "12px", color: "var(--text-main)", flex: "0 0 72px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tag.tagName}</span>
+                        <div style={{ flex: 1, background: "var(--bg-body)", borderRadius: "4px", height: "6px", overflow: "hidden" }}>
                           <div style={{
                             width: `${(tag.totalAmount / barMax) * 100}%`,
                             height: "100%",
@@ -1227,15 +1189,15 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                             background: tag.color || "#007AFF",
                           }} />
                         </div>
-                        <span style={{ fontSize: "12px", color: "#8E8E93", flexShrink: 0, minWidth: "48px", textAlign: "right" }}>{formatMoney(tag.totalAmount)}€</span>
+                        <span style={{ fontSize: "12px", color: "var(--text-muted)", flexShrink: 0, minWidth: "48px", textAlign: "right" }}>{formatMoney(tag.totalAmount)}{curSym()}</span>
                         {/* Bouton budget */}
                         {!isEditingThis && (
                           <button
                             onClick={() => { setEditingTagBudget(tag.tagId); setTagBudgetInput(budget ? String(budget) : ""); }}
-                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: "11px", color: budget ? barColor : "#C7C7CC", flexShrink: 0, padding: "0 2px", lineHeight: 1 }}
-                            title={budget ? `Budget : ${formatMoney(budget)}€` : "Fixer un budget"}
+                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: "11px", color: budget ? barColor : "var(--text-light)", flexShrink: 0, padding: "0 2px", lineHeight: 1 }}
+                            title={budget ? t("home.budgetTitle", { amount: `${formatMoney(budget)}${curSym()}` }) : t("home.setBudget")}
                           >
-                            {budget ? `/${formatMoney(budget)}€` : "+"}
+                            {budget ? `/${formatMoney(budget)}${curSym()}` : "+"}
                           </button>
                         )}
                         {isEditingThis && (
@@ -1249,8 +1211,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                               if (e.key === "Escape") { setEditingTagBudget(null); setTagBudgetInput(""); }
                             }}
                             autoFocus
-                            placeholder="budget"
-                            style={{ width: "60px", fontSize: "11px", border: "none", borderBottom: "1px solid #007AFF", background: "transparent", outline: "none", color: "#1C1C1E", textAlign: "right" }}
+                            placeholder={t("home.budgetPlaceholder")}
+                            style={{ width: "60px", fontSize: "11px", border: "none", borderBottom: "1px solid #007AFF", background: "transparent", outline: "none", color: "var(--text-main)", textAlign: "right" }}
                           />
                         )}
                       </div>
@@ -1258,7 +1220,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                       {/* Mini-jauge budget si défini */}
                       {budget != null && budgetPct != null && (
                         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "3px", paddingLeft: "28px" }}>
-                          <div style={{ flex: 1, background: "#F2F2F7", borderRadius: "3px", height: "3px", overflow: "hidden" }}>
+                          <div style={{ flex: 1, background: "var(--bg-body)", borderRadius: "3px", height: "3px", overflow: "hidden" }}>
                             <div style={{
                               width: `${Math.min(budgetPct, 100)}%`,
                               height: "100%",
@@ -1280,8 +1242,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                   );
                 })}
                 {monthlyTagStats.length > 5 && (
-                  <div style={{ fontSize: "11px", color: "#AEAEB2", textAlign: "center", marginTop: "4px" }}>
-                    +{monthlyTagStats.length - 5} autres catégories
+                  <div style={{ fontSize: "11px", color: "var(--text-light)", textAlign: "center", marginTop: "4px" }}>
+                    {t("home.moreCategories", { n: monthlyTagStats.length - 5 })}
                   </div>
                 )}
               </>
@@ -1294,13 +1256,13 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
       {allTransactionsForChart.length > 0 && (
         <section style={{ padding: "0 16px 12px" }}>
           <div style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: "16px",
             padding: "16px",
-            border: "1px solid #E5E5EA",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+            border: "1px solid var(--border-color)",
+            boxShadow: "var(--shadow-md)",
           }}>
-            <div style={{ fontSize: "11px", color: "#8E8E93", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "14px" }}>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "14px" }}>
               🏺 Jars — {currentMonthLabel}
             </div>
 
@@ -1324,10 +1286,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                     <span style={{ fontSize: "15px", width: "20px", textAlign: "center", flexShrink: 0, opacity: spent === 0 ? 0.5 : 1 }}>
                       {JAR_EMOJIS[jarKey]}
                     </span>
-                    <span style={{ fontSize: "12px", fontWeight: "700", color: spent === 0 ? "#AEAEB2" : "#3C3C43", flex: "0 0 44px" }}>
+                    <span style={{ fontSize: "12px", fontWeight: "700", color: spent === 0 ? "var(--text-light)" : "var(--text-main)", flex: "0 0 44px" }}>
                       {jarKey}
                     </span>
-                    <div style={{ flex: 1, background: "#F2F2F7", borderRadius: "4px", height: "6px", overflow: "hidden" }}>
+                    <div style={{ flex: 1, background: "var(--bg-body)", borderRadius: "4px", height: "6px", overflow: "hidden" }}>
                       <div style={{
                         width: allocation
                           ? `${Math.min((projected / allocation) * 100, 100)}%`
@@ -1341,31 +1303,31 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                     <div style={{ textAlign: "right", flexShrink: 0, minWidth: "80px" }}>
                       {spent > 0 ? (
                         <>
-                          <div style={{ fontSize: "12px", color: "#8E8E93" }}>
-                            {formatMoney(spent)} €
+                          <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                            {formatMoney(spent)} {curSym()}
                             {spentPct != null && (
-                              <span style={{ color: "#AEAEB2", fontSize: "10px" }}> ({spentPct.toFixed(0)}%)</span>
+                              <span style={{ color: "var(--text-light)", fontSize: "10px" }}> ({spentPct.toFixed(0)}%)</span>
                             )}
                           </div>
                           <div style={{ fontSize: "11px", fontWeight: "700", color: barColor }}>
-                            ≈ {formatMoney(projected)} €
+                            ≈ {formatMoney(projected)} {curSym()}
                           </div>
                         </>
                       ) : (
-                        <div style={{ fontSize: "10px", color: "#AEAEB2" }}>0,00 €</div>
+                        <div style={{ fontSize: "10px", color: "var(--text-light)" }}>{formatMoney(0)} {curSym()}</div>
                       )}
                     </div>
                   </div>
                   {spent === 0 ? (
                     <div style={{ paddingLeft: "28px", marginTop: "3px" }}>
-                      <span style={{ fontSize: "10px", color: "#AEAEB2", fontStyle: "italic" }}>
+                      <span style={{ fontSize: "10px", color: "var(--text-light)", fontStyle: "italic" }}>
                         {JAR_EMPTY_COPY[jarKey]}
                       </span>
                     </div>
                   ) : allocation && (
                     <div style={{ paddingLeft: "28px", display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
-                      <span style={{ fontSize: "10px", color: "#AEAEB2" }}>
-                        alloué {formatMoney(allocation)} €
+                      <span style={{ fontSize: "10px", color: "var(--text-light)" }}>
+                        {t("home.allocated", { amount: `${formatMoney(allocation)} ${curSym()}` })}
                       </span>
                       <span style={{ fontSize: "10px", fontWeight: "700", color: barColor }}>
                         proj. {projPct!.toFixed(0)}%
@@ -1378,15 +1340,15 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             })}
 
             {/* Légende revenus du mois */}
-            <div style={{ borderTop: "1px solid #F2F2F7", paddingTop: "10px", marginTop: "4px" }}>
+            <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "10px", marginTop: "4px" }}>
               {jarMonthlyAllocations ? (
-                <div style={{ fontSize: "11px", color: "#8E8E93", textAlign: "center" }}>
-                  Basé sur {formatMoney(analytics?.trends?.revenues?.current ?? 0)} € de revenus ce mois
+                <div style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center" }}>
+                  {t("home.basedOn", { amount: `${formatMoney(analytics?.trends?.revenues?.current ?? 0)} ${curSym()}` })}
                 </div>
               ) : (
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: "12px", color: "#8E8E93", marginBottom: "8px" }}>
-                    🌱 Vos jarres s'activent dès votre premier revenu
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                    {t("home.jarsActivate")}
                   </div>
                   <button
                     type="button"
@@ -1397,7 +1359,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                       borderRadius: "12px", padding: "6px 16px", cursor: "pointer",
                     }}
                   >
-                    + Enregistrer un revenu
+                    {t("home.recordIncome")}
                   </button>
                 </div>
               )}
@@ -1410,10 +1372,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
       {subscriptions.length > 0 && (
         <section style={{ padding: "0 16px 12px" }}>
           <div style={{
-            background: "#fff",
+            background: "var(--bg-card)",
             borderRadius: "16px",
-            border: "1px solid #E5E5EA",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.07)",
+            border: "1px solid var(--border-color)",
+            boxShadow: "var(--shadow-md)",
             overflow: "hidden",
           }}>
             {/* Header cliquable */}
@@ -1425,8 +1387,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "11px", color: "#8E8E93", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  🔁 Abonnements récurrents
+                <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  {t("home.subscriptions")}
                 </span>
                 <span style={{
                   fontSize: "11px", fontWeight: "700", color: "#fff",
@@ -1440,12 +1402,12 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                 {(() => {
                   const fixedTotal = subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0);
                   return fixedTotal > 0 ? (
-                    <span style={{ fontSize: "13px", fontWeight: "700", color: "#1C1C1E" }}>
-                      {formatMoney(fixedTotal)} €/mois
+                    <span style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)" }}>
+                      {formatMoney(fixedTotal)} {curSym()}{t("home.perMonth")}
                     </span>
                   ) : null;
                 })()}
-                <span style={{ fontSize: "16px", color: "#AEAEB2", transform: showSubscriptions ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                <span style={{ fontSize: "16px", color: "var(--text-light)", transform: showSubscriptions ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
                   ▾
                 </span>
               </div>
@@ -1457,27 +1419,27 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                 {/* Section Fixes */}
                 {subscriptions.some(s => s.isFixed) && (
                   <>
-                    <div style={{ fontSize: "10px", color: "#AEAEB2", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-                      🔒 Montant fixe
+                    <div style={{ fontSize: "10px", color: "var(--text-light)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
+                      {t("home.fixed")}
                     </div>
                     {subscriptions.filter(s => s.isFixed).map((sub, i) => (
                       <div key={i} style={{
                         display: "flex", alignItems: "center", gap: "8px",
                         padding: "7px 0",
-                        borderBottom: "1px solid #F2F2F7",
+                        borderBottom: "1px solid var(--border-color)",
                       }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "13px", fontWeight: "600", color: "#1C1C1E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {sub.description}
                           </div>
-                          <div style={{ fontSize: "11px", color: "#8E8E93", marginTop: "1px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", gap: "4px" }}>
                             {sub.account}
                             {sub.freq ? (
                               <span style={{ background: "#007AFF18", color: "#007AFF", borderRadius: "6px", padding: "1px 5px", fontWeight: "600" }}>
                                 {FREQ_LABEL[sub.freq]}
                               </span>
                             ) : (
-                              <span>· {sub.uniqueMonths} mois</span>
+                              <span>{t("home.months", { n: sub.uniqueMonths })}</span>
                             )}
                           </div>
                         </div>
@@ -1488,7 +1450,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                             return (
                               <div key={k} style={{
                                 width: "7px", height: "7px", borderRadius: "50%",
-                                background: filled ? "#34C759" : "#E5E5EA",
+                                background: filled ? "#34C759" : "var(--border-color)",
                               }} />
                             );
                           })}
@@ -1496,16 +1458,16 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                         <div style={{ textAlign: "right", flexShrink: 0, minWidth: "80px" }}>
                           {sub.freq && sub.freq !== "mensuel" ? (
                             <>
-                              <div style={{ fontSize: "12px", fontWeight: "800", color: "#1C1C1E" }}>
-                                {formatMoney(sub.monthlyAmount)} €<span style={{ fontSize: "9px", color: "#8E8E93", fontWeight: "500" }}>/mois</span>
+                              <div style={{ fontSize: "12px", fontWeight: "800", color: "var(--text-main)" }}>
+                                {formatMoney(sub.monthlyAmount)} {curSym()}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
                               </div>
-                              <div style={{ fontSize: "10px", color: "#AEAEB2" }}>
-                                {formatMoney(sub.avgAmount)} €/{sub.freq === "annuel" ? "an" : sub.freq === "semestriel" ? "sem." : "trim."}
+                              <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
+                                {formatMoney(sub.avgAmount)} {curSym()}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
                               </div>
                             </>
                           ) : (
-                            <div style={{ fontSize: "14px", fontWeight: "700", color: "#1C1C1E" }}>
-                              {formatMoney(sub.avgAmount)} €
+                            <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>
+                              {formatMoney(sub.avgAmount)} {curSym()}
                             </div>
                           )}
                         </div>
@@ -1517,27 +1479,27 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                 {/* Section Variables */}
                 {subscriptions.some(s => !s.isFixed) && (
                   <>
-                    <div style={{ fontSize: "10px", color: "#AEAEB2", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px", marginTop: subscriptions.some(s => s.isFixed) ? "14px" : "0" }}>
-                      📊 Montant variable
+                    <div style={{ fontSize: "10px", color: "var(--text-light)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px", marginTop: subscriptions.some(s => s.isFixed) ? "14px" : "0" }}>
+                      {t("home.variable")}
                     </div>
                     {subscriptions.filter(s => !s.isFixed).map((sub, i) => (
                       <div key={i} style={{
                         display: "flex", alignItems: "center", gap: "8px",
                         padding: "7px 0",
-                        borderBottom: "1px solid #F2F2F7",
+                        borderBottom: "1px solid var(--border-color)",
                       }}>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "13px", fontWeight: "600", color: "#1C1C1E", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {sub.description}
                           </div>
-                          <div style={{ fontSize: "11px", color: "#8E8E93", marginTop: "1px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", gap: "4px" }}>
                             {sub.account}
                             {sub.freq ? (
                               <span style={{ background: "#FF950018", color: "#FF9500", borderRadius: "6px", padding: "1px 5px", fontWeight: "600" }}>
                                 {FREQ_LABEL[sub.freq]}
                               </span>
                             ) : (
-                              <span>· {sub.uniqueMonths} mois</span>
+                              <span>{t("home.months", { n: sub.uniqueMonths })}</span>
                             )}
                           </div>
                         </div>
@@ -1547,7 +1509,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                             return (
                               <div key={k} style={{
                                 width: "7px", height: "7px", borderRadius: "50%",
-                                background: filled ? "#FF9500" : "#E5E5EA",
+                                background: filled ? "#FF9500" : "var(--border-color)",
                               }} />
                             );
                           })}
@@ -1556,15 +1518,15 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                           {sub.freq && sub.freq !== "mensuel" ? (
                             <>
                               <div style={{ fontSize: "12px", fontWeight: "800", color: "#FF9500" }}>
-                                ~{formatMoney(sub.monthlyAmount)} €<span style={{ fontSize: "9px", color: "#8E8E93", fontWeight: "500" }}>/mois</span>
+                                ~{formatMoney(sub.monthlyAmount)} {curSym()}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
                               </div>
-                              <div style={{ fontSize: "10px", color: "#AEAEB2" }}>
-                                {formatMoney(sub.avgAmount)} €/{sub.freq === "annuel" ? "an" : sub.freq === "semestriel" ? "sem." : "trim."}
+                              <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
+                                {formatMoney(sub.avgAmount)} {curSym()}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
                               </div>
                             </>
                           ) : (
                             <div style={{ fontSize: "14px", fontWeight: "700", color: "#FF9500" }}>
-                              ~{formatMoney(sub.avgAmount)} €
+                              ~{formatMoney(sub.avgAmount)} {curSym()}
                             </div>
                           )}
                         </div>
@@ -1574,17 +1536,17 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                 )}
 
                 {/* Récap total */}
-                <div style={{ marginTop: "12px", padding: "10px", background: "#F8F8FA", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ marginTop: "12px", padding: "10px", background: "var(--bg-body)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div style={{ fontSize: "11px", color: "#8E8E93" }}>Total fixes /mois</div>
-                    <div style={{ fontSize: "16px", fontWeight: "800", color: "#1C1C1E" }}>
-                      {formatMoney(subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))} €
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("home.totalFixed")}</div>
+                    <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--text-main)" }}>
+                      {formatMoney(subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))} {curSym()}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "11px", color: "#8E8E93" }}>Total variables /mois</div>
+                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("home.totalVariable")}</div>
                     <div style={{ fontSize: "16px", fontWeight: "800", color: "#FF9500" }}>
-                      ~{formatMoney(subscriptions.filter(s => !s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))} €
+                      ~{formatMoney(subscriptions.filter(s => !s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))} {curSym()}
                     </div>
                   </div>
                 </div>
@@ -1602,7 +1564,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             className="jars-v2-detail-btn"
             onClick={() => setShowJarsDetail(true)}
           >
-            📊 Voir le détail des jarres et du bilan
+            {t("home.seeDetails")}
           </button>
         </section>
       ) : (
@@ -1610,7 +1572,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           {loading && !totals && (
             <div className="jars-v2-loading-inline">
               <div className="spinner"></div>
-              <p>Chargement des données…</p>
+              <p>{t("home.loadingData")}</p>
             </div>
           )}
 
@@ -1618,7 +1580,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
             <div className="jars-v2-error-inline">
               <p>❌ {error}</p>
               <button onClick={loadTotals} className="btn-retry">
-                Réessayer
+                {t("home.retry")}
               </button>
             </div>
           )}
@@ -1626,12 +1588,12 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
           {totals && (
             <>
               <section className="jars-v2-summary">
-                <h3 className="jars-v2-summary-title">📊 Bilan Rapide</h3>
+                <h3 className="jars-v2-summary-title">{t("home.quickSummary")}</h3>
                 <div className="jars-v2-summary-grid">
                   {/* 💎 Liquidités disponibles — dans le bilan */}
                   <div className="summary-item summary-networth" style={{ gridColumn: "1 / -1" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="summary-label">💎 Liquidités disponibles</span>
+                      <span className="summary-label">{t("home.cash")}</span>
                       <button
                         onClick={() => {
                           setNetWorthLoading(true);
@@ -1641,7 +1603,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                             .finally(() => setNetWorthLoading(false));
                         }}
                         style={{ background: "none", border: "none", cursor: "pointer", fontSize: "14px", opacity: 0.6, padding: "0 4px" }}
-                        title="Rafraîchir"
+                        title={t("home.refresh")}
                       >
                         🔄
                       </button>
@@ -1650,24 +1612,24 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                       {netWorthLoading
                         ? <span className="skeleton skeleton-text" style={{ width: 90, display: "inline-block" }}>&nbsp;</span>
                         : netWorth !== null
-                          ? `${netWorth.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
-                          : <span style={{ opacity: 0.4, fontSize: "14px" }}>Indisponible</span>
+                          ? `${netWorth.toLocaleString(localeTag(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${curSym()}`
+                          : <span style={{ opacity: 0.4, fontSize: "14px" }}>{t("home.unavailable")}</span>
                       }
                     </span>
                   </div>
 
                   <div className="summary-item summary-revenues">
-                    <span className="summary-label">💰 Revenus</span>
-                    <span className="summary-value">{formatMoney(totalRevenues)}€</span>
+                    <span className="summary-label">{t("home.income")}</span>
+                    <span className="summary-value">{formatMoney(totalRevenues)}{curSym()}</span>
                   </div>
                   <div className="summary-item summary-spendings">
-                    <span className="summary-label">💸 Dépenses</span>
-                    <span className="summary-value">{formatMoney(totalSpendings)}€</span>
+                    <span className="summary-label">{t("home.spending")}</span>
+                    <span className="summary-value">{formatMoney(totalSpendings)}{curSym()}</span>
                   </div>
                   <div className="summary-item summary-balance" style={{ gridColumn: "1 / -1" }}>
-                    <span className="summary-label">⚖️ Balance</span>
+                    <span className="summary-label">{t("home.balance")}</span>
                     <span className="summary-value summary-value--highlight">
-                      {formatMoney(totalBalance)}€
+                      {formatMoney(totalBalance)}{curSym()}
                     </span>
                   </div>
                 </div>
@@ -1675,7 +1637,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
 
               <section className="jars-v2-section">
                 <div className="jars-v2-section-header">
-                  <h2 className="jars-v2-section-title">🏺 Mes Jarres</h2>
+                  <h2 className="jars-v2-section-title">{t("home.myJars")}</h2>
                 </div>
                 <div className="jars-v2-grid">
                   {jarKeys.map((key) => {
@@ -1717,7 +1679,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                                   animation: "pulse 1.5s ease-in-out infinite",
                                 }}
                               >
-                                ⚠️ Dépassé
+                                {t("home.over")}
                               </span>
                             )}
                             <span
@@ -1731,11 +1693,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                         <p className="jar-label">{JAR_LABELS[key]}</p>
                         <p className="jar-amount" style={isOverspent ? { color: "#FF3B30" } : undefined}>
                           {formatMoney(jar.net)}
-                          <span className="jar-currency">€</span>
+                          <span className="jar-currency">{curSym()}</span>
                         </p>
                         <div className="jar-progress-wrapper">
                           <div className="jar-progress-info">
-                            <span className="jar-progress-label">Dépensé</span>
+                            <span className="jar-progress-label">{t("home.spent")}</span>
                             <span
                               className="jar-progress-value"
                               style={isOverspent ? { color: "#FF3B30", fontWeight: "700" } : undefined}
@@ -1752,7 +1714,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenSpending, onOpenRevenue }
                               }}
                             />
                           </div>
-                          <p className="jar-spent-amount">{formatMoney(spent)} €</p>
+                          <p className="jar-spent-amount">{formatMoney(spent)} {curSym()}</p>
                         </div>
                       </article>
                     );

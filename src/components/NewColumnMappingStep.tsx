@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { loadTags } from "../tagsUtils";
 import { fetchColumnMappings, saveColumnMappingToSheet } from "../api";
+import { t as tr, useLang, JAR_LABELS, type TKey } from "../i18n";
 
 interface MappingOption {
   type: "empty" | "column" | "fixed";
@@ -28,6 +29,12 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
   transactionType,
   defaultSource,
 }) => {
+  useLang();
+  const colLabel = (c: string) => {
+    const k = `col.${c}` as TKey;
+    const v = tr(k);
+    return v === k ? c : v;
+  };
   // Colonnes Google Sheets selon le type
   const googleSheetColumns = transactionType === "revenue" 
     ? [
@@ -173,12 +180,12 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
   const availableTags = loadTags();
 
   const JAR_OPTIONS = [
-    { key: "NEC", label: "🏺 NEC — Nécessités" },
-    { key: "FFA", label: "🌱 FFA — Liberté Financière" },
-    { key: "LTSS", label: "🏦 LTSS — Épargne Long Terme" },
-    { key: "PLAY", label: "🎮 PLAY — Fun / Play" },
-    { key: "EDUC", label: "📚 EDUC — Éducation" },
-    { key: "GIFT", label: "🎁 GIFT — Don / Gift" },
+    { key: "NEC", label: `🏺 NEC — ${JAR_LABELS.NEC}` },
+    { key: "FFA", label: `🌱 FFA — ${JAR_LABELS.FFA}` },
+    { key: "LTSS", label: `🏦 LTSS — ${JAR_LABELS.LTSS}` },
+    { key: "PLAY", label: `🎮 PLAY — ${JAR_LABELS.PLAY}` },
+    { key: "EDUC", label: `📚 EDUC — ${JAR_LABELS.EDUC}` },
+    { key: "GIFT", label: `🎁 GIFT — ${JAR_LABELS.GIFT}` },
   ];
 
   const updateMapping = (googleColumn: string, option: MappingOption) => {
@@ -198,9 +205,9 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
   // Segmented control : sélecteur de type de mapping (Vide / Colonne / Fixe)
   const renderTypeSelector = (googleColumn: string, mapping: MappingOption) => {
     const options: { type: MappingOption["type"]; label: string }[] = [
-      { type: "empty",  label: "Vide" },
-      { type: "column", label: "Colonne" },
-      { type: "fixed",  label: "Valeur fixe" },
+      { type: "empty",  label: tr("cm.empty") },
+      { type: "column", label: tr("cm.column") },
+      { type: "fixed",  label: tr("cm.fixed") },
     ];
     return (
       <div style={{ display: "flex", background: "rgba(116,116,128,0.12)", borderRadius: 8, padding: 2 }}>
@@ -258,10 +265,10 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-main)", margin: "0 0 6px 0" }}>
-          🗂️ Configuration du mapping
+          {tr("cm.title")}
         </h2>
         <p style={{ color: "var(--text-muted)", margin: 0, fontSize: 13, lineHeight: 1.4 }}>
-          Pour chaque champ, choisissez : laisser vide, mapper une colonne du fichier, ou entrer une valeur fixe.
+          {tr("cm.intro")}
         </p>
         {restoredFromCache && defaultSource && (
           <div style={{
@@ -271,7 +278,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
             border: "1px solid rgba(52,199,89,0.3)",
             borderRadius: 20, padding: "4px 12px",
           }}>
-            ✓ Mapping {defaultSource} mémorisé
+            {tr("cm.memorized", { name: defaultSource ?? "" })}
             <button
               type="button"
               onClick={() => {
@@ -309,12 +316,12 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
               {/* Nom du champ */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-main)" }}>
-                  {googleColumn}
+                  {colLabel(googleColumn)}
                   {isRequired && <span style={{ color: "#FF3B30", marginLeft: 4 }}>*</span>}
                 </span>
                 {/* Badge statut */}
                 {mapping.type === "empty" && (
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", background: "rgba(0,0,0,0.05)", padding: "2px 8px", borderRadius: 6 }}>non mappé</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", background: "rgba(0,0,0,0.05)", padding: "2px 8px", borderRadius: 6 }}>{tr("cm.unmapped")}</span>
                 )}
                 {mapping.type === "column" && mapping.value && (
                   <span style={{ fontSize: 11, color: "#007AFF", background: "#EAF3FF", padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>→ {mapping.value}</span>
@@ -339,7 +346,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
                   onChange={e => updateMapping(googleColumn, { type: "column", value: e.target.value })}
                   style={inputStyle}
                 >
-                  <option value="">-- Sélectionnez une colonne --</option>
+                  <option value="">{tr("cm.pickColumn")}</option>
                   {detectedColumns.map(col => (
                     <option key={col} value={col}>{col}</option>
                   ))}
@@ -353,7 +360,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
                   onChange={e => updateMapping(googleColumn, { type: "fixed", value: e.target.value })}
                   style={inputStyle}
                 >
-                  <option value="">-- Choisir une jarre --</option>
+                  <option value="">{tr("cm.pickJar")}</option>
                   {JAR_OPTIONS.map(j => (
                     <option key={j.key} value={j.key}>{j.label}</option>
                   ))}
@@ -401,10 +408,10 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
                   value={mapping.value || ""}
                   onChange={e => updateMapping(googleColumn, { type: "fixed", value: e.target.value })}
                   placeholder={
-                    googleColumn === "Source"      ? "Ex: LGMCorp Fabien"
-                    : googleColumn === "Valeur"    ? "Ex: USD"
-                    : googleColumn === "Type"      ? "Ex: Passive Income"
-                    : "Entrez une valeur…"
+                    googleColumn === "Source"      ? tr("cm.exSource")
+                    : googleColumn === "Valeur"    ? tr("cm.exValue")
+                    : googleColumn === "Type"      ? tr("cm.exType")
+                    : tr("cm.enterValue")
                   }
                   style={inputStyle}
                 />
@@ -421,7 +428,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
         border: "1px solid rgba(255,149,0,0.3)",
         borderRadius: 12, fontSize: 13, color: "var(--text-main)",
       }}>
-        <strong>⚠️ Obligatoires :</strong> Date et Montant doivent être mappés.
+        <strong>{tr("cm.requiredLabel")}</strong>{tr("cm.requiredText")}
       </div>
 
       {/* Boutons */}
@@ -435,7 +442,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
             fontSize: 15, fontWeight: 600, cursor: "pointer",
           }}
         >
-          ← Retour
+          {tr("cm.back")}
         </button>
         <button
           onClick={() => {
@@ -443,7 +450,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
             const montantMapping = getMappingForColumn("Montant");
             if (!(dateMapping.type !== "empty" && dateMapping.value) ||
                 !(montantMapping.type !== "empty" && montantMapping.value)) {
-              alert("⚠️ Les champs Date et Montant sont obligatoires !");
+              alert(tr("cm.requiredAlert"));
               return;
             }
             try { localStorage.setItem(MAPPING_CACHE_KEY, JSON.stringify(mappings)); } catch {}
@@ -457,7 +464,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
             boxShadow: "0 4px 12px rgba(0,122,255,0.3)",
           }}
         >
-          Continuer →
+          {tr("cm.continue")}
         </button>
       </div>
     </div>

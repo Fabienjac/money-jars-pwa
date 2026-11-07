@@ -8,6 +8,8 @@ import { tagsToString, loadTags } from "../tagsUtils";
 import { loadPreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 import { loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
 import { useExchangeRate } from "../hooks/useExchangeRate";
+import { useBaseCurrency, formatMoney } from "../baseCurrency";
+import { useT, t as tr, localeTag } from "../i18n";
 import {
   Supplier,
   buildSuppliers,
@@ -47,18 +49,21 @@ function writeLS(key: string, value: unknown) {
 }
 
 function formatDateLabel(iso: string): string {
-  if (iso === todayISO()) return "Aujourd'hui";
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+  if (iso === todayISO()) return tr("qsf.today");
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Intl.DateTimeFormat(localeTag(), { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(y, m - 1, d));
 }
 
 interface QuickSpendingFormProps {
   onClose: () => void;
   onSuccess?: () => void;
   prefill?: any | null;
+  onVoice?: () => void;
 }
 
-const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess, prefill }) => {
+const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSuccess, prefill, onVoice }) => {
+  const t = useT();
+  const base = useBaseCurrency();
   const [date, setDate] = useState<string>(todayISO());
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState<string>(() => loadLastExpenseCurrency());
@@ -66,7 +71,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const backspaceLongPressRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const supplierInputRef = useRef<HTMLInputElement>(null);
   const [jar, setJar] = useState<JarKey>(() => readLS<JarKey>(LAST_JAR_KEY, "NEC"));
-  const [account, setAccount] = useState(() => localStorage.getItem("mjars:defaultSpendingAccount") || "Cash");
+  const [account, setAccount] = useState(() => localStorage.getItem("mjars:defaultSpendingAccount") || "");
   const [supplier, setSupplier] = useState("");
   const [picked, setPicked] = useState<Supplier | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>(() => readLS<string[]>(LAST_TAGS_KEY, []));
@@ -76,7 +81,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>(suppliersCache ?? []);
 
-  const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date);
+  const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date, base);
 
   const [accounts, setAccountsState] = useState(loadAccounts());
 
@@ -175,16 +180,16 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const handleSubmit = async () => {
     const name = search.exact?.name ?? cleanSupplierName(supplier);
     if (!name) {
-      setMessage("❌ Fournisseur requis");
+      setMessage(t("qsf.errSupplier"));
       return;
     }
     const raw = parseFloat(amount.replace(",", "."));
     if (!amount || !isFinite(raw) || raw <= 0) {
-      setMessage("❌ Montant requis");
+      setMessage(t("qsf.errAmount"));
       return;
     }
-    if (currency !== "EUR" && !rate) {
-      setMessage("❌ Taux de change indisponible");
+    if (currency !== base && !rate) {
+      setMessage(t("qsf.errRate"));
       return;
     }
 
@@ -193,8 +198,8 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
 
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
       const originalAmount = parseFloat(amount);
-      const eurAmount = currency === "EUR" ? originalAmount : originalAmount * rate!;
-      const finalDescription = currency !== "EUR"
+      const eurAmount = currency === base ? originalAmount : originalAmount * rate!;
+      const finalDescription = currency !== base
         ? `${name} (${originalAmount} ${currency})`
         : name;
 
@@ -214,7 +219,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
       updateStreak();
       window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
 
-      setMessage("✅ Enregistré !");
+      setMessage(t("qsf.saved"));
 
       setTimeout(() => {
         onSuccess?.();
@@ -223,7 +228,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
 
     } catch (error: any) {
       console.error("Erreur:", error);
-      setMessage(`❌ ${error.message || "Erreur"}`);
+      setMessage(`❌ ${error.message || t("qsf.errorFallback")}`);
     } finally {
       setLoading(false);
     }
@@ -240,11 +245,16 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     <div className="qsf-screen">
       {/* Header */}
       <div className="qsf-header">
-        <button type="button" className="qsf-close" onClick={onClose} aria-label="Fermer">✕</button>
-        <h2 className="qsf-title">Dépense</h2>
+        <button type="button" className="qsf-close" onClick={onClose} aria-label={t("qsf.close")}>✕</button>
+        <h2 className="qsf-title">{t("qsf.title")}</h2>
+        {onVoice && (
+          <button type="button" className="qsf-voice" onClick={onVoice} aria-label={t("qsf.voice")} title={t("qsf.voice")}>
+            🎙️
+          </button>
+        )}
         <button
           type="button"
-          className={`qsf-currency-pill${currency !== "EUR" ? " qsf-currency-pill--foreign" : ""}`}
+          className={`qsf-currency-pill${currency !== base ? " qsf-currency-pill--foreign" : ""}`}
           onClick={() => setCurrencyOpen(o => !o)}
           aria-expanded={currencyOpen}
         >
@@ -269,7 +279,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
             ref={supplierInputRef}
             type="text"
             className="qsf-supplier-input"
-            placeholder="Fournisseur (magasin, enseigne…)"
+            placeholder={t("qsf.supplierPlaceholder")}
             value={supplier}
             autoComplete="off"
             autoCapitalize="words"
@@ -278,7 +288,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
           />
           {supplier && (
-            <button type="button" className="qsf-supplier-clear" onClick={clearSupplier} aria-label="Effacer">✕</button>
+            <button type="button" className="qsf-supplier-clear" onClick={clearSupplier} aria-label={t("qsf.clear")}>✕</button>
           )}
         </div>
 
@@ -294,13 +304,13 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
             </button>
           ))}
           {!typing && frequent.length === 0 && (
-            <span className="qsf-chips-hint">Tes fournisseurs fréquents apparaîtront ici</span>
+            <span className="qsf-chips-hint">{t("qsf.frequentHint")}</span>
           )}
           {typing && (
             <>
               {search.didYouMean && (
                 <button type="button" className="qsf-chip qsf-chip--suggest" onClick={() => applySupplier(search.didYouMean!)}>
-                  Vouliez-vous dire « {search.didYouMean.name} » ?
+                  {t("qsf.didYouMean", { name: search.didYouMean.name })}
                 </button>
               )}
               {search.matches.map((s) => (
@@ -309,7 +319,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
                 </button>
               ))}
               {!search.exact && (
-                <span className="qsf-chips-hint">Nouveau : « {cleanSupplierName(supplier)} »</span>
+                <span className="qsf-chips-hint">{t("qsf.newSupplier", { name: cleanSupplierName(supplier) })}</span>
               )}
             </>
           )}
@@ -322,15 +332,15 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           <span className={`qsf-amount-number${amount ? "" : " qsf-amount-number--empty"}`}>{amount || "0"}</span>
           <span className="qsf-amount-unit">{currency}</span>
         </div>
-        {currency !== "EUR" && amount && parseFloat(amount) > 0 ? (
+        {currency !== base && amount && parseFloat(amount) > 0 ? (
           <div className="qsf-rate-hint">
             {rateLoading && <span>⏳</span>}
-            {!rateLoading && rate && <span>≈ {(parseFloat(amount) * rate).toFixed(2)} €</span>}
+            {!rateLoading && rate && <span>≈ {formatMoney(parseFloat(amount) * rate, base)}</span>}
             {!rateLoading && rateError && <span className="qsf-rate-error">⚠️ {rateError}</span>}
           </div>
-        ) : !amount && picked && currency === "EUR" ? (
+        ) : !amount && picked && currency === base ? (
           <button type="button" className="qsf-last-amount" onClick={() => setAmount(String(picked.lastAmount))}>
-            Dernier : {picked.lastAmount.toFixed(2)} €
+            {t("qsf.last", { amount: formatMoney(picked.lastAmount, base) })}
           </button>
         ) : (
           <div className="qsf-rate-hint" />
@@ -384,10 +394,10 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
             <span className="qsf-summary-text">
               💳 {account} · 📅 {formatDateLabel(date)}
             </span>
-            <span className="qsf-summary-edit">{detailsOpen ? "Fermer" : "Modifier"}</span>
+            <span className="qsf-summary-edit">{detailsOpen ? t("qsf.close") : t("qsf.edit")}</span>
           </span>
           <span className="qsf-summary-tags">
-            {selectedTagObjects.length === 0 && <span className="qsf-summary-notag">Aucun tag</span>}
+            {selectedTagObjects.length === 0 && <span className="qsf-summary-notag">{t("qsf.noTag")}</span>}
             {selectedTagObjects.map(t => (
               <span key={t.id} className="qsf-summary-tag">{t.emoji} {t.name}</span>
             ))}
@@ -424,7 +434,6 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
             )}
 
             <label className="qsf-field">
-              <span className="qsf-field-icon">📅</span>
               <input
                 type="date"
                 className="qsf-input"
@@ -449,7 +458,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           onClick={handleSubmit}
           disabled={!canSubmit}
         >
-          {loading ? "⏳ Enregistrement…" : "✓ Enregistrer"}
+          {loading ? t("qsf.saving") : t("qsf.save")}
         </button>
       </div>
     </div>

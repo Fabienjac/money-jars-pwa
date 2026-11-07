@@ -1,6 +1,7 @@
 // src/revenueAccountsUtils.ts
 import { RevenueAccount } from "./types";
 
+import { t } from "./i18n";
 const REVENUE_ACCOUNTS_KEY = "mjars:revenueAccounts";
 
 /**
@@ -37,9 +38,9 @@ export function saveRevenueAccounts(accounts: RevenueAccount[]): void {
  */
 function getDefaultRevenueAccounts(): RevenueAccount[] {
   return [
-    { id: "rev_1", name: "Binance", icon: "🪙", type: "Crypto" },
-    { id: "rev_2", name: "Upwork", icon: "💼", type: "Freelance" },
-    { id: "rev_3", name: "Dtsmoney", icon: "💰", type: "Passive" },
-    { id: "rev_4", name: "Autre", icon: "📊", type: "Autre" },
+    { id: "rev_1", name: t("default.rev.salary"), icon: "💼", type: t("default.revtype.salary") },
+    { id: "rev_2", name: t("default.rev.freelance"), icon: "🧑‍💻", type: t("default.revtype.freelance") },
+    { id: "rev_3", name: t("default.rev.investments"), icon: "📈", type: t("default.revtype.passive") },
+    { id: "rev_4", name: t("default.rev.other"), icon: "📊", type: t("default.revtype.other") },
   ];
 }

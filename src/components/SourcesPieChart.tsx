@@ -2,6 +2,7 @@
 import React from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 export interface SourceData {
   name: string;
   value: number;
@@ -84,7 +85,7 @@ export const SourcesPieChart: React.FC<SourcesPieChartProps> = ({
               color: "var(--text-muted)",
             }}
           >
-            {data.value.toFixed(2)} €
+            {data.value.toFixed(2)} {curSym()}
           </p>
         </div>
       );

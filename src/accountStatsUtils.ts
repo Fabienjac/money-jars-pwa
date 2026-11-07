@@ -5,12 +5,15 @@ import type { AdvancedFilterState } from "./components/AdvancedTagFilters";
 import { matchesPeriodFilter } from "./advancedTagFiltersUtils";
 import type { TagStat } from "./tagStatsUtils";
 import { calculateTagStats } from "./tagStatsUtils";
+import { parseRevenueValue } from "./baseCurrency";
 
 /**
  * Convertit un revenu en montant EUR (même logique que l'Apps Script)
  */
 export function revenueToEur(r: SearchRevenueResult): number {
   const amount = Number(r.amount) || 0;
+  // Nouveaux revenus (value = "1000 USD") : amount est déjà dans la devise de référence
+  if (parseRevenueValue(r.value).converted) return amount;
   const value = String(r.value || "USD").trim();
   const cryptoQty = Number(r.cryptoQuantity) || 0;
   const rate = Number(r.rate) || 0;

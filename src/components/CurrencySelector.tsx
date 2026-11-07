@@ -1,3 +1,4 @@
+import { useT } from "../i18n";
 import React, { useState, useRef, useEffect } from "react";
 import { ALL_CURRENCIES, getCurrencyInfo } from "../currencyUtils";
 
@@ -8,6 +9,7 @@ interface CurrencySelectorProps {
 }
 
 const CurrencySelector: React.FC<CurrencySelectorProps> = ({ value, preferred, onChange }) => {
+  const t = useT();
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLDivElement>(null);
@@ -56,10 +58,10 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({ value, preferred, o
           type="button"
           className={`currency-preferred-btn ${!preferred.includes(value) ? "currency-preferred-btn--active" : ""}`}
           onClick={() => setSearchOpen((v) => !v)}
-          title="Autre devise"
+          title={t("cur.otherTitle")}
         >
           <span className="currency-flag">🔍</span>
-          <span className="currency-code">{!preferred.includes(value) ? current.code : "Autre"}</span>
+          <span className="currency-code">{!preferred.includes(value) ? current.code : t("cur.other")}</span>
         </button>
       </div>
 
@@ -70,7 +72,7 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({ value, preferred, o
             autoFocus
             type="text"
             className="currency-search-input"
-            placeholder="Rechercher (USD, HKD, BTC…)"
+            placeholder={t("cur.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -92,7 +94,7 @@ const CurrencySelector: React.FC<CurrencySelectorProps> = ({ value, preferred, o
               </button>
             ))}
             {filtered.length === 0 && (
-              <p className="currency-search-empty">Aucune devise trouvée</p>
+              <p className="currency-search-empty">{t("cur.none")}</p>
             )}
           </div>
         </div>

@@ -9,6 +9,7 @@ import { TagSelector } from "./TagSelector";
 import { tagsToString, tagsFromString } from "../tagsUtils";
 import { loadPreferredCurrencies } from "../currencyUtils";
 import { useExchangeRate } from "../hooks/useExchangeRate";
+import { useBaseCurrency, formatMoney } from "../baseCurrency";
 import CurrencySelector from "./CurrencySelector";
 
 interface SpendingFormProps {
@@ -32,14 +33,15 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
 
   const [subscription, setSubscription] = useState<string>("");
 
-  const [currency, setCurrency] = useState("EUR");
+  const base = useBaseCurrency();
+  const [currency, setCurrency] = useState(base);
   const [preferredCurrencies] = useState<string[]>(loadPreferredCurrencies);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [showImporter, setShowImporter] = useState(false);
   const [accounts] = useState(loadAccounts());
 
-  const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date);
+  const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date, base);
 
   // Auto-dismiss message
   useEffect(() => {
@@ -144,7 +146,7 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
       setMessage("Merci de remplir tous les champs obligatoires.");
       return;
     }
-    if (currency !== "EUR" && !rate) {
+    if (currency !== base && !rate) {
       setMessage("Taux de change indisponible, réessayez.");
       return;
     }
@@ -153,8 +155,8 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
       setLoading(true);
 
       const tagsString = selectedTags.length > 0 ? tagsToString(selectedTags) : undefined;
-      const eurAmount = currency === "EUR" ? numAmount : Math.round(numAmount * rate! * 100) / 100;
-      const finalDescription = currency !== "EUR"
+      const eurAmount = currency === base ? numAmount : Math.round(numAmount * rate! * 100) / 100;
+      const finalDescription = currency !== base
         ? `${description} (${numAmount} ${currency})`
         : description;
 
@@ -327,7 +329,7 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "10px" }}>
           <div>
             <label style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
-              💶 Montant {currency !== "EUR" && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>({currency})</span>}
+              💶 Montant {currency !== base && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>({currency})</span>}
             </label>
             <input
               type="number"
@@ -345,12 +347,12 @@ const SpendingForm: React.FC<SpendingFormProps> = ({
                 fontWeight: "600",
               }}
             />
-            {currency !== "EUR" && amount && parseFloat(amount) > 0 && (
+            {currency !== base && amount && parseFloat(amount) > 0 && (
               <div style={{ marginTop: "6px", fontSize: "13px", fontWeight: "600" }}>
                 {rateLoading && <span style={{ color: "var(--text-muted)" }}>⏳ Taux en cours…</span>}
                 {!rateLoading && rate && (
                   <span style={{ color: "#34C759" }}>
-                    ≈ {(parseFloat(amount.replace(",", ".")) * rate).toFixed(2)} €
+                    ≈ {formatMoney(parseFloat(amount.replace(",", ".")) * rate, base)}
                   </span>
                 )}
                 {!rateLoading && rateError && (

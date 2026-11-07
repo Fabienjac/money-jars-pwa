@@ -1,3 +1,5 @@
+import { getBaseCurrency } from "./baseCurrency";
+
 const KEY_FAVORITES = "mjars:currencyFavorites";
 const KEY_LAST = "mjars:lastExpenseCurrency";
 
@@ -26,7 +28,7 @@ export function saveCurrencyFavorites(codes: string[]): void {
 
 export function loadLastExpenseCurrency(): string {
   if (typeof window === "undefined") return "EUR";
-  return localStorage.getItem(KEY_LAST) || "EUR";
+  return localStorage.getItem(KEY_LAST) || getBaseCurrency();
 }
 
 export function saveLastExpenseCurrency(code: string): void {

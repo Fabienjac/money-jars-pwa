@@ -1,8 +1,10 @@
 // src/components/OfflineIndicator.tsx
 import React, { useState, useEffect } from 'react';
+import { t as tr, useLang } from "../i18n";
 import { offlineManager, OfflineState } from '../offlineManager';
 
 export const OfflineIndicator: React.FC = () => {
+  useLang();
   const [state, setState] = useState<OfflineState>(offlineManager.getState());
 
   useEffect(() => {
@@ -54,17 +56,17 @@ export const OfflineIndicator: React.FC = () => {
           <>
             {state.pendingTransactions.length > 0 ? (
               <>
-                🔄 Synchronisation de {state.pendingTransactions.length} transaction(s)...
+                {tr("off.syncing", { n: state.pendingTransactions.length })}
               </>
             ) : (
-              <>✅ En ligne</>
+              <>{tr("off.online")}</>
             )}
           </>
         ) : (
           <>
-            📴 Hors ligne
+            {tr("off.offline")}
             {state.pendingTransactions.length > 0 && (
-              <> • {state.pendingTransactions.length} en attente</>
+              <>{tr("off.pending", { n: state.pendingTransactions.length })}</>
             )}
           </>
         )}
@@ -92,7 +94,7 @@ export const OfflineIndicator: React.FC = () => {
             e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)';
           }}
         >
-          Synchroniser
+          {tr("off.sync")}
         </button>
       )}
 

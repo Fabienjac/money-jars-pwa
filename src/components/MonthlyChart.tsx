@@ -1,5 +1,6 @@
 // src/components/MonthlyChart.tsx
 import React from "react";
+import { currencySymbol as curSym } from "../baseCurrency";
 import {
   BarChart,
   Bar,
@@ -67,7 +68,7 @@ export const MonthlyChart: React.FC<MonthlyChartProps> = ({
               >
                 Revenus:{" "}
                 <strong style={{ color: "var(--text-main)" }}>
-                  {payload[0].value.toFixed(2)} €
+                  {payload[0].value.toFixed(2)} {curSym()}
                 </strong>
               </span>
             </div>
@@ -88,7 +89,7 @@ export const MonthlyChart: React.FC<MonthlyChartProps> = ({
               >
                 Dépenses:{" "}
                 <strong style={{ color: "var(--text-main)" }}>
-                  {payload[1].value.toFixed(2)} €
+                  {payload[1].value.toFixed(2)} {curSym()}
                 </strong>
               </span>
             </div>
@@ -102,7 +103,7 @@ export const MonthlyChart: React.FC<MonthlyChartProps> = ({
                 color: "var(--text-main)",
               }}
             >
-              Solde: {(payload[0].value - payload[1].value).toFixed(2)} €
+              Solde: {(payload[0].value - payload[1].value).toFixed(2)} {curSym()}
             </div>
           </div>
         </div>

@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { t as tr, useLang, setLang, LANGS } from "../i18n";
 
 type Mode = "login" | "signup" | "reset" | "update_password";
 
 export function AuthScreen() {
+  const lang = useLang();
   const { signInWithEmail, signUpWithEmail, signInWithGoogle, needsPasswordUpdate, resetPasswordForEmail, updatePassword } = useAuth();
   const [mode, setMode] = useState<Mode>(needsPasswordUpdate ? "update_password" : "login");
   const [email, setEmail] = useState("");
@@ -27,7 +29,7 @@ export function AuthScreen() {
       const { error } = await resetPasswordForEmail(email);
       setLoading(false);
       if (error) setError(translateError(error));
-      else setInfo("Un lien de réinitialisation a été envoyé à " + email);
+      else setInfo(tr("auth.resetSent", { email }));
       return;
     }
 
@@ -45,7 +47,7 @@ export function AuthScreen() {
     if (error) {
       setError(translateError(error));
     } else if (mode === "signup") {
-      setInfo("Vérifie ta boîte mail pour confirmer ton compte, puis connecte-toi.");
+      setInfo(tr("auth.checkMail"));
       setMode("login");
     }
   }
@@ -60,6 +62,7 @@ export function AuthScreen() {
 
   return (
     <div style={{
+      position: "relative",
       minHeight: "100dvh",
       display: "flex",
       flexDirection: "column",
@@ -68,6 +71,26 @@ export function AuthScreen() {
       padding: "24px",
       background: "var(--bg-body)",
     }}>
+      {/* Choix de la langue (écran visible avant connexion) */}
+      <div style={{ position: "absolute", top: 16, right: 16, display: "flex", gap: 4 }}>
+        {LANGS.map(l => (
+          <button
+            key={l.code}
+            type="button"
+            onClick={() => setLang(l.code)}
+            aria-pressed={lang === l.code}
+            style={{
+              padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              border: "1px solid var(--border-color)",
+              background: lang === l.code ? "var(--bg-card)" : "transparent",
+              color: lang === l.code ? "var(--text-main)" : "var(--text-muted)",
+            }}
+          >
+            {l.code.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
       {/* Logo / titre */}
       <div style={{ textAlign: "center", marginBottom: "40px" }}>
         <div style={{ fontSize: "56px", marginBottom: "12px" }}>🏺</div>
@@ -75,7 +98,7 @@ export function AuthScreen() {
           Money Jars
         </h1>
         <p style={{ color: "var(--text-muted)", margin: "8px 0 0", fontSize: "15px" }}>
-          La méthode des 6 bocaux dans votre poche
+          {tr("auth.tagline")}
         </p>
       </div>
 
@@ -93,14 +116,14 @@ export function AuthScreen() {
         {mode === "update_password" && (
           <form onSubmit={handleSubmit}>
             <h2 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", margin: "0 0 8px" }}>
-              Nouveau mot de passe
+              {tr("auth.newPassword")}
             </h2>
             <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: "0 0 20px" }}>
-              Choisissez un nouveau mot de passe pour votre compte.
+              {tr("auth.chooseNewPassword")}
             </p>
             <input
               type="password"
-              placeholder="Nouveau mot de passe"
+              placeholder={tr("auth.newPassword")}
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
@@ -109,7 +132,7 @@ export function AuthScreen() {
             />
             {error && <div style={errorStyle}>{error}</div>}
             <button type="submit" disabled={loading} style={btnPrimaryStyle}>
-              {loading ? "…" : "Enregistrer"}
+              {loading ? "…" : tr("auth.save")}
             </button>
           </form>
         )}
@@ -118,14 +141,14 @@ export function AuthScreen() {
         {mode === "reset" && (
           <form onSubmit={handleSubmit}>
             <h2 style={{ fontSize: "20px", fontWeight: "700", color: "var(--text-main)", margin: "0 0 8px" }}>
-              Mot de passe oublié
+              {tr("auth.forgot")}
             </h2>
             <p style={{ fontSize: "14px", color: "var(--text-muted)", margin: "0 0 20px" }}>
-              Entrez votre email et nous vous enverrons un lien pour réinitialiser votre mot de passe.
+              {tr("auth.forgotHint")}
             </p>
             <input
               type="email"
-              placeholder="Email"
+              placeholder={tr("auth.email")}
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -134,14 +157,14 @@ export function AuthScreen() {
             {error && <div style={errorStyle}>{error}</div>}
             {info && <div style={infoStyle}>{info}</div>}
             <button type="submit" disabled={loading} style={btnPrimaryStyle}>
-              {loading ? "…" : "Envoyer le lien"}
+              {loading ? "…" : tr("auth.sendLink")}
             </button>
             <button
               type="button"
               onClick={() => { setMode("login"); setError(null); setInfo(null); }}
               style={{ ...btnLinkStyle, marginTop: "14px" }}
             >
-              ← Retour à la connexion
+              {tr("auth.backToLogin")}
             </button>
           </form>
         )}
@@ -175,7 +198,7 @@ export function AuthScreen() {
                 transition: "all 0.2s",
               }}
             >
-              {m === "login" ? "Connexion" : "Créer un compte"}
+              {m === "login" ? tr("auth.tabLogin") : tr("auth.tabSignup")}
             </button>
           ))}
         </div>
@@ -208,7 +231,7 @@ export function AuthScreen() {
             <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
             <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
           </svg>
-          Continuer avec Google
+          {tr("auth.google")}
         </button>
 
         {/* Séparateur */}
@@ -219,7 +242,7 @@ export function AuthScreen() {
           marginBottom: "20px",
         }}>
           <div style={{ flex: 1, height: "1px", background: "var(--border-color, #e5e5ea)" }} />
-          <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>ou</span>
+          <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>{tr("auth.or")}</span>
           <div style={{ flex: 1, height: "1px", background: "var(--border-color, #e5e5ea)" }} />
         </div>
 
@@ -228,7 +251,7 @@ export function AuthScreen() {
           <div style={{ marginBottom: "14px" }}>
             <input
               type="email"
-              placeholder="Email"
+              placeholder={tr("auth.email")}
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -238,7 +261,7 @@ export function AuthScreen() {
           <div style={{ marginBottom: "8px" }}>
             <input
               type="password"
-              placeholder="Mot de passe"
+              placeholder={tr("auth.password")}
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
@@ -253,7 +276,7 @@ export function AuthScreen() {
               onClick={() => { setMode("reset"); setError(null); setInfo(null); }}
               style={{ ...btnLinkStyle, marginBottom: "16px" }}
             >
-              Mot de passe oublié ?
+              {tr("auth.forgotQ")}
             </button>
           )}
 
@@ -263,7 +286,7 @@ export function AuthScreen() {
           {info && <div style={infoStyle}>{info}</div>}
 
           <button type="submit" disabled={loading} style={btnPrimaryStyle}>
-            {loading ? "…" : mode === "login" ? "Se connecter" : "Créer mon compte"}
+            {loading ? "…" : mode === "login" ? tr("auth.signIn") : tr("auth.signUp")}
           </button>
         </form>
 
@@ -276,7 +299,7 @@ export function AuthScreen() {
             marginTop: "16px",
             marginBottom: 0,
           }}>
-            14 jours gratuits · Sans carte bancaire
+            {tr("auth.trial")}
           </p>
         )}
         </>}
@@ -339,9 +362,9 @@ const infoStyle: React.CSSProperties = {
 };
 
 function translateError(msg: string): string {
-  if (msg.includes("Invalid login credentials")) return "Email ou mot de passe incorrect.";
-  if (msg.includes("Email not confirmed")) return "Confirme d'abord ton email (vérifie ta boîte mail).";
-  if (msg.includes("User already registered")) return "Ce compte existe déjà. Connecte-toi.";
-  if (msg.includes("Password should be at least")) return "Le mot de passe doit faire au moins 6 caractères.";
+  if (msg.includes("Invalid login credentials")) return tr("auth.errCredentials");
+  if (msg.includes("Email not confirmed")) return tr("auth.errNotConfirmed");
+  if (msg.includes("User already registered")) return tr("auth.errExists");
+  if (msg.includes("Password should be at least")) return tr("auth.errShortPwd");
   return msg;
 }

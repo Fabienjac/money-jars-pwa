@@ -1,5 +1,6 @@
 // src/components/ImportSuccessScreen.tsx
 import React from "react";
+import { t as tr, useLang } from "../i18n";
 
 interface ImportSuccessScreenProps {
   successCount: number;
@@ -14,6 +15,7 @@ export const ImportSuccessScreen: React.FC<ImportSuccessScreenProps> = ({
   isImporting,
   onClose,
 }) => {
+  useLang();
   return (
     <div
       style={{
@@ -68,7 +70,7 @@ export const ImportSuccessScreen: React.FC<ImportSuccessScreenProps> = ({
                 color: "var(--text-main)",
               }}
             >
-              Importation en cours...
+              {tr("isc.inProgress")}
             </h2>
             <p
               style={{
@@ -78,7 +80,7 @@ export const ImportSuccessScreen: React.FC<ImportSuccessScreenProps> = ({
                 lineHeight: 1.6,
               }}
             >
-              Veuillez patienter pendant l'envoi de vos transactions.
+              {tr("isc.wait")}
             </p>
           </>
         ) : (
@@ -109,7 +111,7 @@ export const ImportSuccessScreen: React.FC<ImportSuccessScreenProps> = ({
                 color: "var(--text-main)",
               }}
             >
-              {errorCount === 0 ? "Importation réussie !" : "Importation terminée"}
+              {errorCount === 0 ? tr("isc.success") : tr("isc.done")}
             </h2>
 
             <p
@@ -123,12 +125,12 @@ export const ImportSuccessScreen: React.FC<ImportSuccessScreenProps> = ({
               <strong style={{ fontSize: "20px", color: "#34C759" }}>
                 {successCount}
               </strong>{" "}
-              transaction{successCount > 1 ? "s" : ""} importée{successCount > 1 ? "s" : ""} avec succès
+              {tr(successCount > 1 ? "isc.importedN" : "isc.imported1")}
               {errorCount > 0 && (
                 <>
                   <br />
                   <span style={{ color: "#FF3B30" }}>
-                    {errorCount} échec{errorCount > 1 ? "s" : ""}
+                    {tr(errorCount > 1 ? "isc.failN" : "isc.fail1", { n: errorCount })}
                   </span>
                 </>
               )}
@@ -156,7 +158,7 @@ export const ImportSuccessScreen: React.FC<ImportSuccessScreenProps> = ({
                 e.currentTarget.style.transform = "scale(1)";
               }}
             >
-              Retour à l'accueil
+              {tr("isc.home")}
             </button>
           </>
         )}

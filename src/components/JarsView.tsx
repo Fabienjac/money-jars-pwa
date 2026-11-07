@@ -5,6 +5,7 @@ import { TotalsResponse, JarKey } from "../types";
 import { AnalyticsDashboard } from "./AnalyticsDashboard";
 import { TrendBadgeMini } from "./TrendBadge";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: "Nécessités",
   FFA: "Liberté Financière",
@@ -130,18 +131,18 @@ const JarsView: React.FC = () => {
       <section className="home-kpis">
         <article className="home-kpi-pill home-kpi-pill--revenues">
           <p className="home-kpi-label">Revenus</p>
-          <p className="home-kpi-value">{formatMoney(totalRevenues)} €</p>
+          <p className="home-kpi-value">{formatMoney(totalRevenues)} {curSym()}</p>
           {/* <TrendBadgeMini current={totalRevenues} previous={previousRevenues} /> */}
         </article>
 
         <article className="home-kpi-pill home-kpi-pill--spendings">
           <p className="home-kpi-label">Dépenses</p>
-          <p className="home-kpi-value">{formatMoney(totalSpendings)} €</p>
+          <p className="home-kpi-value">{formatMoney(totalSpendings)} {curSym()}</p>
         </article>
 
         <article className="home-kpi-pill home-kpi-pill--balance">
           <p className="home-kpi-label">Balance</p>
-          <p className="home-kpi-value">{formatMoney(totalBalance)} €</p>
+          <p className="home-kpi-value">{formatMoney(totalBalance)} {curSym()}</p>
         </article>
       </section>
 
@@ -197,7 +198,7 @@ const JarsView: React.FC = () => {
                 <p className="home-jar-name">{JAR_LABELS[key]}</p>
 
                 <p className="home-jar-amount">
-                  {formatMoney(jar.net)} <span>€</span>
+                  {formatMoney(jar.net)} <span>{curSym()}</span>
                 </p>
 
                 <div className="jar-progress-wrapper">
@@ -219,7 +220,7 @@ const JarsView: React.FC = () => {
                 </div>
 
                 <p className="home-jar-spent">
-                  Dépensé : {formatMoney(jar.spendings)} €
+                  Dépensé : {formatMoney(jar.spendings)} {curSym()}
                 </p>
 
                 {jar.net > 0 && (

@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import { JarKey } from "../types";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 interface Transaction {
   date: string;
   description: string;
@@ -193,7 +194,7 @@ export const PDFImporter: React.FC<PDFImporterProps> = ({ onImport }) => {
                       marginBottom: "4px",
                     }}
                   >
-                    Montant (€)
+                    Montant ({curSym()})
                   </label>
                   <input
                     type="number"

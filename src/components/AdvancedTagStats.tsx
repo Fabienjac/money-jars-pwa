@@ -4,7 +4,9 @@ import { TagStat } from "../types";
 import { SearchSpendingResult } from "../types";
 import { MonthlyTrendChart } from "./MonthlyTrendChart";
 import { JarBarChart } from "./JarBarChart";
+import { t as tr, useLang } from "../i18n";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 interface AdvancedTagStatsProps {
   stats: TagStat[];
   allTransactions: SearchSpendingResult[];
@@ -14,6 +16,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
   stats,
   allTransactions,
 }) => {
+  useLang();
   // Calculer le top 10 des dépenses
   const top10 = [...allTransactions]
     .sort((a, b) => (b.amount || 0) - (a.amount || 0))
@@ -88,7 +91,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
           fontWeight: "700",
           color: "var(--text-main)",
         }}>
-          📊 Comparaison mensuelle
+          {tr("ats.monthCompare")}
         </h4>
 
         <div style={{
@@ -102,21 +105,21 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
               color: "var(--text-muted)",
               marginBottom: "4px",
             }}>
-              Mois actuel
+              {tr("ats.currentMonth")}
             </div>
             <div style={{
               fontSize: "24px",
               fontWeight: "700",
               color: "#FF3B30",
             }}>
-              {currentMonthTotal.toFixed(2)}€
+              {currentMonthTotal.toFixed(2)}{curSym()}
             </div>
             <div style={{
               fontSize: "11px",
               color: "var(--text-muted)",
               marginTop: "2px",
             }}>
-              {currentMonthTransactions.length} transaction{currentMonthTransactions.length > 1 ? "s" : ""}
+              {tr(currentMonthTransactions.length > 1 ? "stats.txN" : "stats.tx1", { n: currentMonthTransactions.length })}
             </div>
           </div>
 
@@ -126,21 +129,21 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
               color: "var(--text-muted)",
               marginBottom: "4px",
             }}>
-              Mois précédent
+              {tr("ats.prevMonth")}
             </div>
             <div style={{
               fontSize: "24px",
               fontWeight: "700",
               color: "var(--text-muted)",
             }}>
-              {previousMonthTotal.toFixed(2)}€
+              {previousMonthTotal.toFixed(2)}{curSym()}
             </div>
             <div style={{
               fontSize: "11px",
               color: "var(--text-muted)",
               marginTop: "2px",
             }}>
-              {previousMonthTransactions.length} transaction{previousMonthTransactions.length > 1 ? "s" : ""}
+              {tr(previousMonthTransactions.length > 1 ? "stats.txN" : "stats.tx1", { n: previousMonthTransactions.length })}
             </div>
           </div>
         </div>
@@ -167,7 +170,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
               fontWeight: "600",
               color: monthDiff > 0 ? "#FF3B30" : "#34C759",
             }}>
-              {monthDiff > 0 ? "📈 Augmentation" : "📉 Diminution"}
+              {monthDiff > 0 ? tr("ats.increase") : tr("ats.decrease")}
             </span>
             <div style={{ textAlign: "right" }}>
               <div style={{
@@ -175,7 +178,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
                 fontWeight: "700",
                 color: monthDiff > 0 ? "#FF3B30" : "#34C759",
               }}>
-                {monthDiff > 0 ? "+" : ""}{monthDiff.toFixed(2)}€
+                {monthDiff > 0 ? "+" : ""}{monthDiff.toFixed(2)}{curSym()}
               </div>
               <div style={{
                 fontSize: "12px",
@@ -201,7 +204,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
           fontWeight: "700",
           color: "var(--text-main)",
         }}>
-          🏆 Top 10 des dépenses
+          {tr("ats.top10")}
         </h4>
 
         <div style={{
@@ -262,7 +265,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
                 color: "#FF3B30",
                 whiteSpace: "nowrap",
               }}>
-                {transaction.amount?.toFixed(2)}€
+                {transaction.amount?.toFixed(2)}{curSym()}
               </div>
             </div>
           ))}
@@ -282,7 +285,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
           fontWeight: "700",
           color: "var(--text-main)",
         }}>
-          📊 Moyenne par transaction (par tag)
+          {tr("ats.avgPerTag")}
         </h4>
 
         <div style={{
@@ -320,7 +323,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
                     fontSize: "11px",
                     color: "var(--text-muted)",
                   }}>
-                    {stat.count} transaction{stat.count > 1 ? "s" : ""}
+                    {tr(stat.count > 1 ? "stats.txN" : "stats.tx1", { n: stat.count })}
                   </div>
                 </div>
               </div>
@@ -330,13 +333,13 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
                   fontWeight: "700",
                   color: stat.color,
                 }}>
-                  {stat.average.toFixed(2)}€
+                  {stat.average.toFixed(2)}{curSym()}
                 </div>
                 <div style={{
                   fontSize: "11px",
                   color: "var(--text-muted)",
                 }}>
-                  par transaction
+                  {tr("ats.perTx")}
                 </div>
               </div>
             </div>

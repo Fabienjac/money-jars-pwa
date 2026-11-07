@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { searchSpendings, searchRevenues } from "../api";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 interface RecentTransactionsProps {
   mode: "spending" | "revenue";
   onSelect: (item: any) => void;
@@ -178,7 +179,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                   fontWeight: "700",
                   color: isSpending ? "#FF3B30" : "#34C759",
                 }}>
-                  {transaction.amount?.toFixed(2) || "0.00"}€
+                  {transaction.amount?.toFixed(2) || "0.00"}{curSym()}
                 </span>
                 <svg
                   width="16"

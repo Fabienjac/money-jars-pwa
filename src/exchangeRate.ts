@@ -1,4 +1,6 @@
 /** Taux historiques : en prod via Netlify ; en dev (Vite seul) via Frankfurter en direct (CORS OK). */
+import { getBaseCurrency } from "./baseCurrency";
+
 const rateCache = new Map<string, number>();
 
 /** Même logique que netlify/functions/getExchangeRate.js (partie fiat Frankfurter). */
@@ -118,9 +120,47 @@ export async function getHistoricalExchangeRate(
     return data.rate;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("Délai dépassé pour récupérer le taux");
+    try {
+      const rate = await fetchFrankfurterRate(from, to, isoDate);
+      rateCache.set(cacheKey, rate);
+      return rate;
+    } catch {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error("Délai dépassé pour récupérer le taux");
+      }
+      throw err;
     }
-    throw err;
+  }
+}
+
+// ── Taux vers la devise de référence ───────────────────────────────────────────
+
+const CRYPTO_COIN_IDS: Record<string, string> = {
+  BTC: "bitcoin", ETH: "ethereum", USDT: "tether", USDC: "usd-coin", XRP: "ripple", ADA: "cardano",
+  SOL: "solana", DOGE: "dogecoin", DOT: "polkadot", MATIC: "matic-network", LTC: "litecoin",
+  BCH: "bitcoin-cash", XMR: "monero",
+};
+
+/**
+ * Prix d'1 unité de `from` dans la devise de référence à une date donnée (null si indisponible).
+ * Fiat : taux de change historique ; crypto : prix CoinGecko du jour.
+ */
+export async function getRateToBase(from: string, date: string): Promise<number | null> {
+  const base = getBaseCurrency();
+  const code = from.toUpperCase();
+  if (code === base) return 1;
+  try {
+    const coinId = CRYPTO_COIN_IDS[code];
+    if (coinId) {
+      const [y, m, d] = convertToISODate(date).split("-");
+      const res = await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${d}-${m}-${y}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const price = data?.market_data?.current_price?.[base.toLowerCase()];
+      return typeof price === "number" ? price : null;
+    }
+    return await getHistoricalExchangeRate(code, base, date);
+  } catch {
+    return null;
   }
 }

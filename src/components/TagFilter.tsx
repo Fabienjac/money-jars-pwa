@@ -1,6 +1,7 @@
 // src/components/TagFilter.tsx
 import React from "react";
 import { loadTags } from "../tagsUtils";
+import { t as tr, useLang } from "../i18n";
 
 interface TagFilterProps {
   selectedTags: string[];
@@ -11,6 +12,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
   selectedTags,
   onSelectionChange,
 }) => {
+  useLang();
   const allTags = loadTags();
 
   const toggleTag = (tagId: string) => {
@@ -51,7 +53,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
           fontWeight: "700",
           color: "var(--text-main)",
         }}>
-          🏷️ Filtrer par tags
+          {tr("tf.title")}
         </h3>
         <div style={{ display: "flex", gap: "8px" }}>
           <button
@@ -68,7 +70,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
               cursor: "pointer",
             }}
           >
-            Tous
+            {tr("tf.all")}
           </button>
           <button
             type="button"
@@ -84,7 +86,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
               cursor: "pointer",
             }}
           >
-            Aucun
+            {tr("tf.none")}
           </button>
         </div>
       </div>
@@ -165,10 +167,10 @@ export const TagFilter: React.FC<TagFilterProps> = ({
         fontSize: "12px",
         color: "var(--text-muted)",
       }}>
-        {selectedTags.length === 0 && "Aucun tag sélectionné (toutes les transactions)"}
-        {selectedTags.length === allTags.length && "Tous les tags sélectionnés"}
+        {selectedTags.length === 0 && tr("tf.noneSelected")}
+        {selectedTags.length === allTags.length && tr("tf.allSelected")}
         {selectedTags.length > 0 && selectedTags.length < allTags.length && 
-          `${selectedTags.length} tag${selectedTags.length > 1 ? 's' : ''} sélectionné${selectedTags.length > 1 ? 's' : ''}`
+          tr("tf.nSelected", { n: selectedTags.length })
         }
       </div>
     </div>

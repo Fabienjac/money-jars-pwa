@@ -5,6 +5,8 @@ import { TagSelector } from "./TagSelector";
 import { TagList } from "./TagBadge";
 import { tagsToString, tagsFromString } from "../tagsUtils";
 
+import { getBaseCurrency } from "../baseCurrency";
+import { t, useLang, JAR_LABELS } from "../i18n";
 interface Transaction {
   date: string;
   description: string;
@@ -34,6 +36,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
   onCancel,
   accounts,
 }) => {
+  useLang();
   const [editedTx, setEditedTx] = useState<Transaction>({ ...transaction });
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>(
     tagsFromString(transaction.tags)
@@ -41,14 +44,6 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
 
   const jars: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
 
-  const jarLabels: Record<JarKey, string> = {
-    NEC: "Nécessités",
-    FFA: "Liberté Financière",
-    LTSS: "Épargne Long Terme",
-    PLAY: "Loisirs",
-    EDUC: "Éducation",
-    GIFT: "Dons",
-  };
 
   const handleSave = () => {
     const updatedTransaction = {
@@ -60,6 +55,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
 
   return (
     <div
+      className="fs-backdrop"
       style={{
         position: "fixed",
         inset: 0,
@@ -73,6 +69,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
       onClick={onCancel}
     >
       <div
+        className="fs-card"
         onClick={(e) => e.stopPropagation()}
         style={{
           backgroundColor: "var(--bg-card)",
@@ -104,7 +101,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
               color: "var(--text-main)",
             }}
           >
-            ✏️ Éditer la transaction
+            {t("txe.title")}
           </h3>
           <button
             onClick={onCancel}
@@ -142,7 +139,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                   marginBottom: "8px",
                 }}
               >
-                📅 Date
+                {t("txe.date")}
               </label>
               <input
                 type="date"
@@ -173,7 +170,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                   marginBottom: "8px",
                 }}
               >
-                📝 Description
+                {t("txe.description")}
               </label>
               <input
                 type="text"
@@ -204,7 +201,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                   marginBottom: "8px",
                 }}
               >
-                💰 Montant
+                {t("txe.amount")}
               </label>
               <div style={{ display: "flex", gap: "8px" }}>
                 <input
@@ -236,7 +233,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                     alignItems: "center",
                   }}
                 >
-                  {editedTx.currency || "EUR"}
+                  {editedTx.currency || getBaseCurrency()}
                 </div>
               </div>
             </div>
@@ -252,7 +249,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                   marginBottom: "12px",
                 }}
               >
-                🏺 Jar
+                {t("txe.jar")}
               </label>
               <div
                 style={{
@@ -283,7 +280,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                       transition: "all 0.2s",
                     }}
                   >
-                    {jarLabels[jar]}
+                    {JAR_LABELS[jar]}
                   </button>
                 ))}
               </div>
@@ -300,7 +297,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                   marginBottom: "12px",
                 }}
               >
-                💳 Compte
+                {t("txe.account")}
               </label>
               <div
                 style={{
@@ -354,7 +351,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                   marginBottom: "12px",
                 }}
               >
-                🏷️ Tags
+                {t("txe.tags")}
               </label>
               <TagSelector
                 selectedTags={selectedTagIds}
@@ -381,7 +378,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
                     fontWeight: "600",
                   }}
                 >
-                  Tags sélectionnés :
+                  {t("txe.selectedTags")}
                 </p>
                 <TagList tagIds={selectedTagIds} size="medium" />
               </div>
@@ -412,7 +409,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
               cursor: "pointer",
             }}
           >
-            Annuler
+            {t("txe.cancel")}
           </button>
           <button
             onClick={handleSave}
@@ -428,7 +425,7 @@ export const TransactionEditor: React.FC<TransactionEditorProps> = ({
               cursor: "pointer",
             }}
           >
-            Enregistrer
+            {t("txe.save")}
           </button>
         </div>
       </div>

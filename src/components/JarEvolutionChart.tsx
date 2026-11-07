@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { JarKey } from "../types";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 export interface JarEvolutionData {
   month: string; // "Jan 2025"
   NEC?: number;
@@ -88,7 +89,7 @@ export const JarEvolutionChart: React.FC<JarEvolutionChartProps> = ({
                 >
                   {entry.name}:{" "}
                   <strong style={{ color: "var(--text-main)" }}>
-                    {entry.value.toFixed(2)} €
+                    {entry.value.toFixed(2)} {curSym()}
                   </strong>
                 </span>
               </div>

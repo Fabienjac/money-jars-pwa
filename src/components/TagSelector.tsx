@@ -1,6 +1,7 @@
 // src/components/TagSelector.tsx
 import React, { useState } from "react";
 import { Tag, loadTags } from "../tagsUtils";
+import { t as tr, useLang } from "../i18n";
 
 interface TagSelectorProps {
   selectedTags: string[]; // Array of tag IDs
@@ -13,6 +14,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
   onChange,
   compact = false,
 }) => {
+  useLang();
   const [allTags] = useState<Tag[]>(loadTags());
   const [showAll, setShowAll] = useState(false);
 
@@ -99,7 +101,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
             alignSelf: "flex-start",
           }}
         >
-          {showAll ? "Voir moins" : `+ ${allTags.length - 4} autres tags`}
+          {showAll ? tr("ts.seeLess") : tr("ts.moreTags", { n: allTags.length - 4 })}
         </button>
       )}
 
@@ -115,8 +117,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
             fontWeight: "600",
           }}
         >
-          ✓ {selectedTags.length} tag{selectedTags.length > 1 ? "s" : ""}{" "}
-          sélectionné{selectedTags.length > 1 ? "s" : ""}
+          {tr("ts.nSelected", { n: selectedTags.length })}
         </div>
       )}
     </div>

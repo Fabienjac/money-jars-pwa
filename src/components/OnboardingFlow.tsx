@@ -1,15 +1,18 @@
 import React, { useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
+import { t as tr, useLang, JAR_LABELS, type TKey } from "../i18n";
 
 const DEFAULT_JARS = [
-  { key: "NEC",  label: "Nécessités",           emoji: "🏠", percent: 55, description: "Loyer, nourriture, transport, factures" },
-  { key: "FFA",  label: "Liberté Financière",   emoji: "💰", percent: 10, description: "Investissements, épargne long terme" },
-  { key: "LTSS", label: "Épargne Long Terme",   emoji: "🎯", percent: 10, description: "Projets futurs, vacances, voiture" },
-  { key: "PLAY", label: "Plaisir",              emoji: "🎉", percent: 10, description: "Sorties, loisirs, cadeaux pour toi" },
-  { key: "EDUC", label: "Éducation",            emoji: "📚", percent: 10, description: "Formations, livres, développement personnel" },
-  { key: "GIFT", label: "Don / Partage",        emoji: "🎁", percent: 5,  description: "Dons, cadeaux aux autres, charité" },
-];
+  { key: "NEC",  emoji: "🏠", percent: 55 },
+  { key: "FFA",  emoji: "💰", percent: 10 },
+  { key: "LTSS", emoji: "🎯", percent: 10 },
+  { key: "PLAY", emoji: "🎉", percent: 10 },
+  { key: "EDUC", emoji: "📚", percent: 10 },
+  { key: "GIFT", emoji: "🎁", percent: 5 },
+] as const;
+const jarName = (k: string) => JAR_LABELS[k as keyof typeof JAR_LABELS];
+const jarDesc = (k: string) => tr(`onb.desc.${k}` as TKey);
 
 type Step = "knows_method" | "intro" | "config";
 
@@ -18,6 +21,7 @@ interface Props {
 }
 
 export function OnboardingFlow({ onComplete }: Props) {
+  useLang();
   const { user } = useAuth();
   const [step, setStep] = useState<Step>("knows_method");
   const [percents, setPercents] = useState<Record<string, number>>(
@@ -60,20 +64,20 @@ export function OnboardingFlow({ onComplete }: Props) {
     return (
       <Wrapper>
         <div style={{ fontSize: "64px", marginBottom: "16px" }}>🏺</div>
-        <h1 style={h1}>Bienvenue dans Money Jars</h1>
-        <p style={sub}>Connaissez-vous déjà la méthode des 6 bocaux de T. Harv Eker ?</p>
+        <h1 style={h1}>{tr("onb.welcome")}</h1>
+        <p style={sub}>{tr("onb.knowQ")}</p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", width: "100%", maxWidth: 340 }}>
           <button style={btnPrimary} onClick={saveDefaults} disabled={saving}>
-            {saving ? "Configuration…" : "Oui, je connais la méthode"}
+            {saving ? tr("onb.configuring") : tr("onb.yes")}
           </button>
           <button style={btnSecondary} onClick={() => setStep("intro")}>
-            Non, découvrir la méthode
+            {tr("onb.no")}
           </button>
         </div>
         <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "12px" }}>
-          Les bocaux sont configurés avec les % recommandés par T. Harv Eker.<br/>
-          Vous pourrez les ajuster dans Réglages.
+          {tr("onb.defaultsNote")}<br/>
+          {tr("onb.adjustLater")}
         </p>
       </Wrapper>
     );
@@ -84,10 +88,10 @@ export function OnboardingFlow({ onComplete }: Props) {
     return (
       <Wrapper>
         <div style={{ fontSize: "48px", marginBottom: "12px" }}>💡</div>
-        <h1 style={h1}>La méthode des 6 bocaux</h1>
+        <h1 style={h1}>{tr("onb.methodTitle")}</h1>
         <p style={{ ...sub, marginBottom: "24px" }}>
-          Imaginez que chaque euro gagné est automatiquement réparti dans 6 bocaux.
-          Chaque bocal a un rôle précis.
+          {tr("onb.imagine")}
+          {tr("onb.eachRole")}
         </p>
 
         <div style={{ width: "100%", maxWidth: 380, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
@@ -99,16 +103,16 @@ export function OnboardingFlow({ onComplete }: Props) {
               <span style={{ fontSize: "28px", flexShrink: 0 }}>{j.emoji}</span>
               <div>
                 <div style={{ fontWeight: "700", fontSize: "15px", color: "var(--text-main)" }}>
-                  {j.label} <span style={{ color: "var(--text-muted)", fontWeight: "500" }}>· {j.percent}%</span>
+                  {jarName(j.key)} <span style={{ color: "var(--text-muted)", fontWeight: "500" }}>· {j.percent}%</span>
                 </div>
-                <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>{j.description}</div>
+                <div style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>{jarDesc(j.key)}</div>
               </div>
             </div>
           ))}
         </div>
 
         <button style={{ ...btnPrimary, maxWidth: 340 }} onClick={() => setStep("config")}>
-          Configurer mes bocaux
+          {tr("onb.configure")}
         </button>
       </Wrapper>
     );
@@ -118,9 +122,9 @@ export function OnboardingFlow({ onComplete }: Props) {
   return (
     <Wrapper>
       <div style={{ fontSize: "40px", marginBottom: "12px" }}>⚙️</div>
-      <h1 style={h1}>Répartition de vos revenus</h1>
+      <h1 style={h1}>{tr("onb.splitTitle")}</h1>
       <p style={{ ...sub, marginBottom: "8px" }}>
-        Ajustez les pourcentages selon votre situation.
+        {tr("onb.adjust")}
       </p>
       <p style={{
         fontSize: "14px",
@@ -128,7 +132,7 @@ export function OnboardingFlow({ onComplete }: Props) {
         color: isValid ? "#16a34a" : "#dc2626",
         marginBottom: "20px",
       }}>
-        Total : {total}% {isValid ? "✓" : `— il manque ${100 - total}%`}
+        {tr("onb.total", { total })} {isValid ? "✓" : tr("onb.missing", { n: 100 - total })}
       </p>
 
       <div style={{ width: "100%", maxWidth: 380, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
@@ -139,7 +143,7 @@ export function OnboardingFlow({ onComplete }: Props) {
           }}>
             <span style={{ fontSize: "24px", flexShrink: 0 }}>{j.emoji}</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: "600", fontSize: "14px", color: "var(--text-main)" }}>{j.label}</div>
+              <div style={{ fontWeight: "600", fontSize: "14px", color: "var(--text-main)" }}>{jarName(j.key)}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <button
@@ -162,14 +166,14 @@ export function OnboardingFlow({ onComplete }: Props) {
 
       <div style={{ display: "flex", gap: "12px", width: "100%", maxWidth: 380 }}>
         <button style={{ ...btnSecondary, flex: 1 }} onClick={() => setStep("intro")}>
-          Retour
+          {tr("onb.back")}
         </button>
         <button
           style={{ ...btnPrimary, flex: 2, opacity: !isValid || saving ? 0.5 : 1 }}
           disabled={!isValid || saving}
           onClick={() => saveAndGo()}
         >
-          {saving ? "Enregistrement…" : "C'est parti !"}
+          {saving ? tr("onb.saving") : tr("onb.go")}
         </button>
       </div>
     </Wrapper>

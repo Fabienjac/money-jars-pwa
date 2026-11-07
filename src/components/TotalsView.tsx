@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { fetchTotals } from '../api';
 import { JarKey, TotalsResponse } from '../types';
 
+import { currencySymbol as curSym } from "../baseCurrency";
 const JAR_LABELS: Record<JarKey, string> = {
   NEC: 'Nécessités',
   FFA: 'Liberté Financière',
@@ -50,7 +51,7 @@ export const TotalsView: React.FC = () => {
       {data && (
         <>
           <p>
-            Revenus totaux : <strong>{data.totalRevenues.toFixed(2)} €</strong>
+            Revenus totaux : <strong>{data.totalRevenues.toFixed(2)} {curSym()}</strong>
           </p>
           <div
             style={{
@@ -79,15 +80,15 @@ export const TotalsView: React.FC = () => {
                   </p>
                   <hr />
                   <p style={{ margin: '4px 0' }}>
-                    Revenus : <strong>{j.revenues.toFixed(2)} €</strong>
+                    Revenus : <strong>{j.revenues.toFixed(2)} {curSym()}</strong>
                   </p>
                   <p style={{ margin: '4px 0' }}>
-                    Dépenses : <strong>{j.spendings.toFixed(2)} €</strong>
+                    Dépenses : <strong>{j.spendings.toFixed(2)} {curSym()}</strong>
                   </p>
                   <p style={{ margin: '4px 0' }}>
                     Solde :{' '}
                     <strong style={{ color: j.net >= 0 ? 'green' : 'red' }}>
-                      {j.net.toFixed(2)} €
+                      {j.net.toFixed(2)} {curSym()}
                     </strong>
                   </p>
                   <p style={{ margin: '4px 0', fontSize: 12, opacity: 0.8 }}>

@@ -3,12 +3,13 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
 function LogoutButton() {
+  const t = useT();
   const { signOut, user } = useAuth();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {user && (
         <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0 }}>
-          Connecté en tant que <strong>{user.email}</strong>
+          {t("set.signedInAs")} <strong>{user.email}</strong>
         </p>
       )}
       <button
@@ -16,7 +17,7 @@ function LogoutButton() {
         className="settings-btn"
         style={{ color: "#FF3B30", borderColor: "#FF3B30", maxWidth: "200px" }}
       >
-        Se déconnecter
+        {t("set.signOut")}
       </button>
     </div>
   );
@@ -25,19 +26,15 @@ import { JarKey, Account, RevenueAccount } from "../types";
 import { loadAutoRules, AutoRule } from "../autoRules";
 import { loadAccounts, saveAccounts } from "../accountsUtils";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
+import CryptoSettings from "./CryptoSettings";
+import BaseCurrencySettings from "./BaseCurrencySettings";
 import { loadTags, setCachedTags, Tag } from "../tagsUtils";
 import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi, fetchTagsFromSheet, saveTags as saveTagsApi, bulkRenameSpendingAccount, bulkRenameRevenueSource, fetchJarSettings, saveJarSettings } from "../api";
 import { ALL_CURRENCIES, loadPreferredCurrencies, savePreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 
-const JAR_LABELS: Record<JarKey, string> = {
-  NEC: "Nécessités",
-  FFA: "Liberté Financière",
-  LTSS: "Épargne Long Terme",
-  PLAY: "Fun / Play",
-  EDUC: "Éducation",
-  GIFT: "Don / Gift",
-};
-
+import { currencySymbol as curSym } from "../baseCurrency";
+import LanguageSettings from "./LanguageSettings";
+import { useT, JAR_LABELS } from "../i18n";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
   FFA: "🌱",
@@ -109,6 +106,7 @@ function saveRules(rules: AutoRule[]) {
 }
 
 const SettingsView: React.FC = () => {
+  const t = useT();
   const [jarSettings, setJarSettings] = useState<JarSetting[]>(loadSettings());
   const [rules, setRules] = useState<AutoRule[]>(loadAutoRules());
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -156,9 +154,9 @@ const SettingsView: React.FC = () => {
       await saveTagsApi(updated);
       setCachedTags(updated);
       setTags(updated);
-      setMessage("✅ Tags sauvegardés");
+      setMessage(t("set.tagsSaved"));
     } catch (e: any) {
-      setMessage("❌ Erreur : " + e.message);
+      setMessage(t("set.errorMsg", { msg: e.message }));
     } finally {
       setTagsLoading(false);
       setTimeout(() => setMessage(null), 3000);
@@ -173,13 +171,13 @@ const SettingsView: React.FC = () => {
   };
 
   const handleDeleteTag = (id: string) => {
-    if (!window.confirm(`Supprimer le tag "${id}" ?`)) return;
+    if (!window.confirm(t("set.confirmDeleteTag", { id }))) return;
     handleSaveTags(tags.filter(t => t.id !== id));
   };
 
   const handleAddTag = () => {
     const id = (newTagDraft.id || "").trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
-    if (!id || tags.some(t => t.id === id)) { setMessage("❌ ID invalide ou déjà existant"); return; }
+    if (!id || tags.some(t => t.id === id)) { setMessage(t("set.badTagId")); return; }
     const tag: Tag = { id, name: newTagDraft.name || id, emoji: newTagDraft.emoji || "🏷️", color: newTagDraft.color || "#8E8E93", favori: newTagDraft.favori ?? true, categorie: newTagDraft.categorie || "Intention" };
     setShowAddTag(false);
     setNewTagDraft({ id: "", name: "", emoji: "🏷️", color: "#8E8E93", favori: true, categorie: "Intention" });
@@ -195,8 +193,9 @@ const SettingsView: React.FC = () => {
       getRevenueAccounts().catch(() => loadRevenueAccounts()),
     ]).then(([accs, revAccs]) => {
       if (!cancelled) {
-        setAccounts(Array.isArray(accs) ? accs : loadAccounts());
-        setRevenueAccounts(Array.isArray(revAccs) ? revAccs : loadRevenueAccounts());
+        // Le serveur peut renvoyer [] (non connecté, table vide, erreur) : on garde alors la liste locale
+        setAccounts(Array.isArray(accs) && accs.length > 0 ? accs : loadAccounts());
+        setRevenueAccounts(Array.isArray(revAccs) && revAccs.length > 0 ? revAccs : loadRevenueAccounts());
       }
     }).finally(() => { if (!cancelled) setAccountsLoading(false); });
     return () => { cancelled = true; };
@@ -281,7 +280,7 @@ const SettingsView: React.FC = () => {
 
   const handleSaveSettings = async () => {
     if (totalPercent !== 100) {
-      setMessage("⚠️ Le total doit être exactement 100%");
+      setMessage(t("set.totalMust100"));
       return;
     }
     saveSettings(jarSettings); // localStorage immédiat
@@ -290,15 +289,15 @@ const SettingsView: React.FC = () => {
       jarSettings.map(j => ({ key: j.key, percent: j.percent, initialBalance: j.initialBalance }))
     );
     if (result.ok) {
-      setMessage("✅ Paramètres sauvegardés (synchro cloud OK)");
+      setMessage(t("set.savedCloud"));
     } else {
-      setMessage(`⚠️ Local OK, erreur cloud : ${result.error}`);
+      setMessage(t("set.localOnly", { error: result.error ?? "" }));
     }
     setTimeout(() => setMessage(null), 3000);
   };
 
   const handleResetSettings = async () => {
-    if (!confirm("Réinitialiser les pourcentages par défaut ?")) return;
+    if (!confirm(t("set.confirmResetPct"))) return;
     const defaults: JarSetting[] = [
       { key: "NEC", percent: 55, initialBalance: 0 },
       { key: "FFA", percent: 10, initialBalance: 0 },
@@ -313,16 +312,16 @@ const SettingsView: React.FC = () => {
       defaults.map(j => ({ key: j.key, percent: j.percent, initialBalance: j.initialBalance }))
     );
     if (result.ok) {
-      setMessage("✅ Réinitialisé aux valeurs par défaut (synchro cloud OK)");
+      setMessage(t("set.resetDone"));
     } else {
-      setMessage(`⚠️ Local OK, erreur cloud : ${result.error}`);
+      setMessage(t("set.localOnly", { error: result.error ?? "" }));
     }
     setTimeout(() => setMessage(null), 3000);
   };
 
   const handleAddRule = () => {
     if (!newRuleKeyword.trim()) {
-      alert("Le mot-clé est obligatoire");
+      alert(t("set.keywordRequired"));
       return;
     }
 
@@ -345,22 +344,22 @@ const SettingsView: React.FC = () => {
     setNewRuleDestination("");
     setNewRuleIncomeType("");
     setShowRuleForm(false);
-    setMessage("✅ Règle ajoutée");
+    setMessage(t("set.ruleAdded"));
     setTimeout(() => setMessage(null), 2000);
   };
 
   const handleDeleteRule = (id: string) => {
-    if (!confirm("Supprimer cette règle ?")) return;
+    if (!confirm(t("set.confirmDeleteRule"))) return;
     const updated = rules.filter((r) => r.id !== id);
     setRules(updated);
     saveRules(updated);
-    setMessage("✅ Règle supprimée");
+    setMessage(t("set.ruleDeleted"));
     setTimeout(() => setMessage(null), 2000);
   };
 
   const handleAddAccount = () => {
     if (!newAccountName.trim()) {
-      alert("Le nom du compte est obligatoire");
+      alert(t("set.nameRequired"));
       return;
     }
 
@@ -375,7 +374,7 @@ const SettingsView: React.FC = () => {
     saveAccounts(updated);
     setAccountsApi(updated)
       .then(() => {
-        setMessage("✅ Compte ajouté et synchronisé avec le Sheet");
+        setMessage(t("set.accountAdded"));
         setTimeout(() => setMessage(null), 3000);
       })
       .catch((e) => {
@@ -405,7 +404,7 @@ const SettingsView: React.FC = () => {
   const handleSaveEditAccount = async () => {
     if (!editingAccountId) return;
     if (!editingAccountName.trim()) {
-      alert("Le nom du compte est obligatoire");
+      alert(t("set.nameRequired"));
       return;
     }
     const oldName = accounts.find((a) => a.id === editingAccountId)?.name ?? "";
@@ -422,34 +421,34 @@ const SettingsView: React.FC = () => {
     setEditingAccountId(null);
 
     if (oldName && oldName !== newName) {
-      setMessage("⏳ Mise à jour des transactions…");
+      setMessage(t("set.updatingTx"));
       await setAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
       const result = await bulkRenameSpendingAccount(oldName, newName);
       if (result.ok) {
-        setMessage(`✅ Renommé · ${result.count} transaction${result.count !== 1 ? "s" : ""} mise${result.count !== 1 ? "s" : ""} à jour`);
+        setMessage(t("set.renamed", { n: result.count }));
       } else {
-        setMessage(`⚠️ Liste OK mais erreur transactions : ${result.error}`);
+        setMessage(t("set.listOkTxErr", { error: result.error ?? "" }));
       }
     } else {
-      setMessage("✅ Compte mis à jour");
+      setMessage(t("set.accountUpdated"));
     }
     setTimeout(() => setMessage(null), 3000);
   };
 
   const handleDeleteAccount = (id: string) => {
-    if (!confirm("Supprimer ce compte ?")) return;
+    if (!confirm(t("set.confirmDeleteAccount"))) return;
     const updated = accounts.filter((a) => a.id !== id);
     setAccounts(updated);
     saveAccounts(updated);
     setAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("spendingAccountsUpdated"));
-    setMessage("✅ Compte supprimé");
+    setMessage(t("set.accountDeleted"));
     setTimeout(() => setMessage(null), 2000);
   };
 
   const handleAddRevenueAccount = () => {
     if (!newRevenueAccountName.trim()) {
-      alert("Le nom du compte est obligatoire");
+      alert(t("set.nameRequired"));
       return;
     }
 
@@ -469,7 +468,7 @@ const SettingsView: React.FC = () => {
     setNewRevenueAccountIcon("💰");
     setNewRevenueAccountType("");
     setShowRevenueAccountForm(false);
-    setMessage("✅ Compte de revenu ajouté");
+    setMessage(t("set.revAccountAdded"));
     setTimeout(() => setMessage(null), 2000);
   };
 
@@ -490,7 +489,7 @@ const SettingsView: React.FC = () => {
   const handleSaveEditRevenueAccount = async () => {
     if (!editingRevenueAccountId) return;
     if (!editingRevenueAccountName.trim()) {
-      alert("Le nom du compte est obligatoire");
+      alert(t("set.nameRequired"));
       return;
     }
     const oldName = revenueAccounts.find((a) => a.id === editingRevenueAccountId)?.name ?? "";
@@ -507,34 +506,34 @@ const SettingsView: React.FC = () => {
     setEditingRevenueAccountId(null);
 
     if (oldName && oldName !== newName) {
-      setMessage("⏳ Mise à jour des transactions…");
+      setMessage(t("set.updatingTx"));
       await setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
       const result = await bulkRenameRevenueSource(oldName, newName);
       if (result.ok) {
-        setMessage(`✅ Renommé · ${result.count} transaction${result.count !== 1 ? "s" : ""} mise${result.count !== 1 ? "s" : ""} à jour`);
+        setMessage(t("set.renamed", { n: result.count }));
       } else {
-        setMessage(`⚠️ Liste OK mais erreur transactions : ${result.error}`);
+        setMessage(t("set.listOkTxErr", { error: result.error ?? "" }));
       }
     } else {
-      setMessage("✅ Source de revenu mise à jour");
+      setMessage(t("set.revAccountUpdated"));
     }
     setTimeout(() => setMessage(null), 3000);
   };
 
   const handleDeleteRevenueAccount = (id: string) => {
-    if (!confirm("Supprimer ce compte de revenu ?")) return;
+    if (!confirm(t("set.confirmDeleteRevAccount"))) return;
     const updated = revenueAccounts.filter((a) => a.id !== id);
     setRevenueAccounts(updated);
     saveRevenueAccounts(updated);
     setRevenueAccountsApi(updated).catch((e) => setMessage("⚠️ Synchro Sheet: " + (e?.message || "erreur")));
     window.dispatchEvent(new CustomEvent("revenueAccountsUpdated"));
-    setMessage("✅ Compte de revenu supprimé");
+    setMessage(t("set.revAccountDeleted"));
     setTimeout(() => setMessage(null), 2000);
   };
 
   return (
     <main className="settings-view">
-      <h2 className="settings-title">⚙️ Réglages</h2>
+      <h2 className="settings-title">{t("set.title")}</h2>
 
       {/* Message de feedback */}
       {message && (
@@ -543,9 +542,11 @@ const SettingsView: React.FC = () => {
         </div>
       )}
 
+      <LanguageSettings />
+
       {/* Section: Répartition des jarres */}
       <section className="settings-section">
-        <h3 className="settings-section-title">🏺 Répartition des jarres</h3>
+        <h3 className="settings-section-title">{t("set.jarsTitle")}</h3>
 
         <div className="jars-grid">
           {jarSettings.map((jar) => (
@@ -575,7 +576,7 @@ const SettingsView: React.FC = () => {
                   <span className="jar-input-unit">%</span>
                 </div>
                 <div className="jar-input-row">
-                  <span className="jar-input-label">€</span>
+                  <span className="jar-input-label">{curSym()}</span>
                   <input
                     type="number"
                     min="0"
@@ -584,7 +585,7 @@ const SettingsView: React.FC = () => {
                     onChange={(e) => handleBalanceChange(jar.key, e.target.value)}
                     className="jar-input"
                   />
-                  <span className="jar-input-unit">€</span>
+                  <span className="jar-input-unit">{curSym()}</span>
                 </div>
               </div>
             </div>
@@ -596,7 +597,7 @@ const SettingsView: React.FC = () => {
             totalPercent === 100 ? "valid" : totalPercent > 100 ? "error" : "warning"
           }`}
         >
-          Total : {totalPercent}% / 100%
+          {t("set.totalPct", { pct: totalPercent })}
         </div>
 
         <div className="settings-btn-group">
@@ -606,21 +607,21 @@ const SettingsView: React.FC = () => {
             onClick={handleSaveSettings}
             disabled={totalPercent !== 100}
           >
-            💾 Sauvegarder
+            {t("set.saveBtn")}
           </button>
           <button
             type="button"
             className="settings-btn settings-btn-secondary"
             onClick={handleResetSettings}
           >
-            🔄 Réinitialiser
+            {t("set.resetBtn")}
           </button>
         </div>
       </section>
 
       {/* Section: Règles automatiques */}
       <section className="settings-section">
-        <h3 className="settings-section-title">📋 Règles automatiques</h3>
+        <h3 className="settings-section-title">{t("set.rulesTitle")}</h3>
 
         {rules.length > 0 && (
           <div className="rules-list">
@@ -631,14 +632,14 @@ const SettingsView: React.FC = () => {
                   <div className="rule-details">
                     {rule.mode === "spending" && (
                       <>
-                        <span className="rule-badge">Jar: {rule.jar}</span>
-                        <span className="rule-badge">Compte: {rule.account}</span>
+                        <span className="rule-badge">{t("set.badgeJar", { v: rule.jar ?? "" })}</span>
+                        <span className="rule-badge">{t("set.badgeAccount", { v: rule.account ?? "" })}</span>
                       </>
                     )}
                     {rule.mode === "revenue" && (
                       <>
-                        <span className="rule-badge">Destination: {rule.destination}</span>
-                        <span className="rule-badge">Type: {rule.incomeType}</span>
+                        <span className="rule-badge">{t("set.badgeDest", { v: rule.destination ?? "" })}</span>
+                        <span className="rule-badge">{t("set.badgeType", { v: rule.incomeType ?? "" })}</span>
                       </>
                     )}
                   </div>
@@ -661,28 +662,28 @@ const SettingsView: React.FC = () => {
             className="settings-btn settings-btn-add settings-btn-small"
             onClick={() => setShowRuleForm(true)}
           >
-            ➕ Ajouter une règle
+            {t("set.addRule")}
           </button>
         ) : (
           <div className="form-inline">
             <div className="form-group-inline">
-              <label className="form-label-inline">Mode</label>
+              <label className="form-label-inline">{t("set.mode")}</label>
               <select
                 className="form-select-inline"
                 value={newRuleMode}
                 onChange={(e) => setNewRuleMode(e.target.value as "spending" | "revenue")}
               >
-                <option value="spending">Dépense</option>
-                <option value="revenue">Revenu</option>
+                <option value="spending">{t("set.optSpending")}</option>
+                <option value="revenue">{t("set.optRevenue")}</option>
               </select>
             </div>
 
             <div className="form-group-inline">
-              <label className="form-label-inline">Mot-clé</label>
+              <label className="form-label-inline">{t("set.keyword")}</label>
               <input
                 type="text"
                 className="form-input-inline"
-                placeholder="ex: Restaurant"
+                placeholder={t("set.phKeyword")}
                 value={newRuleKeyword}
                 onChange={(e) => setNewRuleKeyword(e.target.value)}
               />
@@ -691,7 +692,7 @@ const SettingsView: React.FC = () => {
             {newRuleMode === "spending" && (
               <>
                 <div className="form-group-inline">
-                  <label className="form-label-inline">Jarre</label>
+                  <label className="form-label-inline">{t("set.jar")}</label>
                   <select
                     className="form-select-inline"
                     value={newRuleJar}
@@ -705,11 +706,11 @@ const SettingsView: React.FC = () => {
                   </select>
                 </div>
                 <div className="form-group-inline">
-                  <label className="form-label-inline">Compte</label>
+                  <label className="form-label-inline">{t("set.account")}</label>
                   <input
                     type="text"
                     className="form-input-inline"
-                    placeholder="ex: Card"
+                    placeholder={t("set.phCard")}
                     value={newRuleAccount}
                     onChange={(e) => setNewRuleAccount(e.target.value)}
                   />
@@ -720,21 +721,21 @@ const SettingsView: React.FC = () => {
             {newRuleMode === "revenue" && (
               <>
                 <div className="form-group-inline">
-                  <label className="form-label-inline">Destination</label>
+                  <label className="form-label-inline">{t("set.destination")}</label>
                   <input
                     type="text"
                     className="form-input-inline"
-                    placeholder="ex: Bank"
+                    placeholder={t("set.phBank")}
                     value={newRuleDestination}
                     onChange={(e) => setNewRuleDestination(e.target.value)}
                   />
                 </div>
                 <div className="form-group-inline">
-                  <label className="form-label-inline">Type</label>
+                  <label className="form-label-inline">{t("set.type")}</label>
                   <input
                     type="text"
                     className="form-input-inline"
-                    placeholder="ex: Salary"
+                    placeholder={t("set.phSalary")}
                     value={newRuleIncomeType}
                     onChange={(e) => setNewRuleIncomeType(e.target.value)}
                   />
@@ -747,14 +748,14 @@ const SettingsView: React.FC = () => {
               className="settings-btn settings-btn-add settings-btn-small"
               onClick={handleAddRule}
             >
-              ✓ Ajouter
+              {t("set.add")}
             </button>
             <button
               type="button"
               className="settings-btn settings-btn-secondary settings-btn-small"
               onClick={() => setShowRuleForm(false)}
             >
-              ✕ Annuler
+              {t("common.cancel")}
             </button>
           </div>
         )}
@@ -762,9 +763,9 @@ const SettingsView: React.FC = () => {
 
       {/* Section: Comptes de dépenses */}
       <section className="settings-section">
-        <h3 className="settings-section-title">💳 Comptes de dépenses</h3>
+        <h3 className="settings-section-title">{t("set.spendAccounts")}</h3>
         {accountsLoading && (
-          <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>Chargement…</p>
+          <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>{t("set.loading")}</p>
         )}
 
         {accounts.length > 0 && (
@@ -796,14 +797,14 @@ const SettingsView: React.FC = () => {
                         className="settings-btn settings-btn-add settings-btn-small"
                         onClick={handleSaveEditAccount}
                       >
-                        ✓ Enregistrer
+                        {t("set.save")}
                       </button>
                       <button
                         type="button"
                         className="settings-btn settings-btn-secondary settings-btn-small"
                         onClick={handleCancelEditAccount}
                       >
-                        ✕ Annuler
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </>
@@ -838,12 +839,12 @@ const SettingsView: React.FC = () => {
             className="settings-btn settings-btn-add settings-btn-small"
             onClick={() => setShowAccountForm(true)}
           >
-            ➕ Ajouter un compte
+            {t("set.addAccount")}
           </button>
         ) : (
           <div className="form-inline">
             <div className="form-group-inline" style={{ flexBasis: "80px" }}>
-              <label className="form-label-inline">Icône</label>
+              <label className="form-label-inline">{t("set.icon")}</label>
               <input
                 type="text"
                 className="form-emoji-input"
@@ -852,11 +853,11 @@ const SettingsView: React.FC = () => {
               />
             </div>
             <div className="form-group-inline">
-              <label className="form-label-inline">Nom</label>
+              <label className="form-label-inline">{t("set.name")}</label>
               <input
                 type="text"
                 className="form-input-inline"
-                placeholder="ex: Carte Bleue"
+                placeholder={t("set.phAccount")}
                 value={newAccountName}
                 onChange={(e) => setNewAccountName(e.target.value)}
               />
@@ -866,14 +867,14 @@ const SettingsView: React.FC = () => {
               className="settings-btn settings-btn-add settings-btn-small"
               onClick={handleAddAccount}
             >
-              ✓ Ajouter
+              {t("set.add")}
             </button>
             <button
               type="button"
               className="settings-btn settings-btn-secondary settings-btn-small"
               onClick={() => setShowAccountForm(false)}
             >
-              ✕ Annuler
+              {t("common.cancel")}
             </button>
           </div>
         )}
@@ -881,7 +882,7 @@ const SettingsView: React.FC = () => {
 
       {/* Section: Comptes de revenus */}
       <section className="settings-section">
-        <h3 className="settings-section-title">💰 Comptes de revenus</h3>
+        <h3 className="settings-section-title">{t("set.revAccounts")}</h3>
 
         {revenueAccounts.length > 0 && (
           <div className="accounts-grid">
@@ -912,14 +913,14 @@ const SettingsView: React.FC = () => {
                         className="settings-btn settings-btn-add settings-btn-small"
                         onClick={handleSaveEditRevenueAccount}
                       >
-                        ✓ Enregistrer
+                        {t("set.save")}
                       </button>
                       <button
                         type="button"
                         className="settings-btn settings-btn-secondary settings-btn-small"
                         onClick={handleCancelEditRevenueAccount}
                       >
-                        ✕ Annuler
+                        {t("common.cancel")}
                       </button>
                     </div>
                   </>
@@ -954,12 +955,12 @@ const SettingsView: React.FC = () => {
             className="settings-btn settings-btn-add settings-btn-small"
             onClick={() => setShowRevenueAccountForm(true)}
           >
-            ➕ Ajouter un compte
+            {t("set.addAccount")}
           </button>
         ) : (
           <div className="form-inline">
             <div className="form-group-inline" style={{ flexBasis: "80px" }}>
-              <label className="form-label-inline">Icône</label>
+              <label className="form-label-inline">{t("set.icon")}</label>
               <input
                 type="text"
                 className="form-emoji-input"
@@ -968,21 +969,21 @@ const SettingsView: React.FC = () => {
               />
             </div>
             <div className="form-group-inline">
-              <label className="form-label-inline">Nom</label>
+              <label className="form-label-inline">{t("set.name")}</label>
               <input
                 type="text"
                 className="form-input-inline"
-                placeholder="ex: Binance"
+                placeholder={t("set.phRevAccount")}
                 value={newRevenueAccountName}
                 onChange={(e) => setNewRevenueAccountName(e.target.value)}
               />
             </div>
             <div className="form-group-inline">
-              <label className="form-label-inline">Type</label>
+              <label className="form-label-inline">{t("set.type")}</label>
               <input
                 type="text"
                 className="form-input-inline"
-                placeholder="ex: Crypto"
+                placeholder={t("set.phRevType")}
                 value={newRevenueAccountType}
                 onChange={(e) => setNewRevenueAccountType(e.target.value)}
               />
@@ -992,69 +993,72 @@ const SettingsView: React.FC = () => {
               className="settings-btn settings-btn-add settings-btn-small"
               onClick={handleAddRevenueAccount}
             >
-              ✓ Ajouter
+              {t("set.add")}
             </button>
             <button
               type="button"
               className="settings-btn settings-btn-secondary settings-btn-small"
               onClick={() => setShowRevenueAccountForm(false)}
             >
-              ✕ Annuler
+              {t("common.cancel")}
             </button>
           </div>
         )}
       </section>
 
+      <CryptoSettings />
+
       {/* ── Comptes par défaut ── */}
       <section className="settings-section">
-        <h3 className="settings-section-title">⭐ Comptes par défaut</h3>
-        <p className="settings-section-desc">Pré-sélectionnés à l'ouverture des formulaires de saisie.</p>
+        <h3 className="settings-section-title">{t("set.defaultsTitle")}</h3>
+        <p className="settings-section-desc">{t("set.defaultsDesc")}</p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--text-muted)" }}>
-            💳 Dépenses
+            {t("set.defaultSpending")}
             <select
               value={defaultSpendingAccount}
               onChange={e => {
                 setDefaultSpendingAccount(e.target.value);
                 saveDefaultAccount(DEFAULT_SPENDING_ACCOUNT_KEY, e.target.value);
                 window.dispatchEvent(new Event("defaultAccountsUpdated"));
-                setMessage("✅ Compte par défaut sauvegardé");
+                setMessage(t("set.defaultSaved"));
                 setTimeout(() => setMessage(null), 2000);
               }}
               style={{ padding: "10px 12px", border: "1.5px solid var(--border-color)", borderRadius: 10, fontSize: 15, background: "var(--bg-card)", color: "var(--text-main)" }}
             >
-              <option value="">— Aucun (dernier utilisé) —</option>
+              <option value="">{t("set.noneLast")}</option>
               {accounts.map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
             </select>
           </label>
 
           <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, fontWeight: 600, color: "var(--text-muted)" }}>
-            💰 Revenus
+            {t("set.defaultRevenue")}
             <select
               value={defaultRevenueAccount}
               onChange={e => {
                 setDefaultRevenueAccount(e.target.value);
                 saveDefaultAccount(DEFAULT_REVENUE_ACCOUNT_KEY, e.target.value);
                 window.dispatchEvent(new Event("defaultAccountsUpdated"));
-                setMessage("✅ Compte par défaut sauvegardé");
+                setMessage(t("set.defaultSaved"));
                 setTimeout(() => setMessage(null), 2000);
               }}
               style={{ padding: "10px 12px", border: "1.5px solid var(--border-color)", borderRadius: 10, fontSize: 15, background: "var(--bg-card)", color: "var(--text-main)" }}
             >
-              <option value="">— Aucun (dernier utilisé) —</option>
+              <option value="">{t("set.noneLast")}</option>
               {revenueAccounts.map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
             </select>
           </label>
         </div>
       </section>
 
+      <BaseCurrencySettings />
+
       {/* ── Devises préférées ── */}
       <section className="settings-section">
-        <h3 className="settings-section-title">💱 Devises préférées</h3>
+        <h3 className="settings-section-title">{t("set.currenciesTitle")}</h3>
         <p className="settings-section-desc">
-          Ces devises apparaissent en accès rapide dans le formulaire de dépense.
-          EUR est toujours présent.
+          {t("set.currenciesDesc")} {t("set.baseAlways", { code: "EUR" })}
         </p>
 
         <div className="settings-currency-list">
@@ -1083,7 +1087,7 @@ const SettingsView: React.FC = () => {
           <input
             type="text"
             className="settings-input"
-            placeholder="Ajouter une devise (ex: CHF, BTC, THB…)"
+            placeholder={t("set.phCurrency")}
             value={currencySearch}
             onChange={(e) => setCurrencySearch(e.target.value)}
           />
@@ -1107,9 +1111,9 @@ const SettingsView: React.FC = () => {
       </section>
       {/* ── Section Tags ── */}
       <section className="settings-section">
-        <h3 className="settings-section-title">🏷️ Tags</h3>
+        <h3 className="settings-section-title">{t("set.tagsTitle")}</h3>
 
-        {tagsLoading && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Chargement…</p>}
+        {tagsLoading && <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{t("set.loading")}</p>}
 
         {/* Liste des tags */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1120,19 +1124,19 @@ const SettingsView: React.FC = () => {
                 <div style={{ background: "var(--bg-body)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: 8 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Emoji</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.emoji")}</div>
                       <input type="text" value={editTagDraft.emoji ?? tag.emoji} onChange={e => setEditTagDraft(d => ({ ...d, emoji: e.target.value }))}
                         style={{ width: "100%", padding: "8px 6px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 20, textAlign: "center", background: "var(--bg-card)", color: "var(--text-main)" }} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Nom</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.name")}</div>
                       <input type="text" value={editTagDraft.name ?? tag.name} onChange={e => setEditTagDraft(d => ({ ...d, name: e.target.value }))}
                         style={{ width: "100%", padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
                     </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Couleur</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.color")}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <input type="color" value={editTagDraft.color ?? tag.color} onChange={e => setEditTagDraft(d => ({ ...d, color: e.target.value }))}
                           style={{ width: 36, height: 36, border: "none", borderRadius: 8, cursor: "pointer", padding: 2 }} />
@@ -1140,16 +1144,16 @@ const SettingsView: React.FC = () => {
                       </div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Favori</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.favorite")}</div>
                       <button type="button" onClick={() => setEditTagDraft(d => ({ ...d, favori: !(d.favori ?? tag.favori) }))}
                         style={{ padding: "8px 14px", borderRadius: 8, border: "1.5px solid var(--border-color)", background: (editTagDraft.favori ?? tag.favori) ? "#FFF9C4" : "var(--bg-card)", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--text-main)" }}>
-                        {(editTagDraft.favori ?? tag.favori) ? "⭐ Oui" : "☆ Non"}
+                        {(editTagDraft.favori ?? tag.favori) ? t("common.yesStar") : t("common.noStar")}
                       </button>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={handleEditTagSave} className="settings-btn settings-btn-primary" style={{ flex: 2 }}>💾 Enregistrer</button>
-                    <button onClick={() => setEditingTagId(null)} className="settings-btn" style={{ flex: 1 }}>Annuler</button>
+                    <button onClick={handleEditTagSave} className="settings-btn settings-btn-primary" style={{ flex: 2 }}>{t("common.saveDisk")}</button>
+                    <button onClick={() => setEditingTagId(null)} className="settings-btn" style={{ flex: 1 }}>{t("set.cancelPlain")}</button>
                   </div>
                 </div>
               ) : (
@@ -1161,7 +1165,7 @@ const SettingsView: React.FC = () => {
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
                       <span style={{ width: 10, height: 10, borderRadius: "50%", background: tag.color, display: "inline-block", flexShrink: 0 }} />
                       <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{tag.id}</span>
-                      {tag.favori && <span style={{ fontSize: 10, background: "#FFF9C4", color: "#B8860B", borderRadius: 6, padding: "1px 6px", fontWeight: 600 }}>⭐ Favori</span>}
+                      {tag.favori && <span style={{ fontSize: 10, background: "#FFF9C4", color: "#B8860B", borderRadius: 6, padding: "1px 6px", fontWeight: 600 }}>{t("set.favoriteStar")}</span>}
                     </div>
                   </div>
                   <button onClick={() => { setEditingTagId(tag.id); setEditTagDraft({}); }}
@@ -1177,55 +1181,55 @@ const SettingsView: React.FC = () => {
         {/* Formulaire ajout */}
         {showAddTag ? (
           <div style={{ background: "var(--bg-body)", borderRadius: 12, padding: 14, marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-main)" }}>Nouveau tag</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-main)" }}>{t("set.newTag")}</div>
             <div style={{ display: "grid", gridTemplateColumns: "56px 1fr", gap: 8 }}>
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Emoji</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.emoji")}</div>
                 <input type="text" value={newTagDraft.emoji} onChange={e => setNewTagDraft(d => ({ ...d, emoji: e.target.value }))}
                   style={{ width: "100%", padding: "8px 6px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 20, textAlign: "center", background: "var(--bg-card)", color: "var(--text-main)" }} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Nom</div>
-                <input type="text" placeholder="ex: Alimentation" value={newTagDraft.name} onChange={e => setNewTagDraft(d => ({ ...d, name: e.target.value }))}
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.name")}</div>
+                <input type="text" placeholder={t("set.phTagName")} value={newTagDraft.name} onChange={e => setNewTagDraft(d => ({ ...d, name: e.target.value }))}
                   style={{ width: "100%", padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
               </div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>ID (généré auto depuis le nom, modifiable)</div>
-              <input type="text" placeholder="ex: alimentation" value={newTagDraft.id}
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.tagId")}</div>
+              <input type="text" placeholder={t("set.phTagId")} value={newTagDraft.id}
                 onChange={e => setNewTagDraft(d => ({ ...d, id: e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") }))}
                 onBlur={() => { if (!newTagDraft.id && newTagDraft.name) setNewTagDraft(d => ({ ...d, id: (d.name || "").toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "") })); }}
                 style={{ width: "100%", padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, fontFamily: "monospace", background: "var(--bg-card)", color: "var(--text-main)" }} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Couleur</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.color")}</div>
                 <input type="color" value={newTagDraft.color} onChange={e => setNewTagDraft(d => ({ ...d, color: e.target.value }))}
                   style={{ width: "100%", height: 36, border: "none", borderRadius: 8, cursor: "pointer", padding: 2 }} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Favori</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{t("set.favorite")}</div>
                 <button type="button" onClick={() => setNewTagDraft(d => ({ ...d, favori: !d.favori }))}
                   style={{ width: "100%", padding: "8px 14px", borderRadius: 8, border: "1.5px solid var(--border-color)", background: newTagDraft.favori ? "#FFF9C4" : "var(--bg-card)", fontSize: 13, fontWeight: 600, cursor: "pointer", color: "var(--text-main)" }}>
-                  {newTagDraft.favori ? "⭐ Oui" : "☆ Non"}
+                  {newTagDraft.favori ? t("common.yesStar") : t("common.noStar")}
                 </button>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleAddTag} className="settings-btn settings-btn-primary" style={{ flex: 2 }}>➕ Ajouter</button>
-              <button onClick={() => setShowAddTag(false)} className="settings-btn" style={{ flex: 1 }}>Annuler</button>
+              <button onClick={handleAddTag} className="settings-btn settings-btn-primary" style={{ flex: 2 }}>{t("set.addBtn")}</button>
+              <button onClick={() => setShowAddTag(false)} className="settings-btn" style={{ flex: 1 }}>{t("set.cancelPlain")}</button>
             </div>
           </div>
         ) : (
           <button onClick={() => setShowAddTag(true)} className="settings-btn settings-btn-primary" style={{ width: "100%", marginTop: 10 }}>
-            ➕ Ajouter un tag
+            {t("set.addTag")}
           </button>
         )}
       </section>
 
       {/* ── Compte ──────────────────────────────────────────────────── */}
       <section className="settings-section">
-        <h2 className="settings-section-title">Compte</h2>
+        <h2 className="settings-section-title">{t("set.account")}</h2>
         <LogoutButton />
       </section>
 
