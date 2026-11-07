@@ -1,20 +1,27 @@
-// netlify/functions/_lib/tabular.js
-// Lecture tolérante de fichiers bancaires : CSV (encodage / séparateur / lignes d'intro), feuilles Excel, OFX/QFX, QIF.
-// Pas un handler Netlify (dossier _lib) : importé par analyzeFile.js.
-const Papa = require("papaparse");
+// src/tabularParse.ts
+// Lecture locale (dans le navigateur) des fichiers bancaires : CSV (encodage / séparateur / lignes d'intro),
+// feuilles Excel, OFX/QFX, QIF. Rien n'est envoyé à un serveur.
+import Papa from "papaparse";
+import type { Row } from "./importNormalize";
 
-/** Décode un buffer : BOM UTF-8/16, UTF-8 strict, sinon Windows-1252 (exports de banques européennes). */
-function decodeText(buffer, hintCharset) {
-  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
-    return new TextDecoder("utf-16le").decode(buffer.subarray(2));
-  }
-  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
-    return new TextDecoder("utf-16be").decode(buffer.subarray(2));
-  }
+export type TabularFormat = "csv" | "xlsx" | "ofx" | "qif";
+export interface Table {
+  headers: string[];
+  rows: Row[];
+  /** indices de lecture propres au format (ex. QIF → dates MM/JJ) */
+  hints: { dateOrder?: "DMY" | "MDY" | "YMD" };
+}
+
+type Cell = string | number | null | undefined;
+
+/** Décode un fichier : BOM UTF-8/16, UTF-8 strict, sinon Windows-1252 (exports de banques européennes). */
+export function decodeText(buffer: Uint8Array, hintCharset = ""): string {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) return new TextDecoder("utf-16le").decode(buffer.subarray(2));
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) return new TextDecoder("utf-16be").decode(buffer.subarray(2));
   if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
     return new TextDecoder("utf-8").decode(buffer.subarray(3));
   }
-  if (!/^(utf-?8)$/i.test(hintCharset || "")) {
+  if (!/^utf-?8$/i.test(hintCharset)) {
     try {
       return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
     } catch {
@@ -24,23 +31,24 @@ function decodeText(buffer, hintCharset) {
   return new TextDecoder("windows-1252").decode(buffer);
 }
 
-const isBlank = (v) => v == null || String(v).trim() === "";
-const looksNumeric = (v) => typeof v === "number" || /^[-+(]?[\d\s.,'’$€£¥]+[)]?$/.test(String(v).trim());
-const looksDate = (v) => /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/.test(String(v).trim());
+const isBlank = (v: unknown) => v == null || String(v).trim() === "";
+const looksNumeric = (v: unknown) => typeof v === "number" || /^[-+(]?[\d\s.,'’$€£¥]+[)]?$/.test(String(v).trim());
+const looksDate = (v: unknown) => /^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/.test(String(v).trim());
 
 /** Choisit le séparateur CSV en testant les candidats sur les premières lignes. */
-function detectDelimiter(text) {
-  const candidates = [",", ";", "\t", "|"];
+export function detectDelimiter(text: string): string {
   let best = ",";
   let bestScore = -1;
-  for (const delimiter of candidates) {
-    const parsed = Papa.parse(text, { delimiter, preview: 60, skipEmptyLines: true });
+  for (const delimiter of [",", ";", "\t", "|"]) {
+    const parsed = Papa.parse<string[]>(text, { delimiter, preview: 60, skipEmptyLines: true });
     const lengths = parsed.data.map((r) => r.length).filter((n) => n >= 2);
     if (!lengths.length) continue;
-    const counts = {};
+    const counts: Record<number, number> = {};
     for (const n of lengths) counts[n] = (counts[n] || 0) + 1;
-    const [modalLen, modalCount] = Object.entries(counts).sort((a, b) => b[1] - a[1] || b[0] - a[0])[0];
-    const score = modalCount * (Number(modalLen) >= 3 ? 1 : 0.5);
+    const [modalLen, modalCount] = Object.entries(counts)
+      .map(([len, count]) => [Number(len), count] as const)
+      .sort((a, b) => b[1] - a[1] || b[0] - a[0])[0];
+    const score = modalCount * (modalLen >= 3 ? 1 : 0.5);
     if (score > bestScore) {
       bestScore = score;
       best = delimiter;
@@ -53,16 +61,17 @@ function detectDelimiter(text) {
  * Transforme une matrice de cellules en { headers, rows } :
  * saute les lignes d'introduction et de pied de page, nomme les colonnes vides ou en double.
  */
-function tableFromMatrix(matrix) {
+export function tableFromMatrix(matrix: Cell[][]): { headers: string[]; rows: Row[] } {
   const lines = matrix
     .map((r) => r.map((c) => (typeof c === "string" ? c.replace(/^﻿/, "").trim() : c)))
     .filter((r) => r.some((c) => !isBlank(c)));
   if (!lines.length) return { headers: [], rows: [] };
 
-  const filled = (r) => r.filter((c) => !isBlank(c)).length;
+  const filled = (r: Cell[]) => r.filter((c) => !isBlank(c)).length;
+
   // L'en-tête est la première ligne « large » (≥ 75 % de la plus large) faite de libellés, suivie de données.
   const maxFilled = Math.max(...lines.slice(0, 80).map(filled));
-  const findHeader = (minFilled) => {
+  const findHeader = (minFilled: number) => {
     for (let i = 0; i < Math.min(lines.length - 1, 60); i++) {
       const row = lines[i];
       const n = filled(row);
@@ -80,8 +89,8 @@ function tableFromMatrix(matrix) {
   const headerRow = lines[headerIdx];
   let width = headerRow.length;
   while (width > 0 && isBlank(headerRow[width - 1])) width--;
-  const seen = {};
-  const headers = [];
+  const seen: Record<string, number> = {};
+  const headers: string[] = [];
   for (let j = 0; j < width; j++) {
     let name = isBlank(headerRow[j]) ? `Column ${j + 1}` : String(headerRow[j]).trim();
     if (seen[name]) {
@@ -93,11 +102,11 @@ function tableFromMatrix(matrix) {
     headers.push(name);
   }
 
-  const rows = [];
+  const rows: Row[] = [];
   for (const r of lines.slice(headerIdx + 1)) {
     if (headers.length >= 3 && filled(r) <= 1) continue; // mention légale, ligne isolée…
     if (/^(total|totaux|subtotal|sous-total|summe|gesamt|totale|totales)\b/i.test(String(r[0] ?? "").trim())) continue;
-    const obj = {};
+    const obj: Row = {};
     headers.forEach((h, j) => {
       obj[h] = r[j] == null ? "" : r[j];
     });
@@ -106,34 +115,34 @@ function tableFromMatrix(matrix) {
   return { headers, rows };
 }
 
-function parseCsvText(text) {
+export function parseCsvText(text: string) {
   const delimiter = detectDelimiter(text);
-  const parsed = Papa.parse(text, { delimiter, skipEmptyLines: true });
+  const parsed = Papa.parse<string[]>(text, { delimiter, skipEmptyLines: true });
   return { ...tableFromMatrix(parsed.data), delimiter };
 }
 
-const pad = (n) => String(n).padStart(2, "0");
-function excelDateToISO(d) {
+const pad = (n: number) => String(n).padStart(2, "0");
+function dateToISO(d: Date): string {
   const x = new Date(d.getTime() + 12 * 3600 * 1000); // absorbe les décalages de fuseau
   return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
 }
 
 /** Feuille Excel (matrice brute avec Date) → table. Les dates deviennent AAAA-MM-JJ. */
-function tableFromSheetMatrix(matrix) {
-  const clean = matrix.map((r) =>
-    r.map((c) => (c instanceof Date && !isNaN(c.getTime()) ? excelDateToISO(c) : c))
+export function tableFromSheetMatrix(matrix: Cell[][] | (Cell | Date)[][]) {
+  const clean = (matrix as (Cell | Date)[][]).map((r) =>
+    r.map((c) => (c instanceof Date && !isNaN(c.getTime()) ? dateToISO(c) : (c as Cell)))
   );
   return tableFromMatrix(clean);
 }
 
 // ───────────────────────────── OFX / QFX ─────────────────────────────
 
-function ofxTag(block, tag) {
+function ofxTag(block: string, tag: string): string {
   const m = block.match(new RegExp(`<${tag}>([^<\\r\\n]*)`, "i"));
   return m ? m[1].trim() : "";
 }
 
-function normalizeOfxAmount(raw) {
+function normalizeOfxAmount(raw: string): string {
   let s = String(raw || "").replace(/\s/g, "");
   if (!s) return "";
   if (s.includes(",") && s.includes(".")) s = s.replace(/,/g, "");
@@ -141,22 +150,20 @@ function normalizeOfxAmount(raw) {
   return s;
 }
 
-function ofxDate(raw) {
+function ofxDate(raw: string): string {
   const m = String(raw || "").match(/^(\d{4})(\d{2})(\d{2})/);
   return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
 }
 
-function parseOFX(text) {
-  const segments = [];
+export function parseOFX(text: string) {
+  const starts: number[] = [];
   const startRe = /<(STMTRS|CCSTMTRS)>/gi;
-  const starts = [];
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = startRe.exec(text))) starts.push(m.index);
-  if (starts.length === 0) segments.push(text);
-  else starts.forEach((s, i) => segments.push(text.slice(s, starts[i + 1] ?? text.length)));
+  const segments = starts.length === 0 ? [text] : starts.map((s, i) => text.slice(s, starts[i + 1] ?? text.length));
 
   const globalCur = ofxTag(text, "CURDEF");
-  const rows = [];
+  const rows: Row[] = [];
   for (const seg of segments) {
     const currency = ofxTag(seg, "CURDEF") || globalCur;
     const acct = ofxTag(seg, "ACCTID");
@@ -185,17 +192,17 @@ function parseOFX(text) {
 
 const QIF_SKIP_TYPES = /^(class|cat|memorized|payee|tag|security|prices|template)$/i;
 
-function cleanQifDate(raw) {
+function cleanQifDate(raw: string | undefined): string {
   let s = String(raw || "").replace(/\s+/g, "");
-  s = s.replace(/'(\d{2})$/, (_m, yy) => `/${Number(yy) <= 69 ? "20" : "19"}${yy}`); // 3/15'26
+  s = s.replace(/'(\d{2})$/, (_m, yy: string) => `/${Number(yy) <= 69 ? "20" : "19"}${yy}`); // 3/15'26
   s = s.replace(/'(\d{4})$/, "/$1");
   return s;
 }
 
-function parseQIF(text) {
-  const rows = [];
+export function parseQIF(text: string) {
+  const rows: Row[] = [];
   let skipping = false;
-  let rec = {};
+  let rec: Record<string, string> = {};
   const flush = () => {
     if (rec.T != null || rec.D != null) {
       rows.push({
@@ -224,20 +231,50 @@ function parseQIF(text) {
       continue;
     }
     const code = line[0];
-    const value = line.slice(1);
-    if (rec[code] == null) rec[code] = value;
+    if (rec[code] == null) rec[code] = line.slice(1);
   }
   flush();
   const headers = ["Date", "Description", "Amount", "Memo", "Category", "Reference"];
   return { headers, rows };
 }
 
-module.exports = {
-  decodeText,
-  detectDelimiter,
-  tableFromMatrix,
-  tableFromSheetMatrix,
-  parseCsvText,
-  parseOFX,
-  parseQIF,
-};
+// ───────────────────────────── Fichier → table ─────────────────────────────
+
+function requireRows(t: { headers: string[]; rows: Row[] }) {
+  if (!t.headers.length || !t.rows.length) throw new Error("EMPTY_FILE");
+  return t;
+}
+
+/** Lit un fichier CSV / XLSX / OFX / QIF dans le navigateur. Lève Error("EMPTY_FILE") s'il n'y a rien à importer. */
+export async function readTabularFile(file: File, format: TabularFormat): Promise<Table> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+
+  if (format === "csv") {
+    return { ...requireRows(parseCsvText(decodeText(bytes))), hints: {} };
+  }
+
+  if (format === "ofx") {
+    const charset = (new TextDecoder("latin1").decode(bytes.subarray(0, 600)).match(/CHARSET:\s*(\w+)/i) || [])[1];
+    const text = decodeText(bytes, charset === "1252" ? "windows-1252" : "");
+    return { ...requireRows(parseOFX(text)), hints: { dateOrder: "YMD" } };
+  }
+
+  if (format === "qif") {
+    return { ...requireRows(parseQIF(decodeText(bytes))), hints: { dateOrder: "MDY" } };
+  }
+
+  // xlsx : bibliothèque chargée à la demande
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.read(bytes, { type: "array", cellDates: true });
+  for (const name of workbook.SheetNames) {
+    const matrix = XLSX.utils.sheet_to_json<(Cell | Date)[]>(workbook.Sheets[name], {
+      header: 1,
+      raw: true,
+      defval: "",
+      blankrows: false,
+    });
+    const table = tableFromSheetMatrix(matrix);
+    if (table.headers.length && table.rows.length) return { ...table, hints: {} };
+  }
+  throw new Error("EMPTY_FILE");
+}

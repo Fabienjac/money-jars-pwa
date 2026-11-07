@@ -124,6 +124,8 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const [readOptions, setReadOptions] = useState<ReadOptions>(DEFAULT_READ_OPTIONS);
   const [fileDateHint, setFileDateHint] = useState<DateOrder | undefined>(undefined);
   const [importNotices, setImportNotices] = useState<string[]>([]);
+  const [pdfLocalFailed, setPdfLocalFailed] = useState(false);
+  const [pdfGuessed, setPdfGuessed] = useState(false);
   // On garde l'ancien state pour compatibilité mais on n'utilisera que le nouveau
   const [columnMappings, setColumnMappings] = useState<Array<{sourceColumn: string, targetColumn: string, confidence: number}>>([]);
   const [newColumnMappings, setNewColumnMappings] = useState<ColumnMapping[]>([]);
@@ -188,6 +190,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       setFile(selectedFile);
       setFileFormat(format);
       setError(null);
+      setPdfLocalFailed(false);
     } else {
       setError(tr("imp.badFormat"));
       setFile(null);
@@ -195,67 +198,87 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     }
   };
 
-  // ÉTAPE 1 : Analyser le fichier pour détecter la structure
-  const extractTransactions = async () => {
+  // ÉTAPE 1 : Lire le fichier et détecter sa structure.
+  // CSV / XLSX / OFX / QIF / PDF sont lus ici, dans le navigateur : le fichier ne quitte pas l'appareil.
+  // Seul un PDF non reconnu peut, avec accord explicite, passer par notre serveur (serverPdf).
+  const extractTransactions = async (opts?: { serverPdf?: boolean }) => {
     if (!file || !fileFormat) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("format", fileFormat);
+      let structure: {
+        headers: string[];
+        rows: any[];
+        hints?: { dateOrder?: string };
+        suggestedMappings?: Array<{ sourceColumn: string; targetColumn: string; confidence: number }>;
+        guessed?: boolean;
+      };
 
-      console.log("🔍 Analyse de la structure du fichier...");
-
-      // Port 5173 = Vite seul → plugin local. Port 8888 = netlify dev → vraie fonction.
-      const analyzeUrl =
-        import.meta.env.DEV && window.location.port === "5173"
-          ? "/__vite-local/analyzeFile"
-          : "/.netlify/functions/analyzeFile";
-
-      const response = await fetch(analyzeUrl, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erreur API:", errorText);
-        let backendMessage = "";
-        try {
-          const parsedError = JSON.parse(errorText);
-          backendMessage = parsedError?.message ? ` ${parsedError.message}` : "";
-        } catch {
-          backendMessage = "";
+      if (fileFormat === "pdf" && opts?.serverPdf) {
+        // Repli explicite : analyse par notre fonction serveur (extraction de texte, sans IA ni tiers)
+        const analyzeUrl =
+          import.meta.env.DEV && window.location.port === "5173"
+            ? "/__vite-local/analyzeFile"
+            : "/.netlify/functions/analyzeFile";
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("format", "pdf");
+        const response = await fetch(analyzeUrl, { method: "POST", body: formData });
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Erreur API:", errorText);
+          let backendMessage = "";
+          try {
+            const parsedError = JSON.parse(errorText);
+            backendMessage = parsedError?.message ? ` ${parsedError.message}` : "";
+          } catch {
+            backendMessage = "";
+          }
+          const is404 = response.status === 404;
+          const hint =
+            is404 && typeof window !== "undefined" && window.location.port === "8888"
+              ? tr("imp.netlifyHint")
+              : "";
+          throw new Error(tr("imp.analyzeError") + backendMessage + hint);
         }
-        const is404 = response.status === 404;
-        const hint =
-          is404 && typeof window !== "undefined" && window.location.port === "8888"
-            ? tr("imp.netlifyHint")
-            : "";
-        throw new Error(tr("imp.analyzeError") + backendMessage + hint);
+        structure = (await response.json()).structure;
+      } else if (fileFormat === "pdf") {
+        try {
+          const { readPdfStatement } = await import("../pdfLocal");
+          const table = await readPdfStatement(file);
+          if (table.rows.length === 0) throw new Error("EMPTY_FILE");
+          structure = { headers: table.headers, rows: table.rows, guessed: table.guessed };
+        } catch (e: any) {
+          if (e?.name === "PdfPasswordError") throw new Error(tr("imp.pdfPassword"));
+          if (e?.name === "PdfUnreadableError") throw new Error(tr("imp.pdfUnreadable")); // le serveur lirait le même texte : pas de repli
+          setPdfLocalFailed(true);
+          throw new Error(tr("imp.pdfNothingLocal"));
+        }
+      } else {
+        try {
+          const { readTabularFile } = await import("../tabularParse");
+          structure = await readTabularFile(file, fileFormat);
+        } catch (e: any) {
+          if (e?.message === "EMPTY_FILE") throw new Error(tr("imp.noRows"));
+          throw new Error(tr("imp.analyzeError"));
+        }
       }
 
-      const data = await response.json();
-      
-      console.log("✅ Structure détectée:", {
-        headers: data.structure.headers,
-        rows: data.structure.totalRows
-      });
-      
-      // Stocker les données brutes et headers
+      setPdfLocalFailed(false);
+      setPdfGuessed(!!structure.guessed);
+
       // Colonnes débit/crédit séparées → colonne « montant net » ; puis suggestion automatique des colonnes
-      const prepared = addNetAmountColumn(data.structure.headers, data.structure.rows);
+      const prepared = addNetAmountColumn(structure.headers, structure.rows);
       setRawData(prepared.rows);
       setHeaders(prepared.headers);
       setSuggestedColumns(suggestColumns(prepared.headers, prepared.rows));
-      setFileDateHint(data.structure.hints?.dateOrder as DateOrder | undefined);
+      setFileDateHint(structure.hints?.dateOrder as DateOrder | undefined);
       setReadOptions(DEFAULT_READ_OPTIONS);
       setImportNotices([]);
-      setColumnMappings(data.structure.suggestedMappings);
-      
+      setColumnMappings(structure.suggestedMappings ?? []);
+
       // Passer à l'étape de mapping
       setStep("mapping");
       
@@ -489,6 +512,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       if (otherCount > 0) {
         notices.push(tr(transactionType === "revenue" ? "imp.notice.otherRevenue" : "imp.notice.otherSpending", { n: otherCount }));
       }
+      if (pdfGuessed) notices.push(tr("imp.pdfGuessed"));
       setImportNotices(notices);
       if (kept.length === 0) throw new Error(tr("imp.noRows"));
 
@@ -1335,8 +1359,38 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           </div>
         )}
 
+        {pdfLocalFailed && fileFormat === "pdf" && (
+          <div style={{
+            padding: "12px 16px",
+            borderRadius: "12px",
+            backgroundColor: "rgba(255, 149, 0, 0.1)",
+            color: "var(--text-main)",
+            marginBottom: "20px",
+            fontSize: "14px",
+          }}>
+            <p style={{ margin: "0 0 8px" }}>{tr("imp.pdfServerAsk")}</p>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => extractTransactions({ serverPdf: true })}
+              style={{
+                padding: "8px 14px",
+                borderRadius: "10px",
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-body)",
+                color: "var(--text-main)",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              {tr("imp.pdfServerBtn")}
+            </button>
+          </div>
+        )}
+
         <button
-          onClick={extractTransactions}
+          onClick={() => extractTransactions()}
           disabled={!file || loading}
           style={{
             width: "100%",
@@ -1369,6 +1423,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             lineHeight: 1.6,
           }}>
             <strong>{tr("imp.formatsLabel")}</strong>{tr("imp.formatsText")}
+          </p>
+          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.6 }}>
+            {tr("imp.localNote")}
           </p>
         </div>
       </div>

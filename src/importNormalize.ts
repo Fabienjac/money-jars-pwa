@@ -243,9 +243,9 @@ export function detectDateOrder(values: unknown[], fallback: DateOrder = "DMY"):
 // ─────────────────────────── Débit / crédit séparés ───────────────────────────
 
 const DEBIT_RE =
-  /\b(debit|debits|debited|debito|debitos|withdrawal|withdrawals|withdrawn|paid out|money out|outgoing|spent|soll|ausgaben|ausgang|cargo|cargos|retrait|retraits|sortie|sorties|uscita|uscite|addebito|addebiti|af|uitgaven|saida|saidas)\b/;
+  /\b(debit|debits|debited|debito|debitos|withdrawal|withdrawals|withdrawn|paid out|money out|outgoing|spent|soll|ausgaben|ausgang|cargo|cargos|retiro|retiros|retrait|retraits|sortie|sorties|uscita|uscite|addebito|addebiti|af|uitgaven|saida|saidas)\b/;
 const CREDIT_RE =
-  /\b(credit|credits|credited|credito|creditos|deposit|deposits|paid in|money in|incoming|received|haben|eingang|einnahmen|abono|abonos|ingreso|ingresos|versement|versements|entree|entrees|entrata|entrate|accredito|accrediti|bij|inkomsten|entrada|entradas)\b/;
+  /\b(credit|credits|credited|credito|creditos|deposit|deposits|deposito|depositos|paid in|money in|incoming|received|haben|eingang|einnahmen|abono|abonos|ingreso|ingresos|versement|versements|entree|entrees|entrata|entrate|accredito|accrediti|bij|inkomsten|entrada|entradas)\b/;
 const NOT_AMOUNT_RE = /\b(card|carte|number|numero|no|limit|limite|balance|solde|saldo|total|fee|frais|rate|taux|score|type)\b/;
 
 /** Colonnes débit et crédit d'un fichier qui les sépare (sinon null). */
@@ -347,7 +347,7 @@ export function suggestColumns(headers: string[], rows: Row[]): SuggestedColumns
   const descScore = (col: string) => {
     const vals = nonEmpty(colValues(rows, col));
     if (!vals.length) return 0;
-    return vals.filter((v) => typeof v === "string" && parseAmount(v) == null && parseDate(v) == null).length / vals.length;
+    return vals.filter((v) => typeof v === "string" && /[A-Za-zÀ-ÿ]{2}/.test(v) && parseDate(v) == null).length / vals.length;
   };
   for (const re of DESC_PRIORITY) {
     const h = headers.find((c) => !used.has(c) && re.test(normalizeHeader(c)) && descScore(c) >= 0.6);

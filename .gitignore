@@ -7,3 +7,6 @@ node_modules/
 
 # Scripts de migration (contiennent des clés secrètes)
 scripts/
+
+# Relevés bancaires réels (données sensibles, jamais commités)
+EXEMPLE DE RELEVES/

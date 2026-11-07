@@ -780,6 +780,13 @@ const fr = {
   "imp.notice.otherSpending": "{n} ligne(s) ignorée(s) : rentrées d'argent (vous importez des dépenses).",
   "imp.notice.otherRevenue": "{n} ligne(s) ignorée(s) : sorties d'argent (vous importez des revenus).",
   "imp.noRows": "Aucune ligne exploitable avec ces réglages de lecture. Vérifiez les colonnes date et montant.",
+  "imp.pdfPassword": "Ce PDF est protégé par un mot de passe. Retirez la protection (ou exportez un CSV) puis réessayez.",
+  "imp.pdfNothingLocal": "Aucune transaction n'a pu être lue dans ce PDF. Si votre banque propose un export CSV ou OFX, il sera plus fiable.",
+  "imp.pdfServerAsk": "Vous pouvez essayer l'analyse sur notre serveur : le fichier lui sera envoyé (extraction de texte uniquement, aucune IA ni service tiers).",
+  "imp.pdfServerBtn": "Envoyer à notre serveur pour analyse",
+  "imp.pdfGuessed": "Structure du relevé non reconnue : colonnes devinées, vérifiez bien les dates et les montants.",
+  "imp.localNote": "🔒 Votre fichier est lu sur votre appareil : il n'est envoyé nulle part.",
+  "imp.pdfUnreadable": "Le texte de ce PDF est illisible (fichier imprimé, copié ou protégé). Téléchargez le relevé original depuis l'application de votre banque, ou exportez-le en CSV ou OFX.",
 } as const;
 
 export default fr;

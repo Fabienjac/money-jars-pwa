@@ -1,10 +1,8 @@
 // netlify/functions/analyzeFile.js
-// Analyse la structure d'un fichier et détecte les colonnes
+// Repli serveur pour les PDF non reconnus localement (extraction de texte, sans IA).
+// CSV / XLSX / OFX / QIF et PDF courants sont lus dans le navigateur (src/tabularParse.ts, src/pdfStatement.ts).
 const pdfParse = require("pdf-parse");
-const Papa = require("papaparse");
-const XLSX = require("xlsx");
 const Busboy = require("busboy");
-const tabular = require("./_lib/tabular");
 
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
@@ -35,18 +33,6 @@ exports.handler = async (event) => {
     switch (format) {
       case "pdf":
         structure = await analyzePDF(fileBuffer);
-        break;
-      case "csv":
-        structure = analyzeCSV(fileBuffer);
-        break;
-      case "xlsx":
-        structure = analyzeXLSX(fileBuffer);
-        break;
-      case "ofx":
-        structure = analyzeOFX(fileBuffer);
-        break;
-      case "qif":
-        structure = analyzeQIF(fileBuffer);
         break;
       default:
         throw new Error(`Format non supporté: ${format}`);
@@ -81,71 +67,6 @@ exports.handler = async (event) => {
     };
   }
 };
-
-function buildStructure(headers, rows, hints) {
-  if (!headers.length || !rows.length) {
-    throw new Error("Aucune transaction trouvée dans ce fichier");
-  }
-  // Suggestions historiques (ancien écran de mapping) ; le nouvel écran déduit les siennes côté client
-  const suggestedMappings = headers.map((header) => ({
-    sourceColumn: header,
-    targetColumn: suggestMapping(header),
-    confidence: calculateConfidence(header),
-  }));
-  return {
-    headers,
-    rows,
-    preview: rows.slice(0, 5),
-    suggestedMappings,
-    totalRows: rows.length,
-    hints: hints || {},
-  };
-}
-
-/**
- * Analyse un CSV : encodage, séparateur et ligne d'en-tête détectés automatiquement
- */
-function analyzeCSV(buffer) {
-  const { headers, rows, delimiter } = tabular.parseCsvText(tabular.decodeText(buffer));
-  return buildStructure(headers, rows, { delimiter });
-}
-
-/**
- * Analyse un XLSX : première feuille non vide, dates converties en AAAA-MM-JJ
- */
-function analyzeXLSX(buffer) {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-  for (const name of workbook.SheetNames) {
-    const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[name], {
-      header: 1,
-      raw: true,
-      defval: "",
-      blankrows: false,
-    });
-    const { headers, rows } = tabular.tableFromSheetMatrix(matrix);
-    if (headers.length && rows.length) return buildStructure(headers, rows, { sheet: name });
-  }
-  throw new Error("Le fichier Excel est vide");
-}
-
-/**
- * Analyse un OFX / QFX (export standard des banques US, UK, CA, AU…)
- */
-function analyzeOFX(buffer) {
-  const head = buffer.subarray(0, 600).toString("latin1");
-  const charset = (head.match(/CHARSET:\s*(\w+)/i) || [])[1];
-  const text = tabular.decodeText(buffer, charset === "1252" ? "windows-1252" : "");
-  const { headers, rows } = tabular.parseOFX(text);
-  return buildStructure(headers, rows, { dateOrder: "YMD" });
-}
-
-/**
- * Analyse un QIF (Quicken). Les dates sont le plus souvent MM/JJ/AAAA.
- */
-function analyzeQIF(buffer) {
-  const { headers, rows } = tabular.parseQIF(tabular.decodeText(buffer));
-  return buildStructure(headers, rows, { dateOrder: "MDY" });
-}
 
 /**
  * Analyse un PDF et tente d'extraire une structure tabulaire

@@ -7,13 +7,14 @@
     "dev:netlify": "netlify dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/importNormalize.test.ts tests/tabular.test.js"
+    "test": "node --test tests/importNormalize.test.ts tests/tabular.test.mjs tests/pdfStatement.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
     "busboy": "^1.6.0",
     "papaparse": "^5.5.3",
     "pdf-parse": "1.1.4",
+    "pdfjs-dist": "^6.5.438",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "recharts": "^3.5.0",
@@ -21,6 +22,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.2.1",

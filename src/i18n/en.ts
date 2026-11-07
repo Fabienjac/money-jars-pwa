@@ -782,6 +782,13 @@ const en: Record<keyof typeof fr, string> = {
   "imp.notice.otherSpending": "{n} row(s) skipped: incoming money (you are importing expenses).",
   "imp.notice.otherRevenue": "{n} row(s) skipped: outgoing money (you are importing income).",
   "imp.noRows": "No usable rows with these reading settings. Check the date and amount columns.",
+  "imp.pdfPassword": "This PDF is password-protected. Remove the protection (or export a CSV) and try again.",
+  "imp.pdfNothingLocal": "No transactions could be read from this PDF. If your bank offers a CSV or OFX export, it will be more reliable.",
+  "imp.pdfServerAsk": "You can try analysis on our server: the file will be sent to it (text extraction only, no AI or third-party service).",
+  "imp.pdfServerBtn": "Send to our server for analysis",
+  "imp.pdfGuessed": "Statement layout not recognised: columns were guessed, check dates and amounts carefully.",
+  "imp.localNote": "🔒 Your file is read on your device: it is not sent anywhere.",
+  "imp.pdfUnreadable": "The text of this PDF is unreadable (printed, copied or protected file). Download the original statement from your bank's app, or export it as CSV or OFX.",
 };
 
 export default en;
