@@ -839,6 +839,12 @@ const en: Record<keyof typeof fr, string> = {
   "fb.thanksTitle": "Thank you!",
   "fb.thanks": "Your message has been sent.",
   "fb.error": "Couldn't send right now. Please try again later.",
+  "alerts.title": "Jar alerts",
+  "alerts.warn": "{pct}% spent · {amount} left",
+  "alerts.empty": "Jar empty",
+  "alerts.over": "Over by {amount}",
+  "alerts.hint": "Alert once {pct}% of the jar balance is spent.",
+  "alerts.navDot": "jar alerts to review",
 };
 
 export default en;

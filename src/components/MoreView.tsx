@@ -1,21 +1,50 @@
 // src/components/MoreView.tsx
 import React, { useState } from "react";
 
-import { useT } from "../i18n";
+import { useT, localeTag, JAR_LABELS } from "../i18n";
+import { currencySymbol as curSym } from "../baseCurrency";
+import { JAR_ALERT_EMOJIS, WARN_RATIO, type JarAlert } from "../jarAlerts";
 import FeedbackForm from "./FeedbackForm";
 interface MoreViewProps {
   darkMode: boolean;
   onToggleDark: () => void;
   onImport: () => void;
   onOpenSettings: () => void;
+  jarAlerts?: JarAlert[];
 }
 
-const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, onOpenSettings }) => {
+const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, onOpenSettings, jarAlerts = [] }) => {
   const t = useT();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   return (
   <div className="more-view">
     <h2 className="more-title">{t("nav.more")}</h2>
+    {jarAlerts.length > 0 && (
+      <section className="alert-card" aria-label={t("alerts.title")}>
+        <h3 className="alert-card-title">{t("alerts.title")}</h3>
+        <ul className="alert-list">
+          {jarAlerts.map((a) => {
+            const amount = `${Math.abs(a.net).toLocaleString(localeTag(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u00A0${curSym()}`;
+            const message =
+              a.level === 2
+                ? t("alerts.over", { amount })
+                : a.net < 0.005
+                  ? t("alerts.empty")
+                  : t("alerts.warn", { pct: Math.floor(a.percent), amount });
+            return (
+              <li key={a.jar} className={`alert-row alert-row--${a.level === 2 ? "over" : "warn"}`}>
+                <span className="alert-row-emoji" aria-hidden="true">{JAR_ALERT_EMOJIS[a.jar]}</span>
+                <span className="alert-row-text">
+                  <span className="alert-row-name">{JAR_LABELS[a.jar]}</span>
+                  <span className="alert-row-msg">{message}</span>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <p className="alert-card-hint">{t("alerts.hint", { pct: Math.round(WARN_RATIO * 100) })}</p>
+      </section>
+    )}
     <div className="more-list">
       <button type="button" className="more-item" onClick={onImport}>
         <span className="more-item-icon">📂</span>

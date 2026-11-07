@@ -16,6 +16,7 @@ import { OnboardingFlow } from "./components/OnboardingFlow";
 import { PaywallModal } from "./components/PaywallModal";
 import MoreView from "./components/MoreView";
 import { useOffline } from "./hooks/useOffline";
+import { useJarAlerts } from "./hooks/useJarAlerts";
 import { useAuth } from "./contexts/AuthContext";
 import { loadAccounts } from "./accountsUtils";
 import { getAccounts, fetchTagsFromSheet, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings, appendSpending, appendRevenue } from "./api";
@@ -80,6 +81,12 @@ function App() {
   useEffect(() => {
     return offlineManager.subscribe((state) => setPendingCount(state.pendingTransactions.length));
   }, []);
+
+  // Alertes des jarres (point rouge sur « Plus ») : recalculées à chaque changement d'écran et à chaque saisie
+  const { alerts: jarAlerts, unseen: jarAlertsUnseen, markSeen: markJarAlertsSeen } = useJarAlerts(user?.id ?? null, section);
+  useEffect(() => {
+    if (section === "more") markJarAlertsSeen();
+  }, [section, markJarAlertsSeen]);
 
   // Vérifier si l'onboarding a déjà été fait (jar_settings présents)
   useEffect(() => {
@@ -325,6 +332,7 @@ function App() {
               onToggleDark={() => setDarkMode((v) => !v)}
               onImport={() => setImporterOpen(true)}
               onOpenSettings={() => setSection("settings")}
+              jarAlerts={jarAlerts}
             />
           )}
           {section === "settings" && (
@@ -429,8 +437,10 @@ function App() {
           type="button"
           className={`bottom-nav-btn ${section === "more" || section === "settings" ? "active" : ""}`}
           onClick={() => setSection("more")}
+          aria-label={jarAlertsUnseen ? `${t("nav.more")} – ${t("alerts.navDot")}` : undefined}
         >
           <span className="bottom-nav-icon">
+            {jarAlertsUnseen && <span className="nav-alert-dot" aria-hidden="true" />}
             <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
               <circle cx="6" cy="14" r="2.2" fill={navColor(section === "more" || section === "settings")} />
               <circle cx="14" cy="14" r="2.2" fill={navColor(section === "more" || section === "settings")} />

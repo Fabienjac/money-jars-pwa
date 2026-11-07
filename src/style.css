@@ -3814,3 +3814,37 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .life-tag-name { flex: 1; min-width: 0; font-size: 14px; color: var(--text-main); }
 .life-tag-amount { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
 .life-close { margin-top: 6px; }
+
+/* Alertes des jarres : point rouge sur « Plus » + carte dans l'écran Plus */
+.nav-alert-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #FF3B30;
+  border: 2px solid var(--bg-card);
+  z-index: 1;
+}
+
+.alert-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-md);
+}
+.alert-card-title { margin: 0 0 8px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.alert-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.alert-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; border-left: 4px solid transparent; }
+.alert-row--warn { background: rgba(255, 149, 0, 0.12); border-left-color: #FF9500; }
+.alert-row--over { background: rgba(255, 59, 48, 0.12); border-left-color: #FF3B30; }
+.alert-row-emoji { font-size: 22px; flex-shrink: 0; }
+.alert-row-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.alert-row-name { font-size: 15px; font-weight: 600; color: var(--text-main); }
+.alert-row-msg { font-size: 13px; font-weight: 600; }
+.alert-row--warn .alert-row-msg { color: var(--warn-text); }
+.alert-row--over .alert-row-msg { color: var(--danger-text); }
+.alert-card-hint { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); }

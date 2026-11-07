@@ -7,7 +7,7 @@
     "dev:netlify": "netlify dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/importNormalize.test.ts tests/importSave.test.ts tests/tabular.test.mjs tests/pdfStatement.test.mjs tests/notifyFeedback.test.mjs tests/lifestyle.test.ts"
+    "test": "node --test tests/importNormalize.test.ts tests/importSave.test.ts tests/tabular.test.mjs tests/pdfStatement.test.mjs tests/notifyFeedback.test.mjs tests/lifestyle.test.ts tests/jarAlerts.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

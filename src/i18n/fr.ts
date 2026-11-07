@@ -837,6 +837,12 @@ const fr = {
   "fb.thanksTitle": "Merci !",
   "fb.thanks": "Votre message a bien été envoyé.",
   "fb.error": "Envoi impossible pour le moment. Réessayez plus tard.",
+  "alerts.title": "Alertes des jarres",
+  "alerts.warn": "{pct} % dépensé · reste {amount}",
+  "alerts.empty": "Jarre épuisée",
+  "alerts.over": "Dépassée de {amount}",
+  "alerts.hint": "Alerte dès {pct} % du solde de la jarre dépensé.",
+  "alerts.navDot": "alertes de jarres à consulter",
 } as const;
 
 export default fr;
