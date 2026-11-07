@@ -58,9 +58,28 @@ test("detectDateOrder", () => {
 
 test("inferExpenseSign", () => {
   assert.equal(inferExpenseSign([-10, -20, 500]), "negative");
-  assert.equal(inferExpenseSign([10, 20, -500]), "positive");
-  assert.equal(inferExpenseSign([10, 20]), "positive");
+  assert.equal(inferExpenseSign([10, 20]), "positive"); // un seul signe : dépenses
+  assert.equal(inferExpenseSign([-10, -20]), "negative");
   assert.equal(inferExpenseSign([-10, 10]), "negative");
+  // carte de crédit : achats positifs très majoritaires, un paiement négatif
+  assert.equal(inferExpenseSign([10, 20, 5, 8, 12, 30, -500]), "positive");
+  // petit relevé avec surtout des intérêts : la convention bancaire l'emporte
+  assert.equal(inferExpenseSign([0.11, 0.12, 0.05, -62.5]), "negative");
+  assert.equal(inferExpenseSign([10, 20, -500]), "negative");
+});
+
+import { resolveReading, DEFAULT_READ_OPTIONS } from "../src/importNormalize.ts";
+
+test("resolveReading : la colonne crédit − débit a un sens connu (sortie = dépense)", () => {
+  const rows = [
+    { Date: "2026-09-01", [NET_AMOUNT_COLUMN]: "0.11" },
+    { Date: "2026-10-01", [NET_AMOUNT_COLUMN]: "0.12" },
+    { Date: "2026-10-09", [NET_AMOUNT_COLUMN]: "-62.5" },
+    { Date: "2026-11-01", [NET_AMOUNT_COLUMN]: "0.05" },
+  ];
+  assert.equal(resolveReading(rows, "Date", NET_AMOUNT_COLUMN, DEFAULT_READ_OPTIONS).expenseSign, "negative");
+  // le choix manuel de l'utilisateur reste prioritaire
+  assert.equal(resolveReading(rows, "Date", NET_AMOUNT_COLUMN, { ...DEFAULT_READ_OPTIONS, expenseSign: "positive" }).expenseSign, "positive");
 });
 
 test("addNetAmountColumn: débit / crédit séparés", () => {

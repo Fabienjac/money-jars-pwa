@@ -35,6 +35,11 @@ test("Relevé FR : colonnes entrée/sortie fusionnées dans l'en-tête, date et 
   const sug = N.suggestColumns(net.headers, net.rows);
   assert.equal(sug.Montant, N.NET_AMOUNT_COLUMN);
   assert.equal(sug.Description, "Description");
+  // Régression : les intérêts (rentrées) sont plus nombreux que le virement (sortie), mais seule la sortie est une dépense
+  const reading = N.resolveReading(net.rows, sug.Date, sug.Montant, N.DEFAULT_READ_OPTIONS);
+  assert.equal(reading.expenseSign, "negative");
+  const amounts = net.rows.map((r) => N.parseAmount(r[sug.Montant], reading.decimal));
+  assert.deepEqual(amounts.filter((a) => a < 0), [-62.5]);
 });
 
 test("Relevé ES : retiro/depósito, descriptions sur plusieurs lignes, page suivante sans en-tête", () => {

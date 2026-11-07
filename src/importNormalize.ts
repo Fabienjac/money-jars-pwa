@@ -104,7 +104,14 @@ export function parseAmount(raw: unknown, decimal?: DecimalSep | null): number |
   return negative ? -Math.abs(n) : n;
 }
 
-/** Sens des montants : le signe le plus fréquent est celui des dépenses (égalité → négatif). */
+/**
+ * Sens des montants (quel signe désigne une dépense).
+ * - un seul signe dans le fichier : c'est celui des dépenses (relevé de carte, export de dépenses) ;
+ * - deux signes : la convention bancaire (dépense = négatif) l'emporte, sauf si les montants positifs
+ *   dominent très nettement (relevé de carte où les achats sont positifs et les paiements rares).
+ *   Compter simplement le signe majoritaire se trompe sur un petit relevé qui contient surtout des
+ *   rentrées (intérêts, virements reçus).
+ */
 export function inferExpenseSign(amounts: Array<number | null>): ExpenseSign {
   let neg = 0;
   let pos = 0;
@@ -113,7 +120,9 @@ export function inferExpenseSign(amounts: Array<number | null>): ExpenseSign {
     if (a < 0) neg++;
     else pos++;
   }
-  return pos > neg ? "positive" : "negative";
+  if (neg === 0 && pos > 0) return "positive";
+  if (neg > 0 && pos === 0) return "negative";
+  return pos >= 5 && pos >= 5 * neg ? "positive" : "negative";
 }
 
 // ─────────────────────────────── Dates ───────────────────────────────
@@ -409,7 +418,9 @@ export function resolveReading(
   const amountsRaw = amountCol ? rows.map((r) => r[amountCol]) : [];
   const decimal: DecimalSep = opts.decimal === "auto" ? detectDecimal(amountsRaw) ?? "." : opts.decimal;
   const parsed = amountsRaw.map((v) => parseAmount(v, decimal));
-  const expenseSign = opts.expenseSign === "auto" ? inferExpenseSign(parsed) : opts.expenseSign;
+  // La colonne « crédit − débit » fabriquée par addNetAmountColumn a un sens connu : sortie = négatif
+  const expenseSign =
+    opts.expenseSign !== "auto" ? opts.expenseSign : amountCol === NET_AMOUNT_COLUMN ? "negative" : inferExpenseSign(parsed);
   const mixedSigns = parsed.some((a) => a != null && a < 0) && parsed.some((a) => a != null && a > 0);
   const sample = dates.find((v) => typeof v === "string" && /^\d{1,2}[\s/.\-]\d{1,2}[\s/.\-]\d{2,4}/.test(v.trim()));
   return {
