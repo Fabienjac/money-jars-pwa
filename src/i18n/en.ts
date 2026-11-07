@@ -789,6 +789,7 @@ const en: Record<keyof typeof fr, string> = {
   "imp.pdfGuessed": "Statement layout not recognised: columns were guessed, check dates and amounts carefully.",
   "imp.localNote": "🔒 Your file is read on your device: it is not sent anywhere.",
   "imp.pdfUnreadable": "The text of this PDF is unreadable (printed, copied or protected file). Download the original statement from your bank's app, or export it as CSV or OFX.",
+  "imp.notice.cancelled": "{n} expense(s) skipped because a refund or reversal of the same amount cancels them.",
 };
 
 export default en;

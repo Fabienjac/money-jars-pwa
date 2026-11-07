@@ -16,7 +16,7 @@ import { getBaseCurrency, currencySymbol as curSym } from "../baseCurrency";
 import { t as tr, useLang } from "../i18n";
 import { ImportReadSettings } from "./ImportReadSettings";
 import {
-  addNetAmountColumn, suggestColumns, resolveReading, parseAmount, parseDate,
+  addNetAmountColumn, suggestColumns, resolveReading, parseAmount, parseDate, findCancelledExpenses,
   DEFAULT_READ_OPTIONS,
   type ReadOptions, type SuggestedColumns, type DateOrder,
 } from "../importNormalize";
@@ -504,11 +504,19 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         if (transactionType === "spending") return isExpenseRow(a) || !reading.mixedSigns;
         return reading.mixedSigns ? !isExpenseRow(a) : true;
       };
-      const kept = readable.filter(tx => keepRow(tx.amount)).map(tx => {
+      // Dépenses annulées par un remboursement / une reversa (même montant, même référence ou même commerçant)
+      const cancelled = transactionType === "spending" && reading.mixedSigns
+        ? findCancelledExpenses(
+            readable.map(tx => ({ date: tx.date, amount: tx.amount, description: String(tx.description ?? "") })),
+            reading.expenseSign
+          ).cancelled
+        : new Set<number>();
+      if (cancelled.size > 0) notices.push(tr("imp.notice.cancelled", { n: cancelled.size }));
+      const kept = readable.filter((tx, i) => !cancelled.has(i) && keepRow(tx.amount)).map(tx => {
         const amount = Math.abs(tx.amount);
         return { ...tx, amount, originalAmount: amount };
       });
-      const otherCount = readable.length - kept.length;
+      const otherCount = readable.filter(tx => !keepRow(tx.amount)).length;
       if (otherCount > 0) {
         notices.push(tr(transactionType === "revenue" ? "imp.notice.otherRevenue" : "imp.notice.otherSpending", { n: otherCount }));
       }

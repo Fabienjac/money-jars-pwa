@@ -96,3 +96,22 @@ test("suggestColumns: FR, EN, DE", () => {
   ]);
   assert.deepEqual(de, { Date: "Buchungstag", Montant: "Betrag", Description: "Verwendungszweck" });
 });
+
+import { findCancelledExpenses } from "../src/importNormalize.ts";
+
+test("findCancelledExpenses: reversas avec même référence, remboursement marchand", () => {
+  const lines = [
+    { date: "2026-04-08", amount: -0.14, description: "DB ITBMS 000418" },
+    { date: "2026-04-08", amount: -100, description: "DB RETIRO SIN TARJETA BANISTMO 000418" },
+    { date: "2026-04-08", amount: 0.14, description: "CR REVERSA DE ITBMS 000418" },
+    { date: "2026-04-08", amount: 100, description: "CR RETIRO SIN TARJETA BANISTMO NO EJECUTADO 000418" },
+    { date: "2026-04-08", amount: -100, description: "DB RETIRO SIN TARJETA BANISTMO 000419" }, // pas annulé
+    { date: "2026-04-10", amount: -49.9, description: "AMAZON MARKETPLACE" },
+    { date: "2026-04-20", amount: 49.9, description: "Remboursement AMAZON" },
+    { date: "2026-04-21", amount: -20, description: "Courses" },
+    { date: "2026-04-22", amount: 20, description: "Virement de Paul" }, // même montant mais rien en commun : pas un remboursement
+  ];
+  const { cancelled, usedCredits } = findCancelledExpenses(lines, "negative");
+  assert.deepEqual([...cancelled].sort(), [0, 1, 5]);
+  assert.deepEqual([...usedCredits].sort(), [2, 3, 6]);
+});

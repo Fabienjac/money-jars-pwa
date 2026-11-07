@@ -787,6 +787,7 @@ const fr = {
   "imp.pdfGuessed": "Structure du relevé non reconnue : colonnes devinées, vérifiez bien les dates et les montants.",
   "imp.localNote": "🔒 Votre fichier est lu sur votre appareil : il n'est envoyé nulle part.",
   "imp.pdfUnreadable": "Le texte de ce PDF est illisible (fichier imprimé, copié ou protégé). Téléchargez le relevé original depuis l'application de votre banque, ou exportez-le en CSV ou OFX.",
+  "imp.notice.cancelled": "{n} dépense(s) ignorée(s) car annulée(s) par un remboursement ou une reversa du même montant.",
 } as const;
 
 export default fr;

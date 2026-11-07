@@ -421,3 +421,79 @@ export function resolveReading(
     sampleDate: typeof sample === "string" ? sample.trim() : null,
   };
 }
+
+// ─────────────────────────── Remboursements et annulations ───────────────────────────
+
+export interface SignedLine {
+  /** AAAA-MM-JJ */
+  date: string;
+  /** montant signé tel que lu dans le fichier */
+  amount: number;
+  description: string;
+}
+
+const REVERSAL_RE =
+  /\b(reversa|reversal|reversed|reverse|refund|refunded|remboursement|annulation|annule|storno|stornierung|reembolso|devolucion|rimborso|cancel|cancelled|chargeback|retour)\b/;
+const GENERIC_WORDS = new Set([
+  "carte", "card", "paiement", "payment", "virement", "transfer", "compte", "account", "retrait", "retiro", "cobro",
+  "comision", "commission", "fees", "frais", "from", "para", "pour", "date", "purchase", "achat", "debit", "credit",
+]);
+
+function textTokens(description: string) {
+  const norm = normalizeHeader(description);
+  const words = norm.split(" ").filter(Boolean);
+  const refs = new Set(words.filter((w) => /^\d{4,}$/.test(w)));
+  const names = new Set(words.filter((w) => /^[a-z]{5,}$/.test(w) && !GENERIC_WORDS.has(w) && !REVERSAL_RE.test(w)));
+  return { refs, names, reversal: REVERSAL_RE.test(norm) };
+}
+
+const dayNumber = (iso: string) => Date.parse(`${iso}T12:00:00Z`) / 86400000;
+
+/**
+ * Dépenses annulées par un remboursement : un crédit de même montant, daté de 0 à 45 jours après la dépense,
+ * qui partage soit un numéro de référence, soit un nom de commerçant, soit un mot d'annulation (reversa, refund…).
+ * Renvoie les indices des dépenses annulées ; les crédits correspondants sont dans `usedCredits`.
+ */
+export function findCancelledExpenses(lines: SignedLine[], expenseSign: ExpenseSign): { cancelled: Set<number>; usedCredits: Set<number> } {
+  const isExpense = (a: number) => (expenseSign === "negative" ? a < 0 : a > 0);
+  const tokens = lines.map((l) => textTokens(l.description));
+  const cancelled = new Set<number>();
+  const usedCredits = new Set<number>();
+
+  const credits = lines.map((l, i) => i).filter((i) => lines[i].amount !== 0 && !isExpense(lines[i].amount));
+  credits.sort((a, b) => lines[a].date.localeCompare(lines[b].date));
+
+  for (const c of credits) {
+    const credit = lines[c];
+    const cTok = tokens[c];
+    let best = -1;
+    let bestScore = 0;
+    let bestGap = Infinity;
+    for (let d = 0; d < lines.length; d++) {
+      if (cancelled.has(d) || d === c) continue;
+      const debit = lines[d];
+      if (debit.amount === 0 || !isExpense(debit.amount)) continue;
+      if (Math.abs(Math.abs(debit.amount) - Math.abs(credit.amount)) > 0.005) continue;
+      const gap = dayNumber(credit.date) - dayNumber(debit.date);
+      if (!(gap >= -1 && gap <= 45)) continue;
+      const dTok = tokens[d];
+      const sharedRef = [...cTok.refs].some((r) => dTok.refs.has(r));
+      const sharedName = [...cTok.names].some((n) => dTok.names.has(n));
+      let score = 0;
+      if (sharedRef) score += 3;
+      if (sharedName) score += 2;
+      if (cTok.reversal) score += 1;
+      if (score === 0 || (score === 1 && !sharedRef && !sharedName && gap > 31)) continue;
+      if (score > bestScore || (score === bestScore && Math.abs(gap) < bestGap)) {
+        best = d;
+        bestScore = score;
+        bestGap = Math.abs(gap);
+      }
+    }
+    if (best >= 0) {
+      cancelled.add(best);
+      usedCredits.add(c);
+    }
+  }
+  return { cancelled, usedCredits };
+}
