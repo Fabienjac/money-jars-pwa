@@ -194,6 +194,7 @@ const en: Record<keyof typeof fr, string> = {
   "home.streakDay1": "Day 1 — great habit!",
   "home.streakDays": "{n} days in a row!",
   "home.streakResume": "{n} days — pick it back up today",
+  "home.streakResume1": "1 day — pick it back up today",
   "home.streakStart": "Start your streak today",
   "home.avgPerDay": "📉 Average spending / day",
   "home.rolling30": "Rolling 30d",

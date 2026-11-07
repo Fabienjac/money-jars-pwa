@@ -1,10 +1,10 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo } from "react";
-import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, searchSpendings, fetchUserBudgetPrefs, saveUserBudgetPrefs } from "../api";
+import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, searchSpendings, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps } from "../api";
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
-import { getStreak, StreakState } from "../streakUtils";
+import { getStreak, computeStreak, StreakState } from "../streakUtils";
 import LifestyleCard from "./LifestyleCard";
 
 import { currencySymbol as curSym } from "../baseCurrency";
@@ -433,7 +433,18 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
     }).catch(() => {}); // silencieux — on garde localStorage si erreur réseau
 
     // Rafraîchit le badge streak quand une dépense vient d'être enregistrée
-    const onSaved = () => setStreak(getStreak());
+    // Streak calculé depuis le cloud (identique sur tous les appareils) ; le compteur local sert d'affichage
+    // immédiat et de secours hors ligne.
+    const refreshStreak = () => {
+      setStreak(getStreak());
+      const since = new Date();
+      since.setDate(since.getDate() - 366);
+      fetchEntryTimestamps(since.toISOString())
+        .then((stamps) => { if (stamps.length > 0) setStreak(computeStreak(stamps)); })
+        .catch(() => {});
+    };
+    refreshStreak();
+    const onSaved = () => refreshStreak();
     window.addEventListener("mjars:transactionSaved", onSaved);
 
     // Rafraîchit les analytics (revenus, projections jars) après un nouveau revenu
@@ -906,11 +917,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
               color: streak.isAlive ? "var(--ok-text)" : "#8E8E93",
               letterSpacing: "-0.2px",
             }}>
-              {streak.count === 1
-                ? t("home.streakDay1")
-                : streak.isAlive
-                  ? t("home.streakDays", { n: streak.count })
-                  : t("home.streakResume", { n: streak.count })}
+              {!streak.isAlive
+                ? t(streak.count === 1 ? "home.streakResume1" : "home.streakResume", { n: streak.count })
+                : streak.count === 1
+                  ? t("home.streakDay1")
+                  : t("home.streakDays", { n: streak.count })}
             </span>
           </div>
         ) : (

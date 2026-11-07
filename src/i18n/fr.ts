@@ -192,6 +192,7 @@ const fr = {
   "home.streakDay1": "1er jour — bonne habitude !",
   "home.streakDays": "{n} jours de suite !",
   "home.streakResume": "{n} jours — reprenez aujourd'hui",
+  "home.streakResume1": "1 jour — reprenez aujourd'hui",
   "home.streakStart": "Commencez votre série aujourd'hui",
   "home.avgPerDay": "📉 Dépenses moyennes / jour",
   "home.rolling30": "Glissant 30j",

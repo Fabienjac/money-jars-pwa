@@ -47,3 +47,38 @@ export function getStreak(): StreakState {
   const isAlive = lastDate === today || lastDate === yesterday;
   return { count, isAlive };
 }
+
+// ── Calcul à partir des données (multi-appareils) ────────────────────────────
+// Le compteur local ci-dessus ne voit que cet appareil et disparaît si le stockage est vidé. Ici le streak est
+// recalculé depuis les dates de saisie (created_at) des dépenses stockées dans le cloud : même résultat sur le
+// Mac et sur l'iPhone, et un import en masse ne compte que pour une journée.
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function previousDay(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return dayKey(new Date(y, m - 1, d - 1, 12)); // midi : à l'abri des changements d'heure
+}
+
+/**
+ * @param entryTimestamps horodatages (ISO) de saisie des dépenses
+ * @param now             instant courant (injectable pour les tests)
+ */
+export function computeStreak(entryTimestamps: string[], now: Date = new Date()): StreakState {
+  const days = new Set<string>();
+  for (const ts of entryTimestamps) {
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) days.add(dayKey(d));
+  }
+  if (days.size === 0) return { count: 0, isAlive: false };
+
+  const latest = [...days].sort().pop() as string;
+  const today = dayKey(now);
+  if (latest > today) return { count: 0, isAlive: false }; // horloge incohérente : on ne devine pas
+
+  let count = 0;
+  for (let k = latest; days.has(k); k = previousDay(k)) count++;
+  return { count, isAlive: latest === today || latest === previousDay(today) };
+}

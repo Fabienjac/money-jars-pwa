@@ -832,6 +832,23 @@ export async function fetchSpendingsSince(fromISO: string): Promise<Array<{ date
   return data.map((r) => ({ date: String(r.date), amount: Number(r.amount), tags: r.tags ?? "" }));
 }
 
+/** Horodatages de saisie des dépenses depuis une date (pour le calcul du streak). */
+export async function fetchEntryTimestamps(sinceISO: string): Promise<string[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const rows = await fetchAllPages((from, to) =>
+    supabase
+      .from("transactions_spending")
+      .select("created_at")
+      .eq("user_id", user.id)
+      .gte("created_at", sinceISO)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+  return rows.map((r) => String(r.created_at));
+}
+
 // Étiquettes que l'utilisateur considère « extraordinaires », stockées dans column_mappings
 // sous une clé à part (n'interfère pas avec user_budget_prefs).
 const LIFESTYLE_PREFS_KEY = "lifestyle_prefs";
