@@ -1,7 +1,7 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo } from "react";
-import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince } from "../api";
+import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince, fetchDismissedSubscriptions, saveDismissedSubscriptions } from "../api";
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, computeStreak, StreakState } from "../streakUtils";
@@ -224,8 +224,6 @@ interface JarsViewV2Props {
 const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
-  const [netWorth, setNetWorth] = useState<number | null>(null);
-  const [netWorthLoading, setNetWorthLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(null);
@@ -241,7 +239,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
   const [tagStatsLoading, setTagStatsLoading] = useState(false);
 
   // Abonnements récurrents
-  const [subscriptions, setSubscriptions] = useState<RecurringItem[]>([]);
+  const [dismissedSubs, setDismissedSubs] = useState<string[]>([]);
   const [showSubscriptions, setShowSubscriptions] = useState(false);
 
   // Budget par tag
@@ -283,6 +281,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
   useEffect(() => {
     setCustomSplit(loadJarSplitFromSettings());
     loadAnalytics();
+    fetchDismissedSubscriptions().then(setDismissedSubs).catch(() => {});
 
     // Charger les préférences budget depuis Supabase (cross-device)
     fetchUserBudgetPrefs().then(prefs => {
@@ -349,24 +348,12 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
 
         setMonthlyTagStats(calculateTagStats(currentMonthTxns));
 
-        // Détection des abonnements (6 derniers mois, toutes les transactions)
-        setSubscriptions(detectRecurring(all));
-
         // Toutes les transactions pour l'overlay de tag sur le graphique
         setAllTransactionsForChart(all);
       })
       .catch(() => {})
       .finally(() => setTagStatsLoading(false));
   }, []);
-
-  useEffect(() => {
-    if (!showJarsDetail || netWorth !== null) return;
-    setNetWorthLoading(true);
-    fetchNetWorth()
-      .then(res => setNetWorth(typeof res.value === "number" ? res.value : null))
-      .catch(() => setNetWorth(null))
-      .finally(() => setNetWorthLoading(false));
-  }, [showJarsDetail]);
 
   useEffect(() => {
     if (showJarsDetail && !totals && !loading) loadTotals();
@@ -414,6 +401,17 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
 
   /** Transactions "toutes" (pour l'overlay de tag sur le graphique) */
   const [allTransactionsForChart, setAllTransactionsForChart] = useState<import("../types").SearchSpendingResult[]>([]);
+
+  /** Abonnements détectés (recalculés quand l'utilisateur en écarte un) */
+  const subscriptions = useMemo<RecurringItem[]>(
+    () => detectRecurring(allTransactionsForChart, new Date(), new Set(dismissedSubs)),
+    [allTransactionsForChart, dismissedSubs],
+  );
+
+  const updateDismissed = (next: string[]) => {
+    setDismissedSubs(next);
+    saveDismissedSubscriptions(next).catch(() => {});
+  };
 
   /** Points overlay du tag sélectionné — recalculé depuis allTransactionsForChart */
   const tagOverlayPoints = useMemo((): { label: string; avg: number; date: Date }[] => {
@@ -476,6 +474,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
     if (day <= 0) return null;
     return (currentMonthSpending / day) * daysInMonth;
   }, [currentMonthSpending]);
+
+  /** Avant le 10 du mois, une extrapolation sur quelques jours est trop instable pour être affichée. */
+  const projectionReady = new Date().getDate() >= 10;
 
   /** % du budget consommé */
   const budgetPercent = useMemo(() => {
@@ -754,6 +755,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
 
   return (
     <main className="jars-v2-page">
+      <div className="home-topbar">
       {/* Revenu (saisie rare, mensuelle) — les dépenses passent par le bouton + */}
       <section className="jars-v2-revenue-row">
         <button type="button" className="revenue-link" onClick={onOpenRevenue}>
@@ -762,7 +764,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
       </section>
 
       {/* 🔥 Streak de saisie quotidienne */}
-      <div style={{ display: "flex", justifyContent: "center", padding: "0 16px 10px" }}>
+      <div style={{ display: "flex", justifyContent: "center" }}>
         {streak.count > 0 ? (
           <div style={{
             display: "inline-flex",
@@ -809,135 +811,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
         )}
       </div>
 
+      </div>
+
       {/* 🧭 Train de vie : dépense / jour hors dépenses extraordinaires */}
       <LifestyleCard />
-
-      {/* 📉 Widget dépenses / jour — toujours visible */}
-      <section style={{ padding: "0 16px 12px" }}>
-        <div style={{
-          background: "var(--bg-card)",
-          borderRadius: "16px",
-          padding: "16px 16px 10px",
-          border: "1px solid var(--border-color)",
-          boxShadow: "var(--shadow-md)",
-        }}>
-          {/* Titre */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-              {t("home.avgPerDay")}
-              <span style={{ display: "block", textTransform: "none", letterSpacing: 0, fontWeight: 500, fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>
-                {t("home.avgAllIncluded")}
-              </span>
-            </div>
-            <div style={{ fontSize: "10px", color: lastImportLabel === t("home.never") ? "var(--warn-text)" : "var(--text-light)", display: "flex", alignItems: "center", gap: "3px" }}>
-              <span>🔄</span>
-              <span>{lastImportLabel}</span>
-            </div>
-          </div>
-
-          {/* Les deux chiffres côte à côte, même taille */}
-          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "10px" }}>
-            {/* Glissant 30j */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>{t("home.rolling30")}</div>
-              <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "26px", fontWeight: "800", color: "var(--text-main)", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
-                  {rolling30dAverageSpending != null
-                    ? `${formatMoney(rolling30dAverageSpending)}\u00A0${curSym()}`
-                    : analytics === null
-                      ? <span className="skeleton skeleton-amount" style={{ width: 100, display: "inline-block" }}>&nbsp;</span>
-                      : <span style={{ fontSize: "16px", color: "var(--text-light)" }}>—</span>
-                  }
-                </span>
-                {spendingTrend && (
-                  <span style={{
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    color: spendingTrend.isGood ? "var(--ok-text)" : "var(--warn-text)",
-                    backgroundColor: spendingTrend.isGood ? "rgba(52,199,89,0.12)" : "rgba(255,149,0,0.12)",
-                    borderRadius: "8px",
-                    padding: "2px 7px",
-                  }}>
-                    {spendingTrend.isGood ? "↓" : "↑"} {Math.abs(spendingTrend.pct).toFixed(1)}%
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>{t("home.vs4w")}</div>
-            </div>
-
-            {/* Séparateur vertical */}
-            <div style={{ width: "1px", background: "var(--border-color)", alignSelf: "stretch", margin: "0 4px" }} />
-
-            {/* Moyenne YTD */}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>{t("home.ytdAvg")}</div>
-              <div style={{ fontSize: "26px", fontWeight: "800", color: "#FF2D78", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
-                {averageDailySpending != null
-                  ? `${formatMoney(averageDailySpending)}\u00A0${curSym()}`
-                  : <span style={{ fontSize: "16px", color: "var(--text-light)" }}>—</span>
-                }
-              </div>
-              <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>{t("home.sinceJan", { year: new Date().getFullYear() })}</div>
-            </div>
-          </div>
-
-          {/* 🥗 Alimentation avg/jour — grand format */}
-          {tagOverlayPoints.length > 0 && (
-            <div style={{
-              background: "rgba(132,204,22,0.07)",
-              borderRadius: "12px",
-              padding: "10px 14px",
-              marginBottom: "10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              border: "1px solid rgba(132,204,22,0.2)",
-            }}>
-              <span style={{ fontSize: "22px", flexShrink: 0 }}>🥗</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: "11px", color: "var(--lime-text)", fontWeight: "700", marginBottom: "2px" }}>
-                  {t("home.foodRolling")}
-                </div>
-                <div style={{ fontSize: "26px", fontWeight: "800", color: "var(--lime-text)", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
-                  {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)}&nbsp;{curSym()}<span style={{ fontSize: "13px", fontWeight: "600", color: "var(--lime-text)", opacity: 0.8 }}> {t("home.perDay")}</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Graphique */}
-          {chartPoints.length >= 2
-            ? renderChart()
-            : analytics === null && (
-              <div style={{ height: "80px", borderRadius: 12, overflow: "hidden" }}>
-                <div className="skeleton" style={{ width: "100%", height: "100%" }} />
-              </div>
-            )
-          }
-          {/* Légende graphique */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "4px" }}>
-            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                <div style={{ width: 16, height: 2.5, borderRadius: 2, background: "#FF2D78" }} />
-                <span style={{ fontSize: "10px", color: "var(--text-light)" }}>{t("home.total")}</span>
-              </div>
-              {tagOverlayPoints.length >= 2 && (
-                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                  <svg width="16" height="6" style={{ overflow: "visible" }}>
-                    <line x1="0" y1="3" x2="16" y2="3" stroke="#84CC16" strokeWidth="2" strokeDasharray="4 2" />
-                  </svg>
-                  <span style={{ fontSize: "10px", color: "var(--lime-text)", fontWeight: 600 }}>
-                    🥗 {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)}&nbsp;{curSym()}/j
-                  </span>
-                </div>
-              )}
-            </div>
-            <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
-              {t("home.avg30week")}
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* 📅 Card "Ce mois" — projection + budget + tags */}
       {(currentMonthSpending != null || tagStatsLoading) && (
@@ -975,7 +852,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                     : "var(--text-main)"
                     : "var(--text-main)",
                 }}>
-                  {projectedMonthSpending != null ? `≈ ${formatMoney(projectedMonthSpending)}\u00A0${curSym()}` : "—"}
+                  {projectedMonthSpending != null && projectionReady ? `≈ ${formatMoney(projectedMonthSpending)}\u00A0${curSym()}` : "—"}
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>
+                  {projectionReady ? t("home.projectionPace") : t("home.projectionLater")}
                 </div>
               </div>
 
@@ -1175,7 +1055,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
               const { spent, projected } = data;
               // Allocation = revenu du mois × % jar (méthode Harv Eker)
               const allocation = jarMonthlyAllocations?.[jarKey] ?? null;
-              const projPct = allocation ? (projected / allocation) * 100 : null;
+              // Avant le 10 du mois on compare à ce qui est déjà dépensé, pas à une extrapolation
+              const basis = projectionReady ? projected : spent;
+              const projPct = allocation ? (basis / allocation) * 100 : null;
               const spentPct = allocation ? (spent / allocation) * 100 : null;
               const barColor = projPct == null
                 ? JAR_COLORS[jarKey]
@@ -1195,7 +1077,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                     <div style={{ flex: 1, background: "var(--bg-body)", borderRadius: "4px", height: "6px", overflow: "hidden" }}>
                       <div style={{
                         width: allocation
-                          ? `${Math.min((projected / allocation) * 100, 100)}%`
+                          ? `${Math.min((basis / allocation) * 100, 100)}%`
                           : spent > 0 ? "20%" : "0%",
                         height: "100%",
                         borderRadius: "4px",
@@ -1212,9 +1094,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                               <span style={{ color: "var(--text-light)", fontSize: "10px" }}> ({spentPct.toFixed(0)}%)</span>
                             )}
                           </div>
-                          <div style={{ fontSize: "11px", fontWeight: "700", color: textTone(barColor) }}>
-                            ≈ {formatMoney(projected)}&nbsp;{curSym()}
-                          </div>
+                          {projectionReady && (
+                            <div style={{ fontSize: "11px", fontWeight: "700", color: textTone(barColor) }}>
+                              ≈ {formatMoney(projected)}&nbsp;{curSym()}
+                            </div>
+                          )}
                         </>
                       ) : (
                         <div style={{ fontSize: "10px", color: "var(--text-light)" }}>{formatMoney(0)}&nbsp;{curSym()}</div>
@@ -1233,7 +1117,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                         {t("home.allocated", { amount: `${formatMoney(allocation)}\u00A0${curSym()}` })}
                       </span>
                       <span style={{ fontSize: "10px", fontWeight: "700", color: textTone(barColor) }}>
-                        {t("home.projShort")} {projPct!.toFixed(0)}%
+                        {projectionReady ? t("home.projShort") : t("home.spent")} {projPct!.toFixed(0)}%
                         {projPct! >= 100 ? " 🚨" : projPct! >= 80 ? " ⚠️" : " ✓"}
                       </span>
                     </div>
@@ -1271,7 +1155,141 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
         </section>
       )}
 
+      {/* 📉 Widget dépenses / jour — toujours visible */}
+      <section style={{ padding: "0 16px 12px" }}>
+        <div style={{
+          background: "var(--bg-card)",
+          borderRadius: "16px",
+          padding: "16px 16px 10px",
+          border: "1px solid var(--border-color)",
+          boxShadow: "var(--shadow-md)",
+        }}>
+          {/* Titre */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+            <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+              {t("home.avgPerDay")}
+              <span style={{ display: "block", textTransform: "none", letterSpacing: 0, fontWeight: 500, fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>
+                {t("home.avgAllIncluded")}
+              </span>
+            </div>
+            <div style={{ fontSize: "10px", color: lastImportLabel === t("home.never") ? "var(--warn-text)" : "var(--text-light)", display: "flex", alignItems: "center", gap: "3px" }}>
+              <span>🔄</span>
+              <span>{lastImportLabel}</span>
+            </div>
+          </div>
+
+          {/* Les deux chiffres côte à côte, même taille */}
+          <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", marginBottom: "10px" }}>
+            {/* Glissant 30j */}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>{t("home.rolling30")}</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "26px", fontWeight: "800", color: "var(--text-main)", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
+                  {rolling30dAverageSpending != null
+                    ? `${formatMoney(rolling30dAverageSpending)}\u00A0${curSym()}`
+                    : analytics === null
+                      ? <span className="skeleton skeleton-amount" style={{ width: 100, display: "inline-block" }}>&nbsp;</span>
+                      : <span style={{ fontSize: "16px", color: "var(--text-light)" }}>—</span>
+                  }
+                </span>
+                {spendingTrend && (
+                  <span style={{
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    color: spendingTrend.isGood ? "var(--ok-text)" : "var(--warn-text)",
+                    backgroundColor: spendingTrend.isGood ? "rgba(52,199,89,0.12)" : "rgba(255,149,0,0.12)",
+                    borderRadius: "8px",
+                    padding: "2px 7px",
+                  }}>
+                    {spendingTrend.isGood ? "↓" : "↑"} {Math.abs(spendingTrend.pct).toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>{t("home.vs4w")}</div>
+            </div>
+
+            {/* Séparateur vertical */}
+            <div style={{ width: "1px", background: "var(--border-color)", alignSelf: "stretch", margin: "0 4px" }} />
+
+            {/* Moyenne YTD */}
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>{t("home.ytdAvg")}</div>
+              <div style={{ fontSize: "26px", fontWeight: "800", color: "#FF2D78", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
+                {averageDailySpending != null
+                  ? `${formatMoney(averageDailySpending)}\u00A0${curSym()}`
+                  : <span style={{ fontSize: "16px", color: "var(--text-light)" }}>—</span>
+                }
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>{t("home.sinceJan", { year: new Date().getFullYear() })}</div>
+            </div>
+          </div>
+
+          {/* 🥗 Alimentation avg/jour — grand format */}
+          {tagOverlayPoints.length > 0 && (
+            <div style={{
+              background: "rgba(132,204,22,0.07)",
+              borderRadius: "12px",
+              padding: "10px 14px",
+              marginBottom: "10px",
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              border: "1px solid rgba(132,204,22,0.2)",
+            }}>
+              <span style={{ fontSize: "22px", flexShrink: 0 }}>🥗</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: "11px", color: "var(--lime-text)", fontWeight: "700", marginBottom: "2px" }}>
+                  {t("home.foodRolling")}
+                </div>
+                <div style={{ fontSize: "26px", fontWeight: "800", color: "var(--lime-text)", letterSpacing: "-0.5px", lineHeight: 1.1 }}>
+                  {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)}&nbsp;{curSym()}<span style={{ fontSize: "13px", fontWeight: "600", color: "var(--lime-text)", opacity: 0.8 }}> {t("home.perDay")}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Graphique */}
+          {chartPoints.length >= 2
+            ? renderChart()
+            : analytics === null && (
+              <div style={{ height: "80px", borderRadius: 12, overflow: "hidden" }}>
+                <div className="skeleton" style={{ width: "100%", height: "100%" }} />
+              </div>
+            )
+          }
+          {/* Légende graphique */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "4px" }}>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                <div style={{ width: 16, height: 2.5, borderRadius: 2, background: "#FF2D78" }} />
+                <span style={{ fontSize: "10px", color: "var(--text-light)" }}>{t("home.total")}</span>
+              </div>
+              {tagOverlayPoints.length >= 2 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                  <svg width="16" height="6" style={{ overflow: "visible" }}>
+                    <line x1="0" y1="3" x2="16" y2="3" stroke="#84CC16" strokeWidth="2" strokeDasharray="4 2" />
+                  </svg>
+                  <span style={{ fontSize: "10px", color: "var(--lime-text)", fontWeight: 600 }}>
+                    🥗 {formatMoney(tagOverlayPoints[tagOverlayPoints.length - 1].avg)}&nbsp;{curSym()}/j
+                  </span>
+                </div>
+              )}
+            </div>
+            <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
+              {t("home.avg30week")}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 🔁 Panneau abonnements récurrents */}
+      {subscriptions.length === 0 && dismissedSubs.length > 0 && (
+        <section style={{ padding: "0 16px 12px", textAlign: "center" }}>
+          <button type="button" className="sub-dismiss" onClick={() => updateDismissed([])}>
+            {t("home.dismissedCount", { n: dismissedSubs.length })} · {t("home.restoreAll")}
+          </button>
+        </section>
+      )}
       {subscriptions.length > 0 && (
         <section style={{ padding: "0 16px 12px" }}>
           <div style={{
@@ -1335,7 +1353,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                           <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {sub.description}
                           </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
                             {sub.account}
                             {sub.freq ? (
                               <span style={{ background: "#007AFF18", color: "#007AFF", borderRadius: "6px", padding: "1px 5px", fontWeight: "600" }}>
@@ -1343,6 +1361,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                               </span>
                             ) : (
                               <span>{t("home.months", { n: sub.uniqueMonths })}</span>
+                            )}
+                            {!sub.freq && (
+                              <button type="button" className="sub-dismiss" onClick={() => updateDismissed([...dismissedSubs, sub.key])}>
+                                {t("home.notSub")}
+                              </button>
                             )}
                           </div>
                         </div>
@@ -1395,7 +1418,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                           <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {sub.description}
                           </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
                             {sub.account}
                             {sub.freq ? (
                               <span style={{ background: "#FF950018", color: "var(--warn-text)", borderRadius: "6px", padding: "1px 5px", fontWeight: "600" }}>
@@ -1403,6 +1426,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                               </span>
                             ) : (
                               <span>{t("home.months", { n: sub.uniqueMonths })}</span>
+                            )}
+                            {!sub.freq && (
+                              <button type="button" className="sub-dismiss" onClick={() => updateDismissed([...dismissedSubs, sub.key])}>
+                                {t("home.notSub")}
+                              </button>
                             )}
                           </div>
                         </div>
@@ -1436,6 +1464,14 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                       </div>
                     ))}
                   </>
+                )}
+
+                {dismissedSubs.length > 0 && (
+                  <div style={{ marginTop: "10px", textAlign: "center" }}>
+                    <button type="button" className="sub-dismiss" onClick={() => updateDismissed([])}>
+                      {t("home.dismissedCount", { n: dismissedSubs.length })} · {t("home.restoreAll")}
+                    </button>
+                  </div>
                 )}
 
                 {/* Récap total */}
@@ -1494,34 +1530,6 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
                 <h3 className="jars-v2-summary-title">{t("home.quickSummary")}</h3>
                 <p className="jars-v2-summary-scope">{t("home.summaryScope")}</p>
                 <div className="jars-v2-summary-grid">
-                  {/* 💎 Liquidités disponibles — dans le bilan */}
-                  <div className="summary-item summary-networth" style={{ gridColumn: "1 / -1" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span className="summary-label">{t("home.cash")}</span>
-                      <button
-                        onClick={() => {
-                          setNetWorthLoading(true);
-                          fetchNetWorth(true)
-                            .then(res => setNetWorth(typeof res.value === "number" ? res.value : null))
-                            .catch(() => setNetWorth(null))
-                            .finally(() => setNetWorthLoading(false));
-                        }}
-                        style={{ background: "none", border: "none", cursor: "pointer", fontSize: "14px", opacity: 0.6, padding: "0 4px" }}
-                        title={t("home.refresh")}
-                      >
-                        🔄
-                      </button>
-                    </div>
-                    <span className="summary-value summary-value--highlight">
-                      {netWorthLoading
-                        ? <span className="skeleton skeleton-text" style={{ width: 90, display: "inline-block" }}>&nbsp;</span>
-                        : netWorth !== null
-                          ? `${netWorth.toLocaleString(localeTag(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u00A0${curSym()}`
-                          : <span style={{ opacity: 0.4, fontSize: "14px" }}>{t("home.unavailable")}</span>
-                      }
-                    </span>
-                  </div>
-
                   <div className="summary-item summary-revenues">
                     <span className="summary-label">{t("home.income")}</span>
                     <span className="summary-value">{formatMoney(totalRevenues)}&nbsp;{curSym()}</span>

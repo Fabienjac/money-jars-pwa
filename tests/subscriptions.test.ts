@@ -89,3 +89,12 @@ test("un abonnement marqué (même arrêté) n'est pas redétecté automatiqueme
   // marqué puis plus aucun prélèvement : arrêté, et pas redétecté pour autant
   assert.deepEqual(detectRecurring([row("05/03/2026", "Spotify", 10.99, { subscription: "mensuel" })], now), []);
 });
+
+test("« pas un abonnement » : un libellé écarté n'est plus proposé, mais un abonnement marqué à la main reste", () => {
+  const auto = [row("05/09/2026", "Netflix", 13.49), row("05/10/2026", "Netflix", 13.49), row("05/11/2026", "Netflix", 13.49)];
+  const [item] = detectRecurring(auto, now);
+  assert.equal(item.key, "netflix");
+  assert.deepEqual(detectRecurring(auto, now, new Set([item.key])), []);
+  const manual = [row("05/11/2026", "Spotify", 10.99, { subscription: "mensuel" })];
+  assert.equal(detectRecurring(manual, now, new Set(["spotify"])).length, 1);
+});

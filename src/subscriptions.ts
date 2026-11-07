@@ -22,6 +22,7 @@ const MANUAL_GRACE_MONTHS: Record<SubscriptionFreq, number> = {
 const EVERYDAY_TAGS = new Set(["alimentaire", "vie_quotidienne"]);
 
 export interface RecurringItem {
+  key: string;             // libellé normalisé : identifie l'abonnement (ex. pour le masquer)
   description: string;
   avgAmount: number;       // montant moyen brut
   monthlyAmount: number;   // équivalent mensuel (= avgAmount / diviseur)
@@ -114,7 +115,15 @@ function longestRun(monthIdx: number[]): number {
 
 // ── Détection ────────────────────────────────────────────────────────────────
 
-export function detectRecurring(transactions: SearchSpendingResult[], now: Date = new Date()): RecurringItem[] {
+/**
+ * @param dismissed clés (libellés normalisés) que l'utilisateur a déclarées « pas un abonnement » : elles ne sont
+ *                  jamais proposées par la détection automatique. Les abonnements marqués à la main restent toujours.
+ */
+export function detectRecurring(
+  transactions: SearchSpendingResult[],
+  now: Date = new Date(),
+  dismissed: ReadonlySet<string> = new Set(),
+): RecurringItem[] {
   const nowIdx = now.getFullYear() * 12 + now.getMonth();
 
   // ── 1. Abonnements marqués à la main ───────────────────────────────────────
@@ -154,6 +163,7 @@ export function detectRecurring(transactions: SearchSpendingResult[], now: Date 
     const amounts = amountsOf(txns);
     const { avg, isFixed } = stats(amounts);
     manualItems.push({
+      key,
       description: last.description || "",
       avgAmount: avg,
       monthlyAmount: avg / FREQ_DIVISOR[freq],
@@ -174,14 +184,14 @@ export function detectRecurring(transactions: SearchSpendingResult[], now: Date 
     const p = parseDate(t.date);
     if (!p || monthIndex(p) < sixMonthsAgoIdx || monthIndex(p) > nowIdx) continue;
     const key = normalizeLabel(t.description || "");
-    if (!isUsableKey(key) || manualKeys.has(key)) continue;
+    if (!isUsableKey(key) || manualKeys.has(key) || dismissed.has(key)) continue;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(t);
   }
 
   const autoItems: RecurringItem[] = [];
 
-  groups.forEach((txns) => {
+  groups.forEach((txns, key) => {
     // Dépenses du quotidien : exclues d'office
     const everyday = txns.filter((t) => (t.tags || "").split(",").some((x) => EVERYDAY_TAGS.has(x.trim()))).length;
     if (everyday * 2 >= txns.length) return;
@@ -214,6 +224,7 @@ export function detectRecurring(transactions: SearchSpendingResult[], now: Date 
 
     const last = [...txns].sort(byRecentFirst)[0];
     autoItems.push({
+      key,
       description: last.description || "",
       avgAmount: avg,
       monthlyAmount: avg,

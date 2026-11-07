@@ -3848,3 +3848,29 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .alert-row--warn .alert-row-msg { color: var(--warn-text); }
 .alert-row--over .alert-row-msg { color: var(--danger-text); }
 .alert-card-hint { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); }
+
+/* Accueil : revenu + série sur une rangée compacte */
+.home-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px 12px;
+}
+.home-topbar .jars-v2-revenue-row { padding: 0; }
+.home-topbar .revenue-link { padding: 6px 12px; font-size: 13px; }
+
+/* Abonnements : bouton « pas un abonnement » */
+.sub-dismiss {
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  min-height: 28px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -952,3 +952,20 @@ async function seedExceptionalTag(tags: Tag[]): Promise<Tag[] | null> {
   await saveColumnMappingToSheet(LIFESTYLE_SEEDED_KEY, { done: true });
   return nextTags;
 }
+
+// ── Abonnements que l'utilisateur a écartés (« ce n'est pas un abonnement ») ──
+const DISMISSED_SUBS_KEY = "subscriptions_dismissed";
+
+export async function fetchDismissedSubscriptions(): Promise<string[]> {
+  try {
+    const mappings = await fetchColumnMappings();
+    const v = mappings[DISMISSED_SUBS_KEY] as { keys?: unknown } | undefined;
+    return Array.isArray(v?.keys) ? v!.keys.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveDismissedSubscriptions(keys: string[]): Promise<void> {
+  await saveColumnMappingToSheet(DISMISSED_SUBS_KEY, { keys });
+}
