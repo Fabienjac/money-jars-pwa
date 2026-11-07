@@ -14,3 +14,8 @@ EXEMPLE DE RELEVES/
 # Build et archives locales
 dist/
 *.zip
+
+# Fichiers locaux (hors projet)
+.claude/
+ChatGPT Image 13 juin 2026, 15_41_58.png
+LOGO FB ESPRITS ABONDANCE.jpg
