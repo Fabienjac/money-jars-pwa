@@ -832,6 +832,32 @@ export async function fetchSpendingsSince(fromISO: string): Promise<Array<{ date
   return data.map((r) => ({ date: String(r.date), amount: Number(r.amount), tags: r.tags ?? "" }));
 }
 
+/** Dépenses complètes (mêmes champs que searchSpendings) depuis une date, lues en entier par pages. */
+export async function fetchSpendingRowsSince(fromISO: string): Promise<SearchSpendingResult[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const data = await fetchAllPages((from, to) =>
+    supabase
+      .from("transactions_spending")
+      .select("id, date, jar, account, amount, description, tags, subscription")
+      .eq("user_id", user.id)
+      .gte("date", fromISO)
+      .order("date", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+  return data.map((r) => ({
+    rowIndex:     r.id,
+    date:         toDDMMYYYY(r.date),
+    jar:          r.jar as JarKey,
+    account:      r.account,
+    amount:       Number(r.amount),
+    description:  r.description,
+    tags:         r.tags,
+    subscription: r.subscription,
+  }));
+}
+
 /** Horodatages de saisie des dépenses depuis une date (pour le calcul du streak). */
 export async function fetchEntryTimestamps(sinceISO: string): Promise<string[]> {
   const { data: { user } } = await supabase.auth.getUser();

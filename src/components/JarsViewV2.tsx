@@ -1,10 +1,11 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo } from "react";
-import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, searchSpendings, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps } from "../api";
+import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince } from "../api";
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, computeStreak, StreakState } from "../streakUtils";
+import { detectRecurring, type RecurringItem, type SubscriptionFreq } from "../subscriptions";
 import LifestyleCard from "./LifestyleCard";
 
 import { currencySymbol as curSym } from "../baseCurrency";
@@ -86,146 +87,9 @@ function normalizeMonth(m: string): string | null {
 
 // ── Détection des abonnements récurrents ─────────────────────────────────────
 
-type SubscriptionFreq = "mensuel" | "trimestriel" | "semestriel" | "annuel";
-const FREQ_DIVISOR: Record<SubscriptionFreq, number> = {
-  mensuel: 1, trimestriel: 3, semestriel: 6, annuel: 12,
-};
 const FREQ_LABEL = {} as Record<SubscriptionFreq, string>;
 for (const k of ["mensuel", "trimestriel", "semestriel", "annuel"] as SubscriptionFreq[]) {
   Object.defineProperty(FREQ_LABEL, k, { get: () => t(`freq.${k}` as TKey), enumerable: true });
-}
-
-interface RecurringItem {
-  description: string;
-  avgAmount: number;       // montant moyen brut
-  monthlyAmount: number;   // équivalent mensuel (= avgAmount / diviseur)
-  lastAmount: number;
-  occurrences: number;
-  uniqueMonths: number;
-  isFixed: boolean;        // variation de montant < 5 %
-  account: string;
-  lastDate: string;
-  freq?: SubscriptionFreq; // défini si marqué manuellement
-}
-
-function getMonthKeyFromDate(dateStr: string): string | null {
-  if (!dateStr) return null;
-  const fr = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (fr) return `${fr[3]}-${fr[2].padStart(2, "0")}`;
-  const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}`;
-  const d = new Date(dateStr);
-  if (!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  return null;
-}
-
-function detectRecurring(transactions: import("../types").SearchSpendingResult[]): RecurringItem[] {
-  const normalize = (s: string) => s.toLowerCase().trim().replace(/\s+/g, " ");
-
-  // ── 1. Abonnements marqués manuellement (colonne G) ──────────────────────
-  // On groupe par libellé normalisé pour prendre le dernier de chaque
-  const manualMap = new Map<string, import("../types").SearchSpendingResult[]>();
-  for (const t of transactions) {
-    const freq = (t.subscription || "").trim().toLowerCase();
-    if (!freq || !(freq in FREQ_DIVISOR)) continue;
-    const key = normalize(t.description || "");
-    if (!key || key.length < 3) continue;
-    if (!manualMap.has(key)) manualMap.set(key, []);
-    manualMap.get(key)!.push(t);
-  }
-
-  const manualItems: RecurringItem[] = [];
-  const manualKeys = new Set<string>();
-
-  manualMap.forEach((txns, key) => {
-    const sorted = [...txns].sort((a, b) =>
-      (getMonthKeyFromDate(b.date) ?? "").localeCompare(getMonthKeyFromDate(a.date) ?? "")
-    );
-    const last = sorted[0];
-    const freq = (last.subscription || "mensuel") as SubscriptionFreq;
-    const amounts = txns.map(t => Math.abs(t.amount || 0)).filter(a => a > 0);
-    const avg = amounts.length > 0 ? amounts.reduce((a, b) => a + b, 0) / amounts.length : 0;
-    const min = Math.min(...amounts);
-    const max = Math.max(...amounts);
-    const isFixed = avg > 0 ? (max - min) / avg < 0.05 : true;
-    const divisor = FREQ_DIVISOR[freq] ?? 1;
-
-    manualKeys.add(key);
-    manualItems.push({
-      description: last.description || "",
-      avgAmount: avg,
-      monthlyAmount: avg / divisor,
-      lastAmount: Math.abs(last.amount || avg),
-      occurrences: txns.length,
-      uniqueMonths: new Set(txns.map(t => getMonthKeyFromDate(t.date)).filter(Boolean)).size,
-      isFixed,
-      account: last.account || "",
-      lastDate: last.date || "",
-      freq,
-    });
-  });
-
-  // ── 2. Détection automatique (6 derniers mois, libellé non déjà couvert) ──
-  const now = new Date();
-  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-  const sixMonthsAgoKey = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, "0")}`;
-
-  const recent = transactions.filter(t => {
-    const mk = getMonthKeyFromDate(t.date);
-    return mk !== null && mk >= sixMonthsAgoKey;
-  });
-
-  const groups = new Map<string, typeof recent>();
-  for (const t of recent) {
-    const key = normalize(t.description || "");
-    if (!key || key.length < 3) continue;
-    if (manualKeys.has(key)) continue; // déjà traité manuellement
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(t);
-  }
-
-  const autoItems: RecurringItem[] = [];
-
-  groups.forEach((txns) => {
-    const months = new Set(txns.map(t => getMonthKeyFromDate(t.date)).filter(Boolean) as string[]);
-    if (months.size < 2) return;
-
-    const amounts = txns.map(t => Math.abs(t.amount || 0)).filter(a => a > 0);
-    if (amounts.length === 0) return;
-
-    const avg = amounts.reduce((a, b) => a + b, 0) / amounts.length;
-    const min = Math.min(...amounts);
-    const max = Math.max(...amounts);
-    const isFixed = avg > 0 ? (max - min) / avg < 0.05 : false;
-
-    const sorted = [...txns].sort((a, b) =>
-      (getMonthKeyFromDate(b.date) ?? "").localeCompare(getMonthKeyFromDate(a.date) ?? "")
-    );
-    const last = sorted[0];
-
-    autoItems.push({
-      description: last.description || "",
-      avgAmount: avg,
-      monthlyAmount: avg,
-      lastAmount: Math.abs(last.amount || avg),
-      occurrences: txns.length,
-      uniqueMonths: months.size,
-      isFixed,
-      account: last.account || "",
-      lastDate: last.date || "",
-    });
-  });
-
-  // ── 3. Fusion : manuels en tête, puis auto ────────────────────────────────
-  const sortFn = (a: RecurringItem, b: RecurringItem) => {
-    if (a.isFixed !== b.isFixed) return a.isFixed ? -1 : 1;
-    return b.monthlyAmount - a.monthlyAmount;
-  };
-
-  return [
-    ...manualItems.sort(sortFn),
-    ...autoItems.sort(sortFn),
-  ];
 }
 
 // ── Budget mensuel (localStorage) ────────────────────────────────────────────
@@ -460,9 +324,12 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
   // Un seul fetch pour les tags du mois, la détection des abonnements ET l'overlay graphique
   useEffect(() => {
     setTagStatsLoading(true);
-    searchSpendings("", 500)
-      .then(res => {
-        const all = res.rows || [];
+    // 14 mois de dépenses, lus en entier (l'ancienne lecture s'arrêtait aux 500 plus récentes) :
+    // les abonnements annuels, la détection sur 6 mois et le graphique de l'année en ont besoin.
+    const since = new Date();
+    since.setMonth(since.getMonth() - 14, 1);
+    fetchSpendingRowsSince(`${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-01`)
+      .then(all => {
         const now = new Date();
         const targetMonth = now.getMonth() + 1;
         const targetYear  = now.getFullYear();
