@@ -20,6 +20,8 @@ interface NewColumnMappingStepProps {
   onBack: () => void;
   transactionType: "spending" | "revenue";
   defaultSource?: string; // Source pré-sélectionnée à l'étape précédente
+  /** Colonnes du fichier devinées (Date, Description, Montant, Devise) pour pré-remplir un premier import */
+  suggested?: Partial<Record<"Date" | "Description" | "Montant" | "Devise", string>>;
 }
 
 export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
@@ -28,6 +30,7 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
   onBack,
   transactionType,
   defaultSource,
+  suggested = {},
 }) => {
   useLang();
   const colLabel = (c: string) => {
@@ -81,6 +84,20 @@ export const NewColumnMappingStep: React.FC<NewColumnMappingStepProps> = ({
       return {
         googleSheetColumn: col,
         option: { type: "column", value: "Currency" }
+      };
+    }
+    // Premier import d'une banque inconnue : colonnes devinées d'après les en-têtes et le contenu
+    const guess =
+      col === "Date" ? suggested.Date
+      : col === "Description" && transactionType === "spending" ? suggested.Description
+      : col === "Montant" ? suggested.Montant
+      : col === "Devise" && transactionType === "spending" ? suggested.Devise
+      : col === "Valeur" && transactionType === "revenue" ? suggested.Devise
+      : undefined;
+    if (guess && detectedColumns.includes(guess)) {
+      return {
+        googleSheetColumn: col,
+        option: { type: "column", value: guess }
       };
     }
     // Dépenses : "Jar" = NEC par défaut

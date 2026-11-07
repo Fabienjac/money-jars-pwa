@@ -6,7 +6,8 @@
     "dev": "vite",
     "dev:netlify": "netlify dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/importNormalize.test.ts tests/tabular.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

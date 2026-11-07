@@ -14,6 +14,12 @@ import { fetchAutoTagRules, saveAutoTagRulesToSheet } from "../api";
 
 import { getBaseCurrency, currencySymbol as curSym } from "../baseCurrency";
 import { t as tr, useLang } from "../i18n";
+import { ImportReadSettings } from "./ImportReadSettings";
+import {
+  addNetAmountColumn, suggestColumns, resolveReading, parseAmount, parseDate,
+  DEFAULT_READ_OPTIONS,
+  type ReadOptions, type SuggestedColumns, type DateOrder,
+} from "../importNormalize";
 
 function relTime(diffMin: number, diffH: number, diffD: number): string {
   if (diffMin < 2) return tr("imp.justNow");
@@ -90,7 +96,7 @@ interface UniversalImporterProps {
   accounts?: Account[];
 }
 
-type FileFormat = "pdf" | "csv" | "xlsx";
+type FileFormat = "pdf" | "csv" | "xlsx" | "ofx" | "qif";
 type TransactionType = "spending" | "revenue";
 
 export const UniversalImporter: React.FC<UniversalImporterProps> = ({
@@ -113,6 +119,11 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   // États pour le mapping de colonnes
   const [rawData, setRawData] = useState<any[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
+  // Lecture tolérante des CSV/XLSX/OFX/QIF : suggestions de colonnes, formats de dates/nombres, lignes ignorées
+  const [suggestedColumns, setSuggestedColumns] = useState<SuggestedColumns>({});
+  const [readOptions, setReadOptions] = useState<ReadOptions>(DEFAULT_READ_OPTIONS);
+  const [fileDateHint, setFileDateHint] = useState<DateOrder | undefined>(undefined);
+  const [importNotices, setImportNotices] = useState<string[]>([]);
   // On garde l'ancien state pour compatibilité mais on n'utilisera que le nouveau
   const [columnMappings, setColumnMappings] = useState<Array<{sourceColumn: string, targetColumn: string, confidence: number}>>([]);
   const [newColumnMappings, setNewColumnMappings] = useState<ColumnMapping[]>([]);
@@ -169,6 +180,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     if (extension === "pdf") format = "pdf";
     else if (extension === "csv") format = "csv";
     else if (extension === "xlsx" || extension === "xls") format = "xlsx";
+    else if (extension === "tsv" || extension === "txt") format = "csv";
+    else if (extension === "ofx" || extension === "qfx") format = "ofx";
+    else if (extension === "qif") format = "qif";
 
     if (format) {
       setFile(selectedFile);
@@ -232,8 +246,14 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       });
       
       // Stocker les données brutes et headers
-      setRawData(data.structure.rows);
-      setHeaders(data.structure.headers);
+      // Colonnes débit/crédit séparées → colonne « montant net » ; puis suggestion automatique des colonnes
+      const prepared = addNetAmountColumn(data.structure.headers, data.structure.rows);
+      setRawData(prepared.rows);
+      setHeaders(prepared.headers);
+      setSuggestedColumns(suggestColumns(prepared.headers, prepared.rows));
+      setFileDateHint(data.structure.hints?.dateOrder as DateOrder | undefined);
+      setReadOptions(DEFAULT_READ_OPTIONS);
+      setImportNotices([]);
       setColumnMappings(data.structure.suggestedMappings);
       
       // Passer à l'étape de mapping
@@ -372,6 +392,13 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     try {
       console.log("🔄 Application du nouveau mapping inversé...", mappings);
       
+      // Lecture tolérante : format des dates, des nombres, sens des montants (détectés sur les colonnes choisies)
+      const srcCol = (g: string) => {
+        const o = mappings.find(m => m.googleSheetColumn === g)?.option;
+        return o?.type === "column" ? o.value : undefined;
+      };
+      const reading = resolveReading(rawData, srcCol("Date"), srcCol("Montant"), readOptions, fileDateHint);
+
       // Transformer les données brutes selon le nouveau mapping
       const mappedTransactions = rawData.map(row => {
         const transaction: any = {};
@@ -401,9 +428,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
         // Adapter au format Transaction complet
         const finalTransaction: Transaction = {
-          date: transaction.Date || "",
+          date: parseDate(transaction.Date, reading.order) ?? "",
           description: String(transaction.Description ?? transaction.Source ?? defaultAccount ?? "Transaction"),
-          amount: parseFloat(transaction.Montant || "0"),
+          amount: parseAmount(transaction.Montant, reading.decimal) ?? NaN,
           
           // Pour spending
           suggestedAccount: transactionType === "spending" 
@@ -421,7 +448,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           // Champs communs (devise détectée pour conversion en EUR selon la date)
           currency: currencyFromFile,
           originalCurrency: currencyFromFile,
-          originalAmount: parseFloat(transaction.Montant || "0"),
+          originalAmount: parseAmount(transaction.Montant, reading.decimal) ?? NaN,
           selected: true,
           tags: transaction.Tags || undefined,
           
@@ -442,11 +469,34 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         return finalTransaction;
       });
       
-      console.log(`✅ ${mappedTransactions.length} transactions créées avec le nouveau mapping`);
+      // Lignes illisibles, puis lignes dans le mauvais sens (rentrées d'argent dans un import de dépenses, et inversement)
+      const notices: string[] = [];
+      const readable = mappedTransactions.filter(tx => tx.date && Number.isFinite(tx.amount));
+      const invalidCount = mappedTransactions.length - readable.length;
+      if (invalidCount > 0) notices.push(tr("imp.notice.invalid", { n: invalidCount }));
+
+      const isExpenseRow = (a: number) => (reading.expenseSign === "negative" ? a < 0 : a > 0);
+      const keepRow = (a: number) => {
+        if (a === 0) return false;
+        if (transactionType === "spending") return isExpenseRow(a) || !reading.mixedSigns;
+        return reading.mixedSigns ? !isExpenseRow(a) : true;
+      };
+      const kept = readable.filter(tx => keepRow(tx.amount)).map(tx => {
+        const amount = Math.abs(tx.amount);
+        return { ...tx, amount, originalAmount: amount };
+      });
+      const otherCount = readable.length - kept.length;
+      if (otherCount > 0) {
+        notices.push(tr(transactionType === "revenue" ? "imp.notice.otherRevenue" : "imp.notice.otherSpending", { n: otherCount }));
+      }
+      setImportNotices(notices);
+      if (kept.length === 0) throw new Error(tr("imp.noRows"));
+
+      console.log(`✅ ${kept.length} transactions créées avec le nouveau mapping`);
       
       // Conversion des devises
       console.log("💱 Conversion des devises en EUR...");
-      const convertedTransactions = await convertCurrenciesToEUR(mappedTransactions);
+      const convertedTransactions = await convertCurrenciesToEUR(kept);
       
       // Vérification des doublons
       console.log("🔍 Vérification des doublons...");
@@ -991,9 +1041,17 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             </p>
           </div>
         )}
+        {!loading && (
+          <ImportReadSettings
+            reading={resolveReading(rawData, suggestedColumns.Date, suggestedColumns.Montant, readOptions, fileDateHint)}
+            options={readOptions}
+            onChange={setReadOptions}
+          />
+        )}
         <NewColumnMappingStep
           key={`mapping-${transactionType}-${defaultAccount}`}
           detectedColumns={headers}
+          suggested={suggestedColumns}
           transactionType={transactionType || "spending"}
           defaultSource={defaultAccount}
           onBack={() => setStep("upload")}
@@ -1222,7 +1280,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <div style={{ fontSize: "48px", marginBottom: "16px" }}>📎</div>
           <input
             type="file"
-            accept=".pdf,.csv,.xlsx,.xls"
+            accept=".pdf,.csv,.tsv,.txt,.xlsx,.xls,.ofx,.qfx,.qif"
             onChange={handleFileChange}
             style={{ display: "none" }}
             id="file-upload"
@@ -1392,6 +1450,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                 <span style={{ color: "#FF3B30", fontWeight: 600 }}>{tr("imp.toConvert", { n: unconvertedCount })}</span>
               )}
             </p>
+            {importNotices.map((n, i) => (
+              <p key={i} style={{ margin: "4px 0 0", color: "#FF9500", fontSize: "13px", fontWeight: 600 }}>{n}</p>
+            ))}
           </div>
           <button
             onClick={() => setStep("mapping")}

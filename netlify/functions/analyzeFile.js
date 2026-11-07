@@ -4,6 +4,7 @@ const pdfParse = require("pdf-parse");
 const Papa = require("papaparse");
 const XLSX = require("xlsx");
 const Busboy = require("busboy");
+const tabular = require("./_lib/tabular");
 
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
@@ -41,6 +42,12 @@ exports.handler = async (event) => {
       case "xlsx":
         structure = analyzeXLSX(fileBuffer);
         break;
+      case "ofx":
+        structure = analyzeOFX(fileBuffer);
+        break;
+      case "qif":
+        structure = analyzeQIF(fileBuffer);
+        break;
       default:
         throw new Error(`Format non supporté: ${format}`);
     }
@@ -75,67 +82,69 @@ exports.handler = async (event) => {
   }
 };
 
-/**
- * Analyse un CSV
- */
-function analyzeCSV(buffer) {
-  const text = buffer.toString("utf-8");
-  const parsed = Papa.parse(text, {
-    header: true,
-    skipEmptyLines: true,
-    preview: 100, // Limiter à 100 lignes pour l'analyse
-  });
-
-  const headers = parsed.meta.fields || [];
-  const rows = parsed.data;
-
-  // Suggérer les mappings automatiquement
-  const suggestedMappings = headers.map(header => ({
+function buildStructure(headers, rows, hints) {
+  if (!headers.length || !rows.length) {
+    throw new Error("Aucune transaction trouvée dans ce fichier");
+  }
+  // Suggestions historiques (ancien écran de mapping) ; le nouvel écran déduit les siennes côté client
+  const suggestedMappings = headers.map((header) => ({
     sourceColumn: header,
     targetColumn: suggestMapping(header),
     confidence: calculateConfidence(header),
   }));
-
   return {
     headers,
     rows,
     preview: rows.slice(0, 5),
     suggestedMappings,
     totalRows: rows.length,
+    hints: hints || {},
   };
 }
 
 /**
- * Analyse un XLSX
+ * Analyse un CSV : encodage, séparateur et ligne d'en-tête détectés automatiquement
+ */
+function analyzeCSV(buffer) {
+  const { headers, rows, delimiter } = tabular.parseCsvText(tabular.decodeText(buffer));
+  return buildStructure(headers, rows, { delimiter });
+}
+
+/**
+ * Analyse un XLSX : première feuille non vide, dates converties en AAAA-MM-JJ
  */
 function analyzeXLSX(buffer) {
-  const workbook = XLSX.read(buffer, { type: "buffer" });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  
-  // Convertir en JSON avec header
-  const data = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  
-  if (data.length === 0) {
-    throw new Error("Le fichier Excel est vide");
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+  for (const name of workbook.SheetNames) {
+    const matrix = XLSX.utils.sheet_to_json(workbook.Sheets[name], {
+      header: 1,
+      raw: true,
+      defval: "",
+      blankrows: false,
+    });
+    const { headers, rows } = tabular.tableFromSheetMatrix(matrix);
+    if (headers.length && rows.length) return buildStructure(headers, rows, { sheet: name });
   }
+  throw new Error("Le fichier Excel est vide");
+}
 
-  const headers = Object.keys(data[0]);
-  const rows = data;
+/**
+ * Analyse un OFX / QFX (export standard des banques US, UK, CA, AU…)
+ */
+function analyzeOFX(buffer) {
+  const head = buffer.subarray(0, 600).toString("latin1");
+  const charset = (head.match(/CHARSET:\s*(\w+)/i) || [])[1];
+  const text = tabular.decodeText(buffer, charset === "1252" ? "windows-1252" : "");
+  const { headers, rows } = tabular.parseOFX(text);
+  return buildStructure(headers, rows, { dateOrder: "YMD" });
+}
 
-  const suggestedMappings = headers.map(header => ({
-    sourceColumn: header,
-    targetColumn: suggestMapping(header),
-    confidence: calculateConfidence(header),
-  }));
-
-  return {
-    headers,
-    rows,
-    preview: rows.slice(0, 5),
-    suggestedMappings,
-    totalRows: rows.length,
-  };
+/**
+ * Analyse un QIF (Quicken). Les dates sont le plus souvent MM/JJ/AAAA.
+ */
+function analyzeQIF(buffer) {
+  const { headers, rows } = tabular.parseQIF(tabular.decodeText(buffer));
+  return buildStructure(headers, rows, { dateOrder: "MDY" });
 }
 
 /**
