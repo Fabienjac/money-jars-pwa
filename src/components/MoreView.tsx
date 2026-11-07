@@ -5,6 +5,7 @@ import { useT, localeTag, JAR_LABELS } from "../i18n";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { JAR_ALERT_EMOJIS, WARN_RATIO, type JarAlert } from "../jarAlerts";
 import FeedbackForm from "./FeedbackForm";
+import PushAlertsRow from "./PushAlertsRow";
 interface MoreViewProps {
   darkMode: boolean;
   onToggleDark: () => void;
@@ -46,6 +47,7 @@ const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, o
       </section>
     )}
     <div className="more-list">
+      <PushAlertsRow />
       <button type="button" className="more-item" onClick={onImport}>
         <span className="more-item-icon">📂</span>
         <span className="more-item-text">

@@ -7,7 +7,7 @@
     "dev:netlify": "netlify dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/importNormalize.test.ts tests/importSave.test.ts tests/tabular.test.mjs tests/pdfStatement.test.mjs tests/notifyFeedback.test.mjs tests/lifestyle.test.ts tests/jarAlerts.test.ts tests/paginate.test.ts tests/streak.test.ts tests/subscriptions.test.ts tests/lifestyleSeed.test.ts"
+    "test": "node --test tests/importNormalize.test.ts tests/importSave.test.ts tests/tabular.test.mjs tests/pdfStatement.test.mjs tests/notifyFeedback.test.mjs tests/lifestyle.test.ts tests/jarAlerts.test.ts tests/paginate.test.ts tests/streak.test.ts tests/subscriptions.test.ts tests/lifestyleSeed.test.ts tests/push.test.ts tests/sw.test.mjs tests/pushJarAlerts.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
@@ -19,6 +19,7 @@
     "react-dom": "^18.3.1",
     "recharts": "^3.5.0",
     "stripe": "^22.2.1",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

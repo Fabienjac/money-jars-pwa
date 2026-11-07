@@ -3874,3 +3874,23 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Notifications push (écran Plus) */
+.push-item { cursor: default; align-items: flex-start; }
+.push-state { font-size: 13px; font-weight: 600; color: var(--text-main); margin-top: 4px; }
+.push-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.push-btn {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1.5px solid var(--jar-nec);
+  border-radius: 20px;
+  background: transparent;
+  color: var(--jar-nec);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.push-btn:disabled { opacity: 0.5; cursor: default; }
+.push-btn--quiet { border-color: var(--border-color); color: var(--text-muted); }
+.push-note { font-size: 12px; color: var(--text-muted); margin-top: 6px; }

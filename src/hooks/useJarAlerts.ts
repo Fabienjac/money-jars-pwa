@@ -10,8 +10,25 @@ import {
   type JarAlert,
   type SeenLevels,
 } from "../jarAlerts";
+import { requestJarAlertPush } from "../push";
 
 const seenKey = (userId: string) => `mjars:jarAlertsSeen:${userId}`;
+// Niveaux déjà signalés au serveur pour les notifications push (une demande par franchissement de niveau)
+const pushedKey = (userId: string) => `mjars:jarAlertsPushed:${userId}`;
+
+function readLevels(key: string): SeenLevels {
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? (parsed as SeenLevels) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLevels(key: string, levels: SeenLevels): void {
+  try { localStorage.setItem(key, JSON.stringify(levels)); } catch { /* sans conséquence */ }
+}
 
 function readSeen(userId: string | null): SeenLevels {
   if (!userId) return {};
@@ -54,6 +71,16 @@ export function useJarAlerts(userId: string | null, refreshOn: unknown) {
         setSeen(reconciled);
       }
       setAlerts(next);
+
+      // Notification push : seulement quand un niveau vient d'être franchi (le serveur relit tout et dédoublonne)
+      const pushedBefore = readLevels(pushedKey(userId));
+      if (hasUnseenAlerts(next, pushedBefore)) {
+        writeLevels(pushedKey(userId), markAllSeen(next));
+        void requestJarAlertPush();
+      } else {
+        const lowered = reconcileSeen(next, pushedBefore);
+        if (JSON.stringify(lowered) !== JSON.stringify(pushedBefore)) writeLevels(pushedKey(userId), lowered);
+      }
     } catch {
       /* hors ligne ou erreur réseau : on garde l'état précédent */
     }

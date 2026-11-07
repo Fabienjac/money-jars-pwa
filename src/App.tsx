@@ -88,6 +88,19 @@ function App() {
     if (section === "more") markJarAlertsSeen();
   }, [section, markJarAlertsSeen]);
 
+  // Un clic sur une notification d'alerte ouvre l'app sur « Plus » (adresse /#alerts)
+  useEffect(() => {
+    const openAlerts = () => {
+      if (window.location.hash === "#alerts") {
+        setSection("more");
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    };
+    openAlerts();
+    window.addEventListener("hashchange", openAlerts);
+    return () => window.removeEventListener("hashchange", openAlerts);
+  }, []);
+
   // Vérifier si l'onboarding a déjà été fait (jar_settings présents)
   useEffect(() => {
     if (!user) return;
