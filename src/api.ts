@@ -738,7 +738,7 @@ export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<voi
       .from("auto_tag_rules")
       .delete()
       .eq("user_id", user.id)
-      .not("pattern", "in", `(${activePatterns.map(p => `"${p}"`).join(",")})`);
+      .not("pattern", "in", `(${activePatterns.map(p => `"${p.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",")})`);
   } else {
     await supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
   }

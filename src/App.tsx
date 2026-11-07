@@ -23,6 +23,7 @@ import { setCachedTags } from "./tagsUtils";
 import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
 import { updateStreak } from "./streakUtils";
+import { saveImportedTransactions } from "./importSave";
 import "./style.css";
 
 // Lazy-loaded heavy views
@@ -200,155 +201,29 @@ function App() {
   const handleImportTransactions = async (transactions: any[], type: "spending" | "revenue" = "spending") => {
     console.log(`📦 Importing ${transactions.length} ${type === "revenue" ? "revenues" : "transactions"}...`);
     
-    // Normalise n'importe quel format de date vers YYYY-MM-DD (attendu par Supabase)
-    const normalizeToISO = (dateStr: string): string => {
-      if (!dateStr) return "";
-      const cleaned = dateStr.replace(/\s*:\s*/g, ":").replace(/\s*,\s*/g, ", ").trim();
-
-      // Déjà YYYY-MM-DD
-      if (/^\d{4}-\d{2}-\d{2}/.test(cleaned)) return cleaned.slice(0, 10);
-
-      // DD/MM/YYYY
-      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(cleaned)) {
-        const [d, m, y] = cleaned.split("/");
-        return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-      }
-
-      // "04 September 2025, 12:00pm"
-      const months: { [key: string]: string } = {
-        January: "01", February: "02", March: "03", April: "04",
-        May: "05", June: "06", July: "07", August: "08",
-        September: "09", October: "10", November: "11", December: "12",
-      };
-      const match = cleaned.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/);
-      if (match) {
-        const day = match[1].padStart(2, "0");
-        const month = months[match[2]];
-        if (month) return `${match[3]}-${month}-${day}`;
-      }
-
-      console.warn(`⚠️ Could not parse date: ${dateStr}`);
-      return cleaned;
-    };
-    
     // Afficher l'écran "Importation en cours..."
     setIsImporting(true);
     setShowImportSuccess(true);
     setImporterOpen(false); // Fermer l'importeur
     
     try {
-      let successCount = 0;
-      let errorCount = 0;
-
-      // Fonction pour extraire la devise de la méthode
-      const extractCurrencyFromMethod = (method: string): string | null => {
-        if (!method) return null;
-        const knownCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'XRP', 'ADA', 'SOL', 'DOGE', 'DOT', 'MATIC', 'LTC', 'BCH'];
-        // "USDC_ETH" ou "USDT_TRC20" → devise = partie avant "_" (actif, pas le réseau)
-        if (method.includes('_')) {
-          const firstToken = method.split('_')[0].trim().toUpperCase();
-          if (knownCurrencies.includes(firstToken)) return firstToken;
-        }
-        const currencyPatterns = [
-          /BTC/i, /ETH/i, /USDT/i, /USDC/i, /XRP/i,
-          /ADA/i, /SOL/i, /DOGE/i, /DOT/i, /MATIC/i,
-          /LTC/i, /BCH/i,
-        ];
-        for (const pattern of currencyPatterns) {
-          if (pattern.test(method)) {
-            return method.match(pattern)![0].toUpperCase();
-          }
-        }
-        return null;
-      };
-
-      // Fonction pour récupérer le taux de change historique
-      // Taux vers la devise de référence (fiat : taux historique ; crypto : prix CoinGecko)
-      const getHistoricalRate = (fromCurrency: string, dateStr: string): Promise<number | null> =>
-        getRateToBase(fromCurrency, dateStr);
-
-      // Importer chaque transaction individuellement
-      const logImportFailure = (index: number, t: any, reason: string) => {
-        console.error(
-          `❌ Échec import #${index + 1}:`,
-          `${String(t?.date ?? "")} | ${String(t?.description ?? t?.suggestedSource ?? "")} | ${t?.amount ?? ""} ${getBaseCurrency()}`,
-          "→",
-          reason
-        );
-      };
-
-      for (let i = 0; i < transactions.length; i++) {
-        const t = transactions[i];
-        try {
-          // Pour les REVENUS : calculer automatiquement le taux si nécessaire
-          let resolvedRate = t.usdEurRate || t.tauxUSDEUR || null;
-          if (type === "revenue" && (!resolvedRate || resolvedRate === 0)) {
-            const method = t.methodeCrypto || t.suggestedMethod || "";
-            const currency = extractCurrencyFromMethod(method);
-            if (currency && currency !== getBaseCurrency()) {
-              const fetchedRate = await getHistoricalRate(currency, t.date);
-              if (fetchedRate) resolvedRate = fetchedRate;
-            }
-          }
-
-          // Envoi vers Supabase via api.ts
-          const date = normalizeToISO(t.date); // DD/MM/YYYY attendu par api.ts
-
-          let result: { ok: boolean; error?: string };
-
-          if (type === "spending") {
-            result = await appendSpending({
-              date,
-              jar:          t.suggestedJar,
-              account:      t.suggestedAccount || "",
-              amount:       t.amount,
-              description:  t.description || "",
-              tags:         t.tags || "",
-              subscription: "",
-            });
-          } else {
-            // Montant converti dans la devise de référence ; montant d'origine conservé dans « value »
-            const baseCur = getBaseCurrency();
-            const valStr = String(t.valeur || t.currency || "").trim().toUpperCase();
-            const cur = /^[A-Z]{3}$/.test(valStr) ? valStr : baseCur;
-            const origAmount = Number(t.amount) || 0;
-            const fx = cur === baseCur ? 1 : await getRateToBase(cur, t.date);
-            if (!fx) {
-              logImportFailure(i, t, tr("app.rateFail", { cur, base: baseCur }));
-              errorCount++;
-              continue;
-            }
-            const baseAmount = Math.round(origAmount * fx * 100) / 100;
-            const qty = Number(t.quantiteCrypto) || 0;
-            result = await appendRevenue({
-              date,
-              source:         t.suggestedSource || t.suggestedAccount || t.description || "",
-              amount:         origAmount ? baseAmount : undefined,
-              value:          origAmount ? formatRevenueValue(origAmount, cur) : (t.valeur || t.currency || null),
-              cryptoQuantity: t.quantiteCrypto || null,
-              method:         t.methodeCrypto || t.suggestedMethod || null,
-              rate:           qty > 0 && baseAmount > 0 ? baseAmount / qty : (cur !== baseCur ? fx : (resolvedRate ?? undefined)),
-              cryptoAddress:  t.adresseCrypto || null,
-              destination:    t.compteDestination || t.suggestedMethod || null,
-              incomeType:     t.type || null,
-              tags:           t.tags || "",
-            });
-          }
-
-          if (result.ok) {
-            console.log(`✅ Imported #${i + 1}: ${t.description || t.suggestedSource}`);
-            successCount++;
-            if (type === "spending") updateStreak();
-          } else {
-            logImportFailure(i, t, result.error || tr("app.supabaseErr"));
-            errorCount++;
-          }
-
-        } catch (error: any) {
-          logImportFailure(i, t, error?.message || String(error));
-          errorCount++;
-        }
-      }
+      const { successCount, errorCount } = await saveImportedTransactions(transactions, type, {
+        appendSpending,
+        appendRevenue,
+        getRateToBase,
+        baseCurrency: getBaseCurrency(),
+        formatRevenueValue,
+        rateFailMessage: (cur, base) => tr("app.rateFail", { cur, base }),
+        fallbackError: tr("app.supabaseErr"),
+        onSpendingSaved: updateStreak,
+        onFailure: (index, t, reason) =>
+          console.error(
+            `❌ Échec import #${index + 1}:`,
+            `${String(t?.date ?? "")} | ${String(t?.description ?? t?.suggestedSource ?? "")} | ${t?.amount ?? ""} ${getBaseCurrency()}`,
+            "→",
+            reason
+          ),
+      });
 
       if (errorCount > 0) {
         console.warn(`⚠️ Import terminé: ${successCount} réussie(s), ${errorCount} échouée(s). Voir les lignes "❌ Échec import #N" ci-dessus pour le détail.`);
