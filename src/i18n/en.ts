@@ -757,6 +757,12 @@ const en: Record<keyof typeof fr, string> = {
   "cm.memorized": "✓ Mapping {name} saved",
   "app.rateFail": "{cur} → {base} rate unavailable (row not imported)",
   "rev.errGeneric": "❌ Error: {msg}",
+  "err.notLoggedIn": "Not signed in",
+  "err.rateUnavailable": "Rate unavailable",
+  "err.rateError": "Rate error",
+  "err.rateUnavailableCode": "Rate unavailable ({code})",
+  "err.rateInvalid": "Invalid rate response",
+  "err.rateTimeout": "Timed out fetching the rate",
 };
 
 export default en;

@@ -3,14 +3,11 @@ import React, { useState, useEffect, lazy, Suspense } from "react";
 import { useT, useLang, t as tr } from "./i18n";
 import { useBaseCurrency, getBaseCurrency, formatRevenueValue } from "./baseCurrency";
 import { getRateToBase } from "./exchangeRate";
-import SpendingForm from "./components/SpendingForm";
 import RevenueForm from "./components/RevenueForm";
 import type { HistoryUseEntry } from "./components/HistoryView";
-import JarsView from "./components/JarsView";
 import JarsViewV2 from "./components/JarsViewV2";
 import QuickSpendingForm from "./components/QuickSpendingForm";
 import { VoiceSpendingModal } from "./components/VoiceSpendingModal";
-import { RecentTransactions } from "./components/RecentTransactions";
 import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { AuthScreen } from "./components/AuthScreen";
@@ -43,7 +40,6 @@ const SuspenseFallback = () => (
 );
 
 type Section = "home" | "history" | "analytics" | "more" | "settings";
-type EntryMode = "spending" | "revenue";
 
 function App() {
   const { user, loading: authLoading } = useAuth();
@@ -55,9 +51,6 @@ function App() {
   const baseCurrency = useBaseCurrency(); // remonte les écrans si la devise de référence change
   const [darkMode, setDarkMode] = useState(false);
 
-  const [entryOpen, setEntryOpen] = useState(false);
-  const [entryMode, setEntryMode] = useState<EntryMode>("spending");
-
   const [prefillSpending, setPrefillSpending] = useState<any | null>(null);
   const [prefillRevenue, setPrefillRevenue] = useState<any | null>(null);
 
@@ -65,16 +58,6 @@ function App() {
   const [showQuickSpending, setShowQuickSpending] = useState(false);
   const [showQuickRevenue, setShowQuickRevenue] = useState(false);
   
-  // ✅ AJOUT : Toggle pour activer/désactiver la V2
-  const [useV2, setUseV2] = useState(() => {
-    try {
-      const stored = localStorage.getItem("use_jars_v2");
-      return stored === null ? true : stored === "true"; // Par défaut TRUE = V2 activée
-    } catch {
-      return true; // Par défaut, utiliser V2
-    }
-  });
-
   // Saisie vocale
   const [voiceOpen, setVoiceOpen] = useState(false);
 
@@ -202,38 +185,14 @@ function App() {
   }
   // ──────────────────────────────────────────────────────────────────────────
 
-  const openEntry = (mode: EntryMode, prefill?: any) => {
-    setEntryMode(mode);
-    if (mode === "spending") {
-      setPrefillSpending(prefill ?? null);
-    } else {
-      setPrefillRevenue(prefill ?? null);
-    }
-    setEntryOpen(true);
-  };
-
-  const closeEntry = () => {
-    setEntryOpen(false);
-  };
-
   // ✅ NOUVEAU : Gérer "Utiliser" avec la V2
   const handleUseEntry = (entry: HistoryUseEntry) => {
-    if (useV2) {
-      // Mode V2 : ouvrir les nouveaux modals
-      if (entry.kind === "spending") {
-        setPrefillSpending(entry.row);
-        setShowQuickSpending(true);
-      } else {
-        setPrefillRevenue(entry.row);
-        setShowQuickRevenue(true);
-      }
+    if (entry.kind === "spending") {
+      setPrefillSpending(entry.row);
+      setShowQuickSpending(true);
     } else {
-      // Mode V1 : ancien comportement
-      if (entry.kind === "spending") {
-        openEntry("spending", entry.row);
-      } else {
-        openEntry("revenue", entry.row);
-      }
+      setPrefillRevenue(entry.row);
+      setShowQuickRevenue(true);
     }
   };
 
@@ -416,12 +375,8 @@ function App() {
   const navColor = (active: boolean) => (active ? "#007AFF" : "#8E8E93");
 
   const openSpending = () => {
-    if (useV2) {
-      setPrefillSpending(null);
-      setShowQuickSpending(true);
-    } else {
-      openEntry("spending");
-    }
+    setPrefillSpending(null);
+    setShowQuickSpending(true);
   };
 
   return (
@@ -473,13 +428,9 @@ function App() {
           {/* ✅ MODIFICATION : Utiliser JarsViewV2 */}
           {section === "home" && (
             <>
-              {useV2 ? (
-                <JarsViewV2
-                  onOpenRevenue={() => setShowQuickRevenue(true)}
-                />
-              ) : (
-                <JarsView />
-              )}
+              <JarsViewV2
+                onOpenRevenue={() => setShowQuickRevenue(true)}
+              />
             </>
           )}
           
@@ -655,71 +606,6 @@ function App() {
             setPrefillRevenue(null);
           }}
         />
-      )}
-
-      {/* Bottom sheet "Nouvelle entrée" (V1 uniquement) */}
-      {entryOpen && !useV2 && (
-        <div className="entry-sheet-backdrop" onClick={closeEntry}>
-          <div
-            className="entry-sheet"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <header className="entry-sheet-header">
-              <div className="entry-tabs">
-                <button
-                  type="button"
-                  className={`entry-tab ${
-                    entryMode === "spending" ? "active" : ""
-                  }`}
-                  onClick={() => setEntryMode("spending")}
-                >
-                  {t("nav.expense")}
-                </button>
-                <button
-                  type="button"
-                  className={`entry-tab ${
-                    entryMode === "revenue" ? "active" : ""
-                  }`}
-                  onClick={() => setEntryMode("revenue")}
-                >
-                  {t("app.income")}
-                </button>
-              </div>
-              <button
-                type="button"
-                className="entry-close-btn"
-                onClick={closeEntry}
-              >
-                ×
-              </button>
-            </header>
-
-            <RecentTransactions
-              mode={entryMode}
-              onSelect={(transaction) => {
-                if (entryMode === "spending") {
-                  setPrefillSpending(transaction);
-                } else {
-                  setPrefillRevenue(transaction);
-                }
-              }}
-            />
-
-            <div className="entry-sheet-body">
-              {entryMode === "spending" ? (
-                <SpendingForm
-                  prefill={prefillSpending}
-                  onClearPrefill={() => setPrefillSpending(null)}
-                />
-              ) : (
-                <RevenueForm
-                  prefill={prefillRevenue}
-                  onClearPrefill={() => setPrefillRevenue(null)}
-                />
-              )}
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Importeur universel — plein écran */}

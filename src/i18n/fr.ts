@@ -755,6 +755,12 @@ const fr = {
   "cm.memorized": "✓ Mapping {name} mémorisé",
   "app.rateFail": "Taux {cur} → {base} indisponible (ligne non importée)",
   "rev.errGeneric": "❌ Erreur : {msg}",
+  "err.notLoggedIn": "Non connecté",
+  "err.rateUnavailable": "Taux indisponible",
+  "err.rateError": "Erreur de taux",
+  "err.rateUnavailableCode": "Taux indisponible ({code})",
+  "err.rateInvalid": "Réponse de taux invalide",
+  "err.rateTimeout": "Délai dépassé pour récupérer le taux",
 } as const;
 
 export default fr;
