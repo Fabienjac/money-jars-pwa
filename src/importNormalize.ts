@@ -494,7 +494,9 @@ export function findCancelledExpenses(lines: SignedLine[], expenseSign: ExpenseS
       if (sharedRef) score += 3;
       if (sharedName) score += 2;
       if (cTok.reversal) score += 1;
-      if (score === 0 || (score === 1 && !sharedRef && !sharedName && gap > 31)) continue;
+      // Un mot « remboursement » et un montant identique ne suffisent pas : il faut une référence ou
+      // un nom de commerçant en commun, sinon on masquerait une vraie dépense (remboursement d'un achat hors relevé).
+      if (!sharedRef && !sharedName) continue;
       if (score > bestScore || (score === bestScore && Math.abs(gap) < bestGap)) {
         best = d;
         bestScore = score;

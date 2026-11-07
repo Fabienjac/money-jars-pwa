@@ -89,7 +89,7 @@ export function formatRevenueValue(originalAmount: number, currency: string): st
 
 export function parseRevenueValue(value: string | null | undefined): { currency: string; original?: number; converted: boolean } {
   const v = String(value ?? "").trim();
-  const m = v.match(/^(-?[\d.]+)\s+([A-Za-z]{3})$/);
+  const m = v.match(/^(-?[\d.]+)\s+([A-Za-z]{3,5})$/); // 3 lettres (EUR) ou ticker crypto (USDT, MATIC)
   if (m) return { currency: m[2].toUpperCase(), original: parseFloat(m[1]), converted: true };
   return { currency: v.toUpperCase(), converted: false };
 }

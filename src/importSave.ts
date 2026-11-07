@@ -102,7 +102,8 @@ export async function saveImportedTransactions(
         }
         // Montant converti dans la devise de référence ; montant d'origine conservé dans « value »
         const valStr = String(t.valeur || t.currency || "").trim().toUpperCase();
-        const cur = /^[A-Z]{3}$/.test(valStr) ? valStr : deps.baseCurrency;
+        // Code ISO à 3 lettres ou crypto connue (USDT, USDC… ont 4 lettres) ; sinon devise de référence
+        const cur = /^[A-Z]{3}$/.test(valStr) || CRYPTOS.includes(valStr) ? valStr : deps.baseCurrency;
         const origAmount = Number(t.amount) || 0;
         const fx = cur === deps.baseCurrency ? 1 : await deps.getRateToBase(cur, t.date);
         if (!fx) { fail(i, t, deps.rateFailMessage(cur, deps.baseCurrency)); continue; }

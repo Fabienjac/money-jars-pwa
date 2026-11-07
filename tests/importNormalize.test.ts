@@ -134,3 +134,13 @@ test("findCancelledExpenses: reversas avec même référence, remboursement marc
   assert.deepEqual([...cancelled].sort(), [0, 1, 5]);
   assert.deepEqual([...usedCredits].sort(), [2, 3, 6]);
 });
+
+test("findCancelledExpenses: un mot « remboursement » + même montant ne suffisent pas", () => {
+  const lines = [
+    { date: "2026-04-10", amount: -50, description: "Grocery Market" },
+    { date: "2026-04-11", amount: 50, description: "Refund Airline" }, // rien en commun : achat hors relevé
+  ];
+  const { cancelled, usedCredits } = findCancelledExpenses(lines, "negative");
+  assert.equal(cancelled.size, 0);
+  assert.equal(usedCredits.size, 0);
+});

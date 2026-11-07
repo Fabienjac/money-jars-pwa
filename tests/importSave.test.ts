@@ -128,3 +128,11 @@ test("revenus crypto : prix unitaire déduit de la quantité", async () => {
   assert.equal(revenues[0].rate, 50000);
   assert.equal(revenues[0].method, "BTC");
 });
+
+test("revenus en USDT (4 lettres) : converti, pas pris pour la devise de référence", async () => {
+  const { deps, revenues } = makeDeps({ getRateToBase: async (cur) => (cur === "USDT" ? 0.92 : null) });
+  const report = await saveImportedTransactions([{ date: "2026-03-01", amount: 100, valeur: "USDT", suggestedSource: "Client" }], "revenue", deps);
+  assert.equal(report.successCount, 1);
+  assert.equal(revenues[0].amount, 92);
+  assert.equal(revenues[0].value, "100 USDT");
+});

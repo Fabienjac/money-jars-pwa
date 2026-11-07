@@ -132,7 +132,8 @@ create table if not exists auto_tag_rules (
   jar        text,
   tags       text,
   account    text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint auto_tag_rules_user_pattern_key unique (user_id, pattern)  -- requis par l'upsert de src/api.ts
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
