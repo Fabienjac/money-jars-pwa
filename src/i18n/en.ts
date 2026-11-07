@@ -158,6 +158,7 @@ const en: Record<keyof typeof fr, string> = {
   "default.tag.evolution": "Growth",
   "default.tag.administratif": "Admin",
   "default.tag.don_cadeau": "Gifts & donations",
+  "default.tag.exceptionnel": "One-off",
   // Currency selector
   "cur.other": "Other",
   "cur.otherTitle": "Other currency",
@@ -840,6 +841,7 @@ const en: Record<keyof typeof fr, string> = {
   "fb.thanksTitle": "Thank you!",
   "fb.thanks": "Your message has been sent.",
   "fb.error": "Couldn't send right now. Please try again later.",
+  "life.noneTagged": "Nothing excluded yet: add the “{name}” tag to a one-off expense.",
   "alerts.title": "Jar alerts",
   "alerts.warn": "{pct}% spent · {amount} left",
   "alerts.empty": "Jar empty",

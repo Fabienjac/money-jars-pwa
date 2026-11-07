@@ -27,6 +27,7 @@ export function getDefaultTags(): Tag[] {
     { id: "evolution",      name: n("evolution"),       emoji: "🌱", color: "#6366F1", favori: true },
     { id: "administratif",  name: n("administratif"),   emoji: "📄", color: "#EF4444", favori: false },
     { id: "don_cadeau",     name: n("don_cadeau"),     emoji: "🎁", color: "#0EA5E9", favori: false },
+    { id: "exceptionnel",   name: n("exceptionnel"),   emoji: "🌟", color: "#F59E0B", favori: true },
   ];
 }
 

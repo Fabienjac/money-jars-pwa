@@ -37,6 +37,7 @@ const LifestyleCard: React.FC = () => {
   const [error, setError] = useState(false);
   const [extraTags, setExtraTags] = useState<string[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [tagsVersion, setTagsVersion] = useState(0); // les étiquettes de l'utilisateur ont changé (nom à rafraîchir)
 
   const load = useCallback(async () => {
     try {
@@ -54,8 +55,17 @@ const LifestyleCard: React.FC = () => {
   useEffect(() => {
     load();
     const onSaved = () => load();
+    const onPrefs = (e: Event) => {
+      const tags = (e as CustomEvent<{ extraordinaryTags?: string[] }>).detail?.extraordinaryTags;
+      if (Array.isArray(tags)) setExtraTags(tags);
+      setTagsVersion((v) => v + 1);
+    };
     window.addEventListener("mjars:transactionSaved", onSaved);
-    return () => window.removeEventListener("mjars:transactionSaved", onSaved);
+    window.addEventListener("mjars:lifestylePrefsChanged", onPrefs);
+    return () => {
+      window.removeEventListener("mjars:transactionSaved", onSaved);
+      window.removeEventListener("mjars:lifestylePrefsChanged", onPrefs);
+    };
   }, [load]);
 
   const extraSet = useMemo(() => new Set(extraTags), [extraTags]);
@@ -76,7 +86,7 @@ const LifestyleCard: React.FC = () => {
     return [...ids]
       .map((id) => ({ id, name: known.get(id)?.name ?? id, emoji: known.get(id)?.emoji ?? "🏷️", total: tagTotals[id] ?? 0 }))
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
-  }, [tagTotals, extraTags]);
+  }, [tagTotals, extraTags, tagsVersion]);
 
   const statusLabel = stats?.status === "up" ? t("life.statusUp") : stats?.status === "down" ? t("life.statusDown") : t("life.statusStable");
   const statusColor = stats?.status === "up" ? "var(--warn-text)" : "var(--ok-text)";
@@ -171,7 +181,7 @@ const LifestyleCard: React.FC = () => {
                 ? t("life.excluded", { amount: money(stats.extraordinary, 0), n: stats.extraordinaryCount })
                 : extraTags.length === 0
                   ? t("life.noneMarked")
-                  : null}
+                  : t("life.noneTagged", { name: tagChoices.find((c) => c.id === extraTags[0])?.name ?? extraTags[0] })}
             </div>
           </>
         )}

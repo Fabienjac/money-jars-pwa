@@ -19,7 +19,7 @@ import { useOffline } from "./hooks/useOffline";
 import { useJarAlerts } from "./hooks/useJarAlerts";
 import { useAuth } from "./contexts/AuthContext";
 import { loadAccounts } from "./accountsUtils";
-import { getAccounts, fetchTagsFromSheet, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings, appendSpending, appendRevenue } from "./api";
+import { getAccounts, fetchTagsFromSheet, seedExceptionalTagIfNeeded, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings, appendSpending, appendRevenue } from "./api";
 import { setCachedTags } from "./tagsUtils";
 import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
@@ -118,11 +118,18 @@ function App() {
   }, [user]);
 
   // Charger les tags depuis le Sheet au démarrage
+  const userId = user?.id ?? null;
   useEffect(() => {
+    if (!userId) return;
     fetchTagsFromSheet()
-      .then(tags => { if (tags.length > 0) setCachedTags(tags); })
+      .then(async tags => {
+        if (tags.length > 0) setCachedTags(tags);
+        // Étiquette « Exceptionnel » pour l'indicateur « train de vie » (une seule fois par utilisateur)
+        const withSeed = await seedExceptionalTagIfNeeded(tags);
+        if (withSeed) setCachedTags(withSeed);
+      })
       .catch(() => { /* silencieux — les défauts codés en dur sont utilisés */ });
-  }, []);
+  }, [userId]);
 
   // ── Prefetch silencieux au démarrage ──────────────────────────────────────
   // Chauffe le cache dès l'ouverture de l'app, en parallèle, sans bloquer l'UI.

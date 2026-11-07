@@ -13,6 +13,8 @@ import type {
 } from "./types";
 import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
 import { fetchAllPages } from "./paginate";
+import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
+import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
 
 // ── Helpers dates ──────────────────────────────────────────────────────────────
 // L'app utilise DD/MM/YYYY en interne ; Supabase stocke en YYYY-MM-DD (type date)
@@ -702,13 +704,15 @@ export async function fetchColumnMappings(): Promise<Record<string, unknown>> {
 }
 
 export async function saveColumnMappingToSheet(mappingKey: string, mapping: unknown): Promise<void> {
-  // Mettre à jour le cache local immédiatement
+  // Mettre à jour le cache local immédiatement. Seulement s'il existe déjà : en créer un à partir d'une seule
+  // clé le ferait passer pour complet et masquerait les autres réglages pendant une heure.
   try {
     const raw = localStorage.getItem(COLMAPPING_CACHE_KEY);
-    const existing = raw ? (JSON.parse(raw) as { data: Record<string, unknown>; ts: number }) : { data: {}, ts: 0 };
-    existing.data[mappingKey] = mapping;
-    existing.ts = Date.now();
-    localStorage.setItem(COLMAPPING_CACHE_KEY, JSON.stringify(existing));
+    if (raw) {
+      const existing = JSON.parse(raw) as { data: Record<string, unknown>; ts: number };
+      existing.data[mappingKey] = mapping;
+      localStorage.setItem(COLMAPPING_CACHE_KEY, JSON.stringify(existing));
+    }
   } catch {}
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -892,4 +896,59 @@ export async function fetchLifestylePrefs(): Promise<{ extraordinaryTags: string
 
 export async function saveLifestylePrefs(prefs: { extraordinaryTags: string[] }): Promise<void> {
   await saveColumnMappingToSheet(LIFESTYLE_PREFS_KEY, prefs);
+}
+
+// ── Étiquette « Exceptionnel » : mise en place unique ─────────────────────────
+const LIFESTYLE_SEEDED_KEY = "lifestyle_seeded";
+
+/**
+ * Ajoute l'étiquette « Exceptionnel » aux étiquettes de l'utilisateur et la présélectionne pour le train de vie,
+ * une seule fois. Lecture stricte du cloud (sans cache ni valeur par défaut) : en cas d'erreur on ne touche à rien,
+ * pour ne jamais écraser un choix existant. Renvoie la nouvelle liste d'étiquettes si elle a changé.
+ */
+let seedInFlight: Promise<Tag[] | null> | null = null;
+
+export function seedExceptionalTagIfNeeded(tags: Tag[]): Promise<Tag[] | null> {
+  // Une seule mise en place à la fois (l'effet de démarrage peut se déclencher plusieurs fois)
+  if (!seedInFlight) {
+    seedInFlight = seedExceptionalTag(tags).finally(() => { seedInFlight = null; });
+  }
+  return seedInFlight;
+}
+
+async function seedExceptionalTag(tags: Tag[]): Promise<Tag[] | null> {
+  if (tags.length === 0) return null;
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("column_mappings")
+    .select("mapping_key, mapping")
+    .eq("user_id", user.id)
+    .in("mapping_key", [LIFESTYLE_PREFS_KEY, LIFESTYLE_SEEDED_KEY]);
+  if (error || !data) return null;
+
+  const prefs = data.find((r) => r.mapping_key === LIFESTYLE_PREFS_KEY)?.mapping as { extraordinaryTags?: unknown } | undefined;
+  const chosen = Array.isArray(prefs?.extraordinaryTags) ? prefs!.extraordinaryTags.filter((x): x is string => typeof x === "string") : [];
+  const seeded = data.some((r) => r.mapping_key === LIFESTYLE_SEEDED_KEY);
+
+  const plan = planExceptionalSeed(tags, chosen, seeded);
+  if (!plan.markDone) return null;
+
+  let nextTags: Tag[] | null = null;
+  if (plan.addTag) {
+    const def = getDefaultTags().find((t) => t.id === EXCEPTIONAL_TAG_ID);
+    if (def) {
+      nextTags = [...tags, def];
+      await saveTags([def]); // upsert d'une seule ligne : les autres étiquettes ne sont pas réécrites
+      setCachedTags(nextTags);
+    }
+  }
+  if (plan.selectTag) {
+    await saveLifestylePrefs({ extraordinaryTags: [EXCEPTIONAL_TAG_ID] });
+    // La carte « train de vie » est peut-être déjà affichée : on lui donne le choix sans attendre le cloud
+    window.dispatchEvent(new CustomEvent("mjars:lifestylePrefsChanged", { detail: { extraordinaryTags: [EXCEPTIONAL_TAG_ID] } }));
+  }
+  await saveColumnMappingToSheet(LIFESTYLE_SEEDED_KEY, { done: true });
+  return nextTags;
 }

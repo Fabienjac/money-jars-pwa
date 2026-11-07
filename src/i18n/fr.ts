@@ -156,6 +156,7 @@ const fr = {
   "default.tag.evolution": "Évolution",
   "default.tag.administratif": "Administratif",
   "default.tag.don_cadeau": "Don / Cadeau",
+  "default.tag.exceptionnel": "Exceptionnel",
   // Sélecteur de devise
   "cur.other": "Autre",
   "cur.otherTitle": "Autre devise",
@@ -838,6 +839,7 @@ const fr = {
   "fb.thanksTitle": "Merci !",
   "fb.thanks": "Votre message a bien été envoyé.",
   "fb.error": "Envoi impossible pour le moment. Réessayez plus tard.",
+  "life.noneTagged": "Rien d'exclu pour l'instant : ajoute l'étiquette « {name} » à une dépense exceptionnelle.",
   "alerts.title": "Alertes des jarres",
   "alerts.warn": "{pct} % dépensé · reste {amount}",
   "alerts.empty": "Jarre épuisée",
