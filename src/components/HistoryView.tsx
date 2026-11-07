@@ -12,6 +12,8 @@ import { loadAccounts } from "../accountsUtils";
 import { getAccounts } from "../api";
 import { Account } from "../types";
 
+import { currencySymbol as curSym } from "../baseCurrency";
+import { useT, t as tr, localeTag } from "../i18n";
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
@@ -37,6 +39,8 @@ export type HistoryUseEntry =
 
 interface HistoryViewProps {
   onUseEntry?: (entry: HistoryUseEntry) => void;
+  onImport?: () => void;
+  view?: MainTab;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,24 +51,41 @@ const fmt = (value: number | undefined | null, dec = 2) => {
 };
 
 const parseDate = (v: string): Date | null => {
-  const d = new Date(v);
+  if (!v) return null;
+  // DD/MM/YYYY → forcer l'interprétation correcte
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+    const [d, m, y] = v.split("/");
+    return new Date(`${y}-${m}-${d}T00:00:00`);
+  }
+  const d = new Date(v.includes("T") ? v : v + "T00:00:00");
   return isNaN(d.getTime()) ? null : d;
 };
 
 const fmtDate = (v: string): string => {
   const d = parseDate(v);
   if (!d) return v;
-  return d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+  return d.toLocaleDateString(localeTag(), { day: "2-digit", month: "short", year: "numeric" });
 };
 
-const getYearMonth = (dateStr: string) => dateStr?.slice(0, 7) ?? "";
+const getYearMonth = (dateStr: string): string => {
+  if (!dateStr) return "";
+  // DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    const [, m, y] = dateStr.split("/");
+    return `${y}-${m}`;
+  }
+  // YYYY-MM-DD (Supabase default)
+  return dateStr.slice(0, 7);
+};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
+const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport }) => {
+  const t = useT();
 
   // ── Tab & mode ────────────────────────────────────────────────────
-  const [mainTab, setMainTab] = useState<MainTab>("history");
+  const [mainTabState, setMainTab] = useState<MainTab>("history");
+  const mainTab: MainTab = view ?? mainTabState;
   const [mode, setMode] = useState<Mode>("spending");
 
   // ── History data ──────────────────────────────────────────────────
@@ -116,7 +137,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
         setSpendings([]);
       }
     } catch (e: any) {
-      setError(e.message || "Erreur inconnue");
+      setError(e.message || t("hist.unknownError"));
       setSpendings([]);
       setRevenues([]);
     } finally {
@@ -163,10 +184,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     if (!periodRange) return null;
     const now = new Date();
     if (periodFilter === "month")
-      return now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+      return now.toLocaleDateString(localeTag(), { month: "long", year: "numeric" });
     if (periodFilter === "prevmonth") {
       const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      return prev.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+      return prev.toLocaleDateString(localeTag(), { month: "long", year: "numeric" });
     }
     return null;
   }, [periodFilter, periodRange]);
@@ -235,7 +256,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
     setEditSaving(true); setEditError(null);
     try {
       if (isSpendingRow(editingRow)) {
-        if (!editingRow.rowIndex) throw new Error("rowIndex manquant — mettez à jour votre Apps Script.");
+        if (!editingRow.rowIndex) throw new Error(t("hist.rowMissingScript"));
         await updateSpending(editingRow.rowIndex, {
           date: editDraft.date, description: editDraft.description,
           amount: parseFloat(editDraft.amount), jar: editDraft.jar,
@@ -243,7 +264,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
         });
         setSpendings(prev => prev.map(s => s === editingRow ? { ...s, ...editDraft, amount: parseFloat(editDraft.amount) } : s));
       } else {
-        if (!editingRow.rowIndex) throw new Error("rowIndex manquant — mettez à jour votre Apps Script.");
+        if (!editingRow.rowIndex) throw new Error(t("hist.rowMissingScript"));
         await updateRevenue(editingRow.rowIndex, {
           date: editDraft.date, source: editDraft.source,
           amount: parseFloat(editDraft.amount) || undefined,
@@ -257,30 +278,30 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
       }
       setEditingRow(null);
     } catch (e: any) {
-      setEditError(e.message || "Erreur de sauvegarde");
+      setEditError(e.message || t("hist.saveError"));
     } finally {
       setEditSaving(false);
     }
   };
 
   const handleDeleteSpending = async (row: SearchSpendingResult) => {
-    if (!row.rowIndex) { alert("rowIndex manquant"); return; }
-    if (!window.confirm(`Supprimer "${row.description}" (${row.amount} €) ?`)) return;
+    if (!row.rowIndex) { alert(t("hist.rowMissing")); return; }
+    if (!window.confirm(t("hist.confirmDelete", { name: row.description, amount: `${row.amount} ${curSym()}` }))) return;
     try {
       await deleteSpending(row.rowIndex);
       setSpendings(prev => prev.filter(s => s !== row));
       setExpandedCard(null);
-    } catch (e: any) { alert("Erreur : " + (e.message || String(e))); }
+    } catch (e: any) { alert(t("hist.error", { msg: e.message || String(e) })); }
   };
 
   const handleDeleteRevenue = async (row: SearchRevenueResult) => {
-    if (!row.rowIndex) { alert("rowIndex manquant"); return; }
-    if (!window.confirm(`Supprimer "${row.source}" (${row.amount}) ?`)) return;
+    if (!row.rowIndex) { alert(t("hist.rowMissing")); return; }
+    if (!window.confirm(t("hist.confirmDelete", { name: row.source, amount: `${row.amount} ${curSym()}` }))) return;
     try {
       await deleteRevenue(row.rowIndex);
       setRevenues(prev => prev.filter(r => r !== row));
       setExpandedCard(null);
-    } catch (e: any) { alert("Erreur : " + (e.message || String(e))); }
+    } catch (e: any) { alert(t("hist.error", { msg: e.message || String(e) })); }
   };
 
   // ── Report generation ─────────────────────────────────────────────
@@ -295,7 +316,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
       setReportRevenues((revRes.rows || []).filter(r => getYearMonth(r.date) === reportMonth));
       setReportGenerated(true);
     } catch (e: any) {
-      alert("Erreur génération rapport : " + e.message);
+      alert(t("hist.reportError", { msg: e.message }));
     } finally {
       setReportLoading(false);
     }
@@ -416,38 +437,38 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           {/* Common */}
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-            Date
+            {t("hist.fDate")}
             <input type="date" value={editDraft.date || ""} onChange={e => setEditDraft(d => ({ ...d, date: e.target.value }))}
               style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-            Montant
+            {t("hist.fAmount")}
             <input type="number" step="0.01" value={editDraft.amount || ""} onChange={e => setEditDraft(d => ({ ...d, amount: e.target.value }))}
               style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
           </label>
 
           {isSpending ? (<>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
-              Description
+              {t("hist.fDescription")}
               <input type="text" value={editDraft.description || ""} onChange={e => setEditDraft(d => ({ ...d, description: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-              Jarre
+              {t("hist.fJar")}
               <select value={editDraft.jar || ""} onChange={e => setEditDraft(d => ({ ...d, jar: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }}>
                 {JAR_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-              Compte
+              {t("hist.fAccount")}
               <select value={editDraft.account || ""} onChange={e => setEditDraft(d => ({ ...d, account: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }}>
                 {accountsList.map(a => <option key={a.id} value={a.name}>{a.icon} {a.name}</option>)}
               </select>
             </label>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
-              Tags
+              {t("hist.fTags")}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, background: "var(--bg-card)", minHeight: 42 }}>
                 {loadTags().filter(t => t.favori !== false).map(tag => {
                   const selected = tagsFromString(editDraft.tags || "").includes(tag.id);
@@ -468,27 +489,27 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             </div>
           </>) : (<>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)", gridColumn: "1 / -1" }}>
-              Source
+              {t("hist.fSource")}
               <input type="text" value={editDraft.source || ""} onChange={e => setEditDraft(d => ({ ...d, source: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-              Méthode
+              {t("hist.fMethod")}
               <input type="text" value={editDraft.method || ""} onChange={e => setEditDraft(d => ({ ...d, method: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-              Destination
+              {t("hist.fDestination")}
               <input type="text" value={editDraft.destination || ""} onChange={e => setEditDraft(d => ({ ...d, destination: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-              Taux
+              {t("hist.fRate")}
               <input type="number" step="0.000001" value={editDraft.rate || ""} onChange={e => setEditDraft(d => ({ ...d, rate: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
-              Type
+              {t("hist.fType")}
               <input type="text" value={editDraft.incomeType || ""} onChange={e => setEditDraft(d => ({ ...d, incomeType: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
@@ -497,9 +518,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
         {editError && <p style={{ color: "#FF3B30", fontSize: 13, marginBottom: 10 }}>⚠️ {editError}</p>}
         <div style={{ display: "flex", gap: 8 }}>
           <button style={actionBtnStyle("primary")} onClick={handleSave} disabled={editSaving}>
-            {editSaving ? "⏳ Sauvegarde…" : "💾 Enregistrer"}
+            {editSaving ? t("hist.saving") : t("hist.save")}
           </button>
-          <button style={actionBtnStyle("ghost")} onClick={cancelEdit}>Annuler</button>
+          <button style={actionBtnStyle("ghost")} onClick={cancelEdit}>{t("common.cancel").replace(/^\S+\s/, "")}</button>
         </div>
       </div>
     );
@@ -537,7 +558,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, color: "#FF3B30" }}>-{fmt(row.amount)}€</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: "#FF3B30" }}>-{fmt(row.amount)}{curSym()}</span>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
           </div>
         </div>
@@ -557,9 +578,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             )}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {onUseEntry && (
-                <button style={actionBtnStyle("primary")} onClick={() => onUseEntry({ kind: "spending", row })}>↻ Réutiliser</button>
+                <button style={actionBtnStyle("primary")} onClick={() => onUseEntry({ kind: "spending", row })}>{t("hist.reuse")}</button>
               )}
-              <button style={actionBtnStyle("edit")} onClick={() => startEdit(row)}>✏️ Modifier</button>
+              <button style={actionBtnStyle("edit")} onClick={() => startEdit(row)}>{t("hist.edit")}</button>
               <button style={actionBtnStyle("delete")} onClick={() => handleDeleteSpending(row)}>🗑️</button>
             </div>
           </div>
@@ -593,7 +614,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, color: "#34C759" }}>+{fmt(row.amount)}€</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: "#34C759" }}>+{fmt(row.amount)}{curSym()}</span>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
           </div>
         </div>
@@ -605,34 +626,34 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
               {row.cryptoQuantity > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "var(--text-muted)" }}>Crypto</span>
+                  <span style={{ color: "var(--text-muted)" }}>{t("hist.fCrypto")}</span>
                   <span style={{ fontWeight: 600 }}>{fmt(row.cryptoQuantity, 8)}</span>
                 </div>
               )}
               {row.rate > 0 && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "var(--text-muted)" }}>Taux</span>
+                  <span style={{ color: "var(--text-muted)" }}>{t("hist.fRate")}</span>
                   <span style={{ fontWeight: 600 }}>{fmt(row.rate, 4)}</span>
                 </div>
               )}
               {row.incomeType && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "var(--text-muted)" }}>Type</span>
+                  <span style={{ color: "var(--text-muted)" }}>{t("hist.fType")}</span>
                   <span style={{ fontWeight: 600 }}>{row.incomeType}</span>
                 </div>
               )}
               {row.value && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-                  <span style={{ color: "var(--text-muted)" }}>Valeur</span>
+                  <span style={{ color: "var(--text-muted)" }}>{t("hist.fValue")}</span>
                   <span style={{ fontWeight: 600 }}>{row.value}</span>
                 </div>
               )}
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {onUseEntry && (
-                <button style={actionBtnStyle("primary")} onClick={() => onUseEntry({ kind: "revenue", row })}>↻ Réutiliser</button>
+                <button style={actionBtnStyle("primary")} onClick={() => onUseEntry({ kind: "revenue", row })}>{t("hist.reuse")}</button>
               )}
-              <button style={actionBtnStyle("edit")} onClick={() => startEdit(row)}>✏️ Modifier</button>
+              <button style={actionBtnStyle("edit")} onClick={() => startEdit(row)}>{t("hist.edit")}</button>
               <button style={actionBtnStyle("delete")} onClick={() => handleDeleteRevenue(row)}>🗑️</button>
             </div>
           </div>
@@ -646,7 +667,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
   const renderReport = () => {
     const balance = reportTotalRevenues - reportTotalSpendings;
     const monthLabel = (() => {
-      try { return new Date(reportMonth + "-01").toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); }
+      try { return new Date(reportMonth + "-01").toLocaleDateString(localeTag(), { month: "long", year: "numeric" }); }
       catch { return reportMonth; }
     })();
 
@@ -655,7 +676,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
         {/* Month picker card */}
         <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
-            Rapport mensuel
+            {t("hist.monthlyReport")}
           </div>
           {/* Navigation mois */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -696,7 +717,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             disabled={reportLoading}
             style={{ width: "100%", padding: "12px", background: "#007AFF", color: "#fff", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: "pointer" }}
           >
-            {reportLoading ? "⏳ Chargement…" : "📊 Générer le rapport"}
+            {reportLoading ? t("rev.rateLoading") : t("hist.generate")}
           </button>
         </div>
 
@@ -704,24 +725,24 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           {/* Summary */}
           <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
-              Résumé · {monthLabel}
+              {t("hist.summary", { month: monthLabel })}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div style={{ padding: "14px", background: "#FFEDED", borderRadius: 12 }}>
-                <div style={{ fontSize: 11, color: "#FF3B30", fontWeight: 700, marginBottom: 6 }}>DÉPENSES</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#FF3B30", lineHeight: 1 }}>{fmt(reportTotalSpendings)} €</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{reportSpendings.length} transactions</div>
+                <div style={{ fontSize: 11, color: "#FF3B30", fontWeight: 700, marginBottom: 6 }}>{t("hist.expensesCaps")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#FF3B30", lineHeight: 1 }}>{fmt(reportTotalSpendings)} {curSym()}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{t("hist.transactions", { n: reportSpendings.length })}</div>
               </div>
               <div style={{ padding: "14px", background: "#E8FAF0", borderRadius: 12 }}>
-                <div style={{ fontSize: 11, color: "#34C759", fontWeight: 700, marginBottom: 6 }}>REVENUS</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#34C759", lineHeight: 1 }}>{fmt(reportTotalRevenues)} €</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{reportRevenues.length} transactions</div>
+                <div style={{ fontSize: 11, color: "#34C759", fontWeight: 700, marginBottom: 6 }}>{t("hist.incomeCaps")}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#34C759", lineHeight: 1 }}>{fmt(reportTotalRevenues)} {curSym()}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{t("hist.transactions", { n: reportRevenues.length })}</div>
               </div>
             </div>
             <div style={{ padding: "14px", background: balance >= 0 ? "#EAF3FF" : "#FFF5E6", borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 500 }}>Balance du mois</span>
+              <span style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 500 }}>{t("hist.monthBalance")}</span>
               <span style={{ fontSize: 24, fontWeight: 800, color: balance >= 0 ? "#007AFF" : "#FF9500" }}>
-                {balance >= 0 ? "+" : ""}{fmt(balance)} €
+                {balance >= 0 ? "+" : ""}{fmt(balance)} {curSym()}
               </span>
             </div>
           </div>
@@ -730,7 +751,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           {reportByJar.length > 0 && (
             <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
-                Répartition par jarre
+                {t("hist.byJar")}
               </div>
               {reportByJar.map(([jar, amount]) => {
                 const pct = reportTotalSpendings > 0 ? (amount / reportTotalSpendings) * 100 : 0;
@@ -741,7 +762,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 14, fontWeight: 600 }}>{emoji} {jar}</span>
                       <div style={{ textAlign: "right" }}>
-                        <span style={{ fontSize: 15, fontWeight: 700 }}>{fmt(amount)} €</span>
+                        <span style={{ fontSize: 15, fontWeight: 700 }}>{fmt(amount)} {curSym()}</span>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>{pct.toFixed(0)}%</span>
                       </div>
                     </div>
@@ -758,7 +779,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           {reportTopDescriptions.length > 0 && (
             <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
-                Top dépenses
+                {t("hist.topSpending")}
               </div>
               {reportTopDescriptions.map(([desc, amount], idx) => (
                 <div key={desc} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 0", borderBottom: idx < reportTopDescriptions.length - 1 ? "1px solid var(--border-color)" : "none" }}>
@@ -772,7 +793,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                   </span>
                   {/* Montant — toujours collé à droite, jamais tronqué */}
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30", flexShrink: 0, whiteSpace: "nowrap", paddingLeft: 8 }}>
-                    {fmt(amount)} €
+                    {fmt(amount)} {curSym()}
                   </span>
                 </div>
               ))}
@@ -783,7 +804,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           {reportTagStats.length > 0 && (
             <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>
-                🏷️ Dépenses par tag
+                {t("hist.byTag")}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>
                 Moyenne / jour sur {reportDaysInMonth} jours
@@ -796,9 +817,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                       <span style={{ fontSize: 15, flexShrink: 0, width: 20, textAlign: "center" }}>{tag.emoji}</span>
                       <span style={{ fontSize: 13, color: "var(--text-main)", flex: 1, fontWeight: 600 }}>{tag.tagName}</span>
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#FF3B30" }}>{fmt(tag.totalAmount)} €</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#FF3B30" }}>{fmt(tag.totalAmount)} {curSym()}</span>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
-                          ≈ {fmt(tag.avgPerDay, 1)} €/j
+                          ≈ {fmt(tag.avgPerDay, 1)} {curSym()}/j
                         </span>
                       </div>
                     </div>
@@ -815,7 +836,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           {reportSubscriptions.length > 0 && (
             <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow-sm)" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 14 }}>
-                🔄 Abonnements actifs
+                {t("hist.activeSubs")}
               </div>
               {reportSubscriptions.map((sub, idx) => (
                 <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: idx < reportSubscriptions.length - 1 ? "1px solid var(--border-color)" : "none" }}>
@@ -825,7 +846,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                       {sub.subscription} · {sub.jar}
                     </div>
                   </div>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30" }}>{fmt(sub.amount)} €</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30" }}>{fmt(sub.amount)} {curSym()}</span>
                 </div>
               ))}
             </div>
@@ -835,8 +856,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
           {reportSpendings.length === 0 && reportRevenues.length === 0 && (
             <div style={{ textAlign: "center", padding: "32px 0", color: "var(--text-muted)" }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
-              <div style={{ fontSize: 16, fontWeight: 600 }}>Aucune transaction</div>
-              <div style={{ fontSize: 13, marginTop: 4 }}>Aucune donnée pour {monthLabel}</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>{t("hist.noTransactionTitle")}</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>{t("hist.noDataFor", { month: monthLabel })}</div>
             </div>
           )}
         </>)}
@@ -851,20 +872,38 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
       <div style={{ maxWidth: 600, margin: "0 auto", paddingBottom: 32 }}>
 
         {/* Header */}
-        <div style={{ padding: "20px 20px 0", display: "flex", flexDirection: "column", gap: 14 }}>
-          <h2 style={{ fontSize: 28, fontWeight: 700, color: "var(--text-main)", letterSpacing: -0.5 }}>
-            Rapports
-          </h2>
-          {/* Main tab bar */}
-          <div style={tabBarStyle}>
-            <button style={tabBtnStyle(mainTab === "history")} onClick={() => setMainTab("history")}>
-              📋 Historique
-            </button>
-            <button style={tabBtnStyle(mainTab === "report", "#007AFF")} onClick={() => setMainTab("report")}>
-              📊 Rapport mensuel
-            </button>
+        {view !== "report" && (
+          <div style={{ padding: "20px 20px 0", display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <h2 style={{ fontSize: 28, fontWeight: 700, color: "var(--text-main)", letterSpacing: -0.5 }}>
+                {view === "history" ? t("hist.title") : t("hist.titleReports")}
+              </h2>
+              {view === "history" && onImport && (
+                <button
+                  type="button"
+                  onClick={onImport}
+                  style={{
+                    padding: "8px 14px", borderRadius: 999, border: "1.5px solid var(--border-color)",
+                    background: "var(--bg-card)", color: "var(--text-main)", fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  {t("hist.import")}
+                </button>
+              )}
+            </div>
+            {/* Main tab bar */}
+            {!view && (
+              <div style={tabBarStyle}>
+                <button style={tabBtnStyle(mainTab === "history")} onClick={() => setMainTab("history")}>
+                  {t("hist.tabHistory")}
+                </button>
+                <button style={tabBtnStyle(mainTab === "report", "#007AFF")} onClick={() => setMainTab("report")}>
+                  {t("hist.tabReport")}
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         <div style={{ height: 20 }} />
 
@@ -878,13 +917,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                 style={tabBtnStyle(mode === "spending", "#FF3B30")}
                 onClick={() => { setMode("spending"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setJarFilter("all"); setAccountFilter("all"); }}
               >
-                💸 Dépenses
+                {t("hist.spendings")}
               </button>
               <button
                 style={tabBtnStyle(mode === "revenue", "#34C759")}
                 onClick={() => { setMode("revenue"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setTypeFilter("all"); setDestinationFilter("all"); }}
               >
-                💵 Revenus
+                {t("hist.revenues")}
               </button>
             </div>
 
@@ -893,7 +932,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
               <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 15, color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
               <input
                 type="text"
-                placeholder={mode === "spending" ? "Rechercher une dépense…" : "Rechercher un revenu…"}
+                placeholder={mode === "spending" ? t("hist.searchSpending") : t("hist.searchRevenue")}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 autoComplete="off"
@@ -907,31 +946,31 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
             {/* Period pills */}
             {renderPills(
               [
-                { label: "Tout", value: "all" },
-                { label: "Ce mois", value: "month" },
-                { label: "Mois préc.", value: "prevmonth" },
-                { label: "90j", value: "90d" },
-                { label: "1 an", value: "year" },
+                { label: t("hist.pAll"), value: "all" },
+                { label: t("hist.pMonth"), value: "month" },
+                { label: t("hist.pPrev"), value: "prevmonth" },
+                { label: t("hist.p90"), value: "90d" },
+                { label: t("hist.pYear"), value: "year" },
               ],
-              periodFilter, (v) => setPeriodFilter(v as PeriodFilter), "#007AFF", "Période"
+              periodFilter, (v) => setPeriodFilter(v as PeriodFilter), "#007AFF", t("hist.period")
             )}
 
             {/* Contextual filter pills — on affiche toujours les 6 jarres */}
             {mode === "spending" && renderPills(
-              [{ label: "Toutes", value: "all" }, ...JAR_KEYS.map(j => ({ label: `${JAR_EMOJI[j]} ${j}`, value: j }))],
-              jarFilter, setJarFilter, "#007AFF", "Jarre"
+              [{ label: t("hist.allF"), value: "all" }, ...JAR_KEYS.map(j => ({ label: `${JAR_EMOJI[j]} ${j}`, value: j }))],
+              jarFilter, setJarFilter, "#007AFF", t("hist.jarLabel")
             )}
             {mode === "spending" && uniqueAccounts.length > 1 && renderPills(
-              [{ label: "Tous", value: "all" }, ...uniqueAccounts.map(a => ({ label: a, value: a }))],
-              accountFilter, setAccountFilter, "#34C759", "Compte"
+              [{ label: t("hist.allM"), value: "all" }, ...uniqueAccounts.map(a => ({ label: a, value: a }))],
+              accountFilter, setAccountFilter, "#34C759", t("hist.accountLabel")
             )}
             {mode === "revenue" && uniqueTypes.length > 1 && renderPills(
-              [{ label: "Tous", value: "all" }, ...uniqueTypes.map(t => ({ label: t, value: t }))],
-              typeFilter, setTypeFilter, "#34C759", "Type de revenu"
+              [{ label: t("hist.allM"), value: "all" }, ...uniqueTypes.map(t => ({ label: t, value: t }))],
+              typeFilter, setTypeFilter, "#34C759", t("hist.revType")
             )}
             {mode === "revenue" && uniqueDestinations.length > 1 && renderPills(
-              [{ label: "Toutes", value: "all" }, ...uniqueDestinations.map(d => ({ label: d, value: d }))],
-              destinationFilter, setDestinationFilter, "#FF9500", "Destination"
+              [{ label: t("hist.allF"), value: "all" }, ...uniqueDestinations.map(d => ({ label: d, value: d }))],
+              destinationFilter, setDestinationFilter, "#FF9500", t("hist.destLabel")
             )}
           </div>
 
@@ -941,7 +980,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
               <div style={{ background: "var(--bg-card)", borderRadius: 12, boxShadow: "var(--shadow-sm)", padding: "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                    {(mode === "spending" ? filteredSpendings.length : filteredRevenues.length)} transaction{(mode === "spending" ? filteredSpendings.length : filteredRevenues.length) !== 1 ? "s" : ""}
+                    {t((mode === "spending" ? filteredSpendings.length : filteredRevenues.length) === 1 ? "hist.countOne" : "hist.countMany", { n: (mode === "spending" ? filteredSpendings.length : filteredRevenues.length) })}
                   </span>
                   {periodLabel && (
                     <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 6, fontStyle: "italic" }}>
@@ -950,7 +989,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
                   )}
                 </div>
                 <span style={{ fontSize: 17, fontWeight: 700, color: mode === "spending" ? "#FF3B30" : "#34C759" }}>
-                  {mode === "spending" ? "-" : "+"}{fmt(totalFiltered)} €
+                  {mode === "spending" ? "-" : "+"}{fmt(totalFiltered)} {curSym()}
                 </span>
               </div>
             </div>
@@ -973,10 +1012,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry }) => {
               <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)" }}>
                 <div style={{ fontSize: 44, marginBottom: 14 }}>🔍</div>
                 <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>
-                  {query ? "Aucun résultat" : "Aucune transaction"}
+                  {query ? t("hist.noResult") : t("hist.noTransactionTitle")}
                 </div>
                 <div style={{ fontSize: 13 }}>
-                  {query ? `Aucune transaction pour "${query}"` : "Essayez d'élargir vos filtres"}
+                  {query ? t("hist.noResultFor", { q: query }) : t("hist.widen")}
                 </div>
               </div>
             )}

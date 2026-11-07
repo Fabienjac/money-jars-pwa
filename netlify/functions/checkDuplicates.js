@@ -1,5 +1,6 @@
-// netlify/functions/checkDuplicates.js v4
+// netlify/functions/checkDuplicates.js v5
 // Détection de doublons flexible — source de vérité : Supabase (transactions_spending)
+// JWT vérifié via supabase.auth.getUser() — aucun décodage manuel non sécurisé
 
 const { createClient } = require("@supabase/supabase-js");
 
@@ -19,12 +20,9 @@ exports.handler = async (event) => {
     // Extraire le JWT depuis l'en-tête Authorization
     const authHeader = event.headers["authorization"] || event.headers["Authorization"] || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-    const userId = token ? getUserIdFromJWT(token) : null;
 
-    console.log(`🔍 Checking ${transactions.length} transactions for duplicates (userId: ${userId ? "✅" : "❌ absent"})`);
-
-    if (!userId) {
-      console.warn("⚠️ No userId — skipping duplicate check");
+    if (!token) {
+      console.warn("⚠️ No token — skipping duplicate check");
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
@@ -32,7 +30,35 @@ exports.handler = async (event) => {
       };
     }
 
-    const existingTransactions = await fetchExistingTransactions(userId, transactions);
+    // Vérification cryptographique du JWT via Supabase (pas de décodage manuel)
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      console.warn("⚠️ Env vars manquantes — skipping duplicate check");
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ success: true, transactions, duplicateCount: 0, byLevel: { level1: 0, level2: 0, level3: 0 } }),
+      };
+    }
+
+    const adminClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const { data: { user }, error: authError } = await adminClient.auth.getUser(token);
+
+    if (authError || !user) {
+      console.warn("⚠️ JWT invalide ou expiré:", authError?.message);
+      return {
+        statusCode: 401,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        body: JSON.stringify({ error: "Unauthorized" }),
+      };
+    }
+
+    const userId = user.id;
+    console.log(`🔍 Checking ${transactions.length} transactions for duplicates (userId: ✅ vérifié)`);
+
+    const existingTransactions = await fetchExistingTransactions(adminClient, userId, transactions);
     console.log(`📊 Found ${existingTransactions.length} existing transactions in Supabase`);
 
     const transactionsWithDuplicateCheck = transactions.map(transaction => {
@@ -88,38 +114,10 @@ exports.handler = async (event) => {
 };
 
 /**
- * Extrait le user_id depuis un JWT Supabase (décodage base64, sans vérification de signature)
- */
-function getUserIdFromJWT(token) {
-  try {
-    const payload = token.split(".")[1];
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    return decoded.sub || null;
-  } catch {
-    try {
-      // Fallback base64 standard
-      const payload = token.split(".")[1];
-      const decoded = JSON.parse(Buffer.from(payload, "base64").toString("utf8"));
-      return decoded.sub || null;
-    } catch {
-      return null;
-    }
-  }
-}
-
-/**
  * Récupère les transactions existantes depuis Supabase pour la plage de dates du fichier importé.
- * Utilise la service role key pour bypasser RLS, filtre par user_id.
+ * Reçoit le client admin déjà instancié (JWT vérifié en amont).
  */
-async function fetchExistingTransactions(userId, importedTransactions) {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn("⚠️ SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing — skipping duplicate check");
-    return [];
-  }
-
+async function fetchExistingTransactions(adminClient, userId, importedTransactions) {
   // Calculer la plage de dates des transactions importées (avec ±14 jours de buffer)
   const dates = importedTransactions
     .map(t => parseDate(t.date))
@@ -131,15 +129,13 @@ async function fetchExistingTransactions(userId, importedTransactions) {
   if (dates.length > 0) {
     const minTime = Math.min(...dates.map(d => d.getTime()));
     const maxTime = Math.max(...dates.map(d => d.getTime()));
-    const buffer = 14 * 24 * 60 * 60 * 1000; // 14 jours
+    const buffer = 14 * 24 * 60 * 60 * 1000;
     fromDate = new Date(minTime - buffer).toISOString().split("T")[0];
     toDate   = new Date(maxTime + buffer).toISOString().split("T")[0];
     console.log(`📅 Date range: ${fromDate} → ${toDate} (±14j buffer)`);
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-  let query = supabase
+  let query = adminClient
     .from("transactions_spending")
     .select("date, amount, description, jar")
     .eq("user_id", userId)

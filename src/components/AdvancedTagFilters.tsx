@@ -1,7 +1,9 @@
 // src/components/AdvancedTagFilters.tsx
 import React from "react";
 import { JarKey } from "../types";
+import { t as tr, useLang, JAR_LABELS } from "../i18n";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 export interface AdvancedFilterState {
   period: "all" | "30d" | "90d" | "6m" | "year" | "custom";
   customStartDate: string;
@@ -17,13 +19,13 @@ interface AdvancedTagFiltersProps {
   onReset: () => void;
 }
 
-const JAR_OPTIONS: { key: JarKey; label: string; color: string }[] = [
-  { key: "NEC", label: "Nécessités", color: "#007AFF" },
-  { key: "FFA", label: "Liberté Financière", color: "#34C759" },
-  { key: "LTSS", label: "Épargne Long Terme", color: "#FFD60A" },
-  { key: "PLAY", label: "Fun / Play", color: "#FF9500" },
-  { key: "EDUC", label: "Éducation", color: "#AF52DE" },
-  { key: "GIFT", label: "Don / Gift", color: "#5AC8FA" },
+const JAR_OPTIONS: { key: JarKey; color: string }[] = [
+  { key: "NEC", color: "#007AFF" },
+  { key: "FFA", color: "#34C759" },
+  { key: "LTSS", color: "#FFD60A" },
+  { key: "PLAY", color: "#FF9500" },
+  { key: "EDUC", color: "#AF52DE" },
+  { key: "GIFT", color: "#5AC8FA" },
 ];
 
 export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
@@ -31,6 +33,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
   onChange,
   onReset,
 }) => {
+  useLang();
   const [isExpanded, setIsExpanded] = React.useState(false);
 
   const updateFilter = (key: keyof AdvancedFilterState, value: any) => {
@@ -82,7 +85,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
           }}
         >
           <span>{isExpanded ? "▼" : "▶"}</span>
-          <span>🔍 Filtres avancés</span>
+          <span>{tr("af.title")}</span>
           {hasActiveFilters && (
             <span style={{
               padding: "2px 6px",
@@ -92,7 +95,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               fontSize: "11px",
               fontWeight: "700",
             }}>
-              Actifs
+              {tr("af.active")}
             </span>
           )}
         </button>
@@ -112,7 +115,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               cursor: "pointer",
             }}
           >
-            Réinitialiser
+            {tr("af.reset")}
           </button>
         )}
       </div>
@@ -133,7 +136,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               color: "var(--text-muted)",
               marginBottom: "8px",
             }}>
-              📅 Période
+              {tr("af.period")}
             </label>
             <div style={{
               display: "grid",
@@ -141,12 +144,12 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               gap: "8px",
             }}>
               {[
-                { value: "all", label: "Tout" },
-                { value: "30d", label: "30 jours" },
-                { value: "90d", label: "90 jours" },
-                { value: "6m", label: "6 mois" },
-                { value: "year", label: "1 an" },
-                { value: "custom", label: "Personnalisé" },
+                { value: "all", label: tr("af.all") },
+                { value: "30d", label: tr("af.d30") },
+                { value: "90d", label: tr("af.d90") },
+                { value: "6m", label: tr("af.m6") },
+                { value: "year", label: tr("af.y1") },
+                { value: "custom", label: tr("af.custom") },
               ].map(option => (
                 <button
                   key={option.value}
@@ -189,7 +192,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                     display: "block",
                     marginBottom: "4px",
                   }}>
-                    Du
+                    {tr("af.from")}
                   </label>
                   <input
                     type="date"
@@ -212,7 +215,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                     display: "block",
                     marginBottom: "4px",
                   }}>
-                    Au
+                    {tr("af.to")}
                   </label>
                   <input
                     type="date"
@@ -241,7 +244,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               color: "var(--text-muted)",
               marginBottom: "8px",
             }}>
-              💰 Montant
+              {tr("af.amount")}
             </label>
             <div style={{
               display: "grid",
@@ -251,7 +254,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               <div>
                 <input
                   type="number"
-                  placeholder="Min (€)"
+                  placeholder={"Min (" + curSym() + ")"}
                   value={filters.minAmount}
                   onChange={(e) => updateFilter("minAmount", e.target.value)}
                   style={{
@@ -267,7 +270,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               <div>
                 <input
                   type="number"
-                  placeholder="Max (€)"
+                  placeholder={"Max (" + curSym() + ")"}
                   value={filters.maxAmount}
                   onChange={(e) => updateFilter("maxAmount", e.target.value)}
                   style={{
@@ -292,7 +295,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
               color: "var(--text-muted)",
               marginBottom: "8px",
             }}>
-              🏺 Jarres
+              {tr("af.jars")}
             </label>
             <div style={{
               display: "grid",
@@ -331,7 +334,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                       textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}>
-                      {jar.label}
+                      {JAR_LABELS[jar.key]}
                     </span>
                     {isSelected && <span>✓</span>}
                   </button>
@@ -354,7 +357,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                 color: "#007AFF",
                 marginBottom: "6px",
               }}>
-                Filtres actifs :
+                {tr("af.activeFilters")}
               </div>
               <div style={{
                 fontSize: "11px",
@@ -369,9 +372,10 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                     borderRadius: "6px",
                     background: "rgba(0, 122, 255, 0.2)",
                   }}>
-                    📅 {filters.period === "30d" ? "30 jours" : 
-                        filters.period === "90d" ? "90 jours" : 
-                        filters.period === "year" ? "1 an" : "Personnalisé"}
+                    📅 {filters.period === "30d" ? tr("af.d30") :
+                        filters.period === "90d" ? tr("af.d90") :
+                        filters.period === "6m" ? tr("af.m6") :
+                        filters.period === "year" ? tr("af.y1") : tr("af.custom")}
                   </span>
                 )}
                 {filters.minAmount && (
@@ -380,7 +384,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                     borderRadius: "6px",
                     background: "rgba(0, 122, 255, 0.2)",
                   }}>
-                    Min: {filters.minAmount}€
+                    Min: {filters.minAmount}{curSym()}
                   </span>
                 )}
                 {filters.maxAmount && (
@@ -389,7 +393,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                     borderRadius: "6px",
                     background: "rgba(0, 122, 255, 0.2)",
                   }}>
-                    Max: {filters.maxAmount}€
+                    Max: {filters.maxAmount}{curSym()}
                   </span>
                 )}
                 {filters.jars.length > 0 && (
@@ -398,7 +402,7 @@ export const AdvancedTagFilters: React.FC<AdvancedTagFiltersProps> = ({
                     borderRadius: "6px",
                     background: "rgba(0, 122, 255, 0.2)",
                   }}>
-                    🏺 {filters.jars.length} jarre{filters.jars.length > 1 ? "s" : ""}
+                    {tr("af.jarCount", { n: filters.jars.length })}
                   </span>
                 )}
               </div>

@@ -1,3 +1,4 @@
+import { currencyName } from "./i18n";
 /** Codes ISO 4217 courants pour la saisie (liste figée, pas d’appel réseau). */
 export interface CurrencyInfo {
   code: string;
@@ -56,6 +57,9 @@ export const CURRENCIES: CurrencyInfo[] = [
   { code: "XOF", name: "Franc CFA (Afrique de l’Ouest)" },
   { code: "XAF", name: "Franc CFA (Afrique centrale)" },
 ];
+
+// Le nom suit la langue de l'application
+for (const c of CURRENCIES) Object.defineProperty(c, "name", { get: () => currencyName(c.code), enumerable: true });
 
 const byCode = new Map(CURRENCIES.map((c) => [c.code, c]));
 

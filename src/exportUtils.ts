@@ -1,6 +1,8 @@
 // src/exportUtils.ts
 import { TagStat } from "./types";
 import { SearchSpendingResult } from "./types";
+import { t as tr } from "./i18n";
+import { currencySymbol } from "./baseCurrency";
 
 /**
  * Exporter les stats en CSV
@@ -10,13 +12,13 @@ export function exportStatsToCSV(stats: TagStat[], transactions: SearchSpendingR
   
   // En-têtes
   csvRows.push([
-    "Tag ID",
-    "Tag Nom",
+    tr("exp.hTagId"),
+    tr("exp.hTagName"),
     "Emoji",
-    "Montant Total (€)",
-    "Nombre de Transactions",
-    "Pourcentage (%)",
-    "Moyenne par Transaction (€)"
+    tr("exp.hTotalAmount", { cur: currencySymbol() }),
+    tr("exp.hTxCount"),
+    tr("exp.hPercent"),
+    tr("exp.hAverage", { cur: currencySymbol() })
   ].join(","));
   
   // Données
@@ -37,7 +39,7 @@ export function exportStatsToCSV(stats: TagStat[], transactions: SearchSpendingR
   const total = stats.reduce((sum, s) => sum + s.totalAmount, 0);
   csvRows.push([
     "",
-    "TOTAL",
+    tr("exp.total"),
     "",
     total.toFixed(2),
     transactions.length,
@@ -69,12 +71,12 @@ export function exportTransactionsToCSV(transactions: SearchSpendingResult[]) {
   
   // En-têtes
   csvRows.push([
-    "Date",
-    "Description",
-    "Montant (€)",
-    "Jar",
-    "Compte",
-    "Tags"
+    tr("exp.hDate"),
+    tr("exp.hDescription"),
+    tr("exp.hAmount", { cur: currencySymbol() }),
+    tr("exp.hJar"),
+    tr("exp.hAccount"),
+    tr("exp.hTags")
   ].join(","));
   
   // Données
@@ -93,7 +95,7 @@ export function exportTransactionsToCSV(transactions: SearchSpendingResult[]) {
   const total = transactions.reduce((sum, t) => sum + (t.amount || 0), 0);
   csvRows.push([
     "",
-    "TOTAL",
+    tr("exp.total"),
     total.toFixed(2),
     "",
     "",

@@ -1,6 +1,7 @@
 // src/components/ExportButton.tsx
 import React, { useState } from "react";
 import { TagStat, SearchSpendingResult } from "../types";
+import { t as tr, useLang } from "../i18n";
 import { exportStatsToCSV, exportTransactionsToCSV, exportChartToPNG } from "../exportUtils";
 
 interface ExportButtonProps {
@@ -12,6 +13,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
   stats,
   transactions,
 }) => {
+  useLang();
   const [showMenu, setShowMenu] = useState(false);
 
   const handleExportStats = () => {
@@ -30,7 +32,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
     
     if (!svgElement) {
       console.error("SVG non trouvé avec ID 'tag-pie-chart'");
-      alert("Graphique non trouvé. Assurez-vous qu'il est affiché.");
+      alert(tr("exp.chartNotFound"));
       setShowMenu(false);
       return;
     }
@@ -61,7 +63,7 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
         }}
       >
         <span>📥</span>
-        <span>Exporter</span>
+        <span>{tr("exp.export")}</span>
       </button>
 
       {showMenu && (
@@ -121,13 +123,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             >
               <span style={{ fontSize: "20px" }}>📊</span>
               <div>
-                <div>Statistiques CSV</div>
+                <div>{tr("exp.statsCsv")}</div>
                 <div style={{
                   fontSize: "11px",
                   color: "var(--text-muted)",
                   marginTop: "2px",
                 }}>
-                  Stats par tag
+                  {tr("exp.statsByTag")}
                 </div>
               </div>
             </button>
@@ -159,13 +161,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             >
               <span style={{ fontSize: "20px" }}>📝</span>
               <div>
-                <div>Transactions CSV</div>
+                <div>{tr("exp.txCsv")}</div>
                 <div style={{
                   fontSize: "11px",
                   color: "var(--text-muted)",
                   marginTop: "2px",
                 }}>
-                  {transactions.length} transaction{transactions.length > 1 ? "s" : ""}
+                  {tr(transactions.length > 1 ? "stats.txN" : "stats.tx1", { n: transactions.length })}
                 </div>
               </div>
             </button>
@@ -197,13 +199,13 @@ export const ExportButton: React.FC<ExportButtonProps> = ({
             >
               <span style={{ fontSize: "20px" }}>🖼️</span>
               <div>
-                <div>Graphique PNG</div>
+                <div>{tr("exp.chartPng")}</div>
                 <div style={{
                   fontSize: "11px",
                   color: "var(--text-muted)",
                   marginTop: "2px",
                 }}>
-                  Avec légende
+                  {tr("exp.withLegend")}
                 </div>
               </div>
             </button>

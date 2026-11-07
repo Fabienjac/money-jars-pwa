@@ -1,10 +1,15 @@
 import React, { useState } from "react";
+import { t as tr, useLang, setLang, LANGS, localeTag } from "../i18n";
+
+const fmtEur = (n: number) =>
+  new Intl.NumberFormat(localeTag(), { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
 
 interface Props {
   onStart: () => void;
 }
 
 export function LandingPage({ onStart }: Props) {
+  const lang = useLang();
   const [showVideo, setShowVideo] = useState(false);
 
   return (
@@ -25,6 +30,25 @@ export function LandingPage({ onStart }: Props) {
           <span style={{ fontSize: "28px" }}>🏺</span>
           <span style={{ fontSize: "18px", fontWeight: "700", color: "#fff" }}>Money Jars</span>
         </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ display: "flex", gap: "4px" }}>
+            {LANGS.map(l => (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => setLang(l.code)}
+                aria-pressed={lang === l.code}
+                style={{
+                  padding: "6px 9px", borderRadius: "8px", fontSize: "12px", fontWeight: "700", cursor: "pointer",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  background: lang === l.code ? "rgba(255,255,255,0.15)" : "transparent",
+                  color: lang === l.code ? "#fff" : "rgba(255,255,255,0.55)",
+                }}
+              >
+                {l.code.toUpperCase()}
+              </button>
+            ))}
+          </div>
         <button
           onClick={onStart}
           style={{
@@ -33,8 +57,9 @@ export function LandingPage({ onStart }: Props) {
             fontWeight: "600", cursor: "pointer", backdropFilter: "blur(10px)",
           }}
         >
-          Se connecter
+          {tr("lp.signIn")}
         </button>
+        </div>
       </nav>
 
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -47,7 +72,7 @@ export function LandingPage({ onStart }: Props) {
           background: "rgba(0, 122, 255, 0.15)", border: "1px solid rgba(0, 122, 255, 0.4)",
           fontSize: "13px", color: "#60a5fa", marginBottom: "28px", fontWeight: "600",
         }}>
-          ✦ La méthode des 6 bocaux de T. Harv Eker
+          {tr("lp.badge")}
         </div>
 
         <h1 style={{
@@ -56,16 +81,14 @@ export function LandingPage({ onStart }: Props) {
           background: "linear-gradient(135deg, #fff 0%, #a0c4ff 100%)",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
         }}>
-          Vos finances,<br />enfin organisées
+          {tr("lp.h1a")}<br />{tr("lp.h1b")}
         </h1>
 
         <p style={{
           fontSize: "18px", color: "rgba(255,255,255,0.65)",
           lineHeight: "1.7", margin: "0 0 42px",
         }}>
-          Money Jars est la seule app conçue spécifiquement pour pratiquer
-          la méthode des 6 bocaux au quotidien. Importez vos relevés bancaires,
-          parlez à votre téléphone, suivez votre liberté financière.
+          {tr("lp.heroText")}
         </p>
 
         <div style={{ display: "flex", gap: "14px", justifyContent: "center", flexWrap: "wrap" }}>
@@ -78,10 +101,10 @@ export function LandingPage({ onStart }: Props) {
               cursor: "pointer", boxShadow: "0 8px 32px rgba(0,122,255,0.4)",
             }}
           >
-            Essayer 14 jours gratuitement
+            {tr("lp.ctaTrial")}
           </button>
           <p style={{ width: "100%", fontSize: "13px", color: "rgba(255,255,255,0.4)", margin: "4px 0 0" }}>
-            Sans carte bancaire · Annulable à tout moment
+            {tr("lp.noCard")}
           </p>
         </div>
       </section>
@@ -98,17 +121,17 @@ export function LandingPage({ onStart }: Props) {
           boxShadow: "0 40px 80px rgba(0,0,0,0.5)",
         }}>
           <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", margin: "0 0 8px", textTransform: "uppercase", letterSpacing: "1px" }}>
-            SYSTÈME DES 6 JARS
+            {tr("lp.previewKicker")}
           </p>
-          <h2 style={{ fontSize: "28px", fontWeight: "800", margin: "0 0 20px" }}>Mes Finances</h2>
+          <h2 style={{ fontSize: "28px", fontWeight: "800", margin: "0 0 20px" }}>{tr("lp.previewTitle")}</h2>
 
           {[
-            { label: "NEC — Nécessités", pct: 55, color: "#FF6B6B", amount: "1 375€" },
-            { label: "FFA — Liberté fin.", pct: 10, color: "#FFD93D", amount: "250€" },
-            { label: "LTSS — Épargne", pct: 10, color: "#6BCB77", amount: "250€" },
-            { label: "PLAY — Plaisir", pct: 10, color: "#4D96FF", amount: "250€" },
-            { label: "EDUC — Formation", pct: 10, color: "#C77DFF", amount: "250€" },
-            { label: "GIFT — Don", pct: 5, color: "#FF9F43", amount: "125€" },
+            { label: tr("lp.jarNEC"), pct: 55, color: "#FF6B6B", amount: fmtEur(1375) },
+            { label: tr("lp.jarFFA"), pct: 10, color: "#FFD93D", amount: fmtEur(250) },
+            { label: tr("lp.jarLTSS"), pct: 10, color: "#6BCB77", amount: fmtEur(250) },
+            { label: tr("lp.jarPLAY"), pct: 10, color: "#4D96FF", amount: fmtEur(250) },
+            { label: tr("lp.jarEDUC"), pct: 10, color: "#C77DFF", amount: fmtEur(250) },
+            { label: tr("lp.jarGIFT"), pct: 5, color: "#FF9F43", amount: fmtEur(125) },
           ].map(jar => (
             <div key={jar.label} style={{ marginBottom: "12px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
@@ -138,12 +161,10 @@ export function LandingPage({ onStart }: Props) {
         }}>
           <div style={{ fontSize: "36px", marginBottom: "16px" }}>🎓</div>
           <h3 style={{ fontSize: "20px", fontWeight: "700", margin: "0 0 12px" }}>
-            Vous connaissez la méthode
+            {tr("lp.knowTitle")}
           </h3>
           <p style={{ fontSize: "15px", color: "rgba(255,255,255,0.65)", lineHeight: "1.6", margin: 0 }}>
-            Vous avez lu "Secrets of the Millionaire Mind" ou participé à un séminaire Harv Eker.
-            Money Jars est l'outil que vous cherchez pour <strong>vivre la méthode au quotidien</strong>,
-            pas seulement en théorie.
+            {tr("lp.knowText1")}<strong>{tr("lp.knowStrong")}</strong>{tr("lp.knowText2")}
           </p>
         </div>
 
@@ -153,11 +174,10 @@ export function LandingPage({ onStart }: Props) {
         }}>
           <div style={{ fontSize: "36px", marginBottom: "16px" }}>🌱</div>
           <h3 style={{ fontSize: "20px", fontWeight: "700", margin: "0 0 12px" }}>
-            Vous découvrez la méthode
+            {tr("lp.newTitle")}
           </h3>
           <p style={{ fontSize: "15px", color: "rgba(255,255,255,0.65)", lineHeight: "1.6", margin: 0 }}>
-            La méthode des 6 bocaux a transformé des millions de vies financières depuis 20 ans.
-            L'app vous guide pas à pas pour <strong>comprendre et appliquer</strong> immédiatement.
+            {tr("lp.newText1")}<strong>{tr("lp.newStrong")}</strong>{tr("lp.newText2")}
           </p>
         </div>
       </section>
@@ -165,17 +185,17 @@ export function LandingPage({ onStart }: Props) {
       {/* ── Features ─────────────────────────────────────────────────────── */}
       <section style={{ maxWidth: "900px", margin: "0 auto 80px", padding: "0 24px" }}>
         <h2 style={{ textAlign: "center", fontSize: "32px", fontWeight: "800", marginBottom: "48px" }}>
-          Tout ce dont vous avez besoin
+          {tr("lp.featuresTitle")}
         </h2>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "20px" }}>
           {[
-            { icon: "🤖", title: "Import IA", desc: "Importez vos relevés Revolut, BNP, Crédit Agricole... L'IA lit le PDF et classe chaque transaction automatiquement." },
-            { icon: "🎙️", title: "Saisie vocale", desc: "\"J'ai dépensé 45€ en courses\" → ajouté instantanément. Parlez, l'app s'occupe du reste." },
-            { icon: "📊", title: "Analytics complets", desc: "Graphiques de vos bocaux mois par mois. Voyez votre progression vers la liberté financière." },
-            { icon: "🔄", title: "Détection d'abonnements", desc: "Spotify, Netflix, salle de sport... L'app repère automatiquement vos charges récurrentes." },
-            { icon: "₿", title: "Crypto & multi-devises", desc: "Revenus en Bitcoin, USDC, ETH ? Conversion automatique au taux historique du jour." },
-            { icon: "📱", title: "PWA — Comme une app native", desc: "Installez sur iPhone ou Android. Fonctionne hors-ligne. Aucun téléchargement depuis un store." },
+            { icon: "🤖", title: tr("lp.f1t"), desc: tr("lp.f1d") },
+            { icon: "🎙️", title: tr("lp.f2t"), desc: tr("lp.f2d") },
+            { icon: "📊", title: tr("lp.f3t"), desc: tr("lp.f3d") },
+            { icon: "🔄", title: tr("lp.f4t"), desc: tr("lp.f4d") },
+            { icon: "₿", title: tr("lp.f5t"), desc: tr("lp.f5d") },
+            { icon: "📱", title: tr("lp.f6t"), desc: tr("lp.f6d") },
           ].map(f => (
             <div key={f.title} style={{
               background: "rgba(255,255,255,0.04)", borderRadius: "20px", padding: "28px 24px",
@@ -194,10 +214,10 @@ export function LandingPage({ onStart }: Props) {
         maxWidth: "480px", margin: "0 auto 80px", padding: "0 24px", textAlign: "center",
       }}>
         <h2 style={{ fontSize: "32px", fontWeight: "800", marginBottom: "12px" }}>
-          Simple et transparent
+          {tr("lp.pricingTitle")}
         </h2>
         <p style={{ color: "rgba(255,255,255,0.55)", marginBottom: "36px", fontSize: "16px" }}>
-          Un seul plan, tout inclus. Aucune surprise.
+          {tr("lp.pricingSub")}
         </p>
 
         <div style={{
@@ -209,18 +229,18 @@ export function LandingPage({ onStart }: Props) {
             background: "rgba(0,122,255,0.2)", fontSize: "13px", color: "#60a5fa",
             marginBottom: "20px", fontWeight: "600",
           }}>
-            14 jours gratuits · Sans CB
+            {tr("lp.pricingBadge")}
           </div>
 
           <div style={{ fontSize: "56px", fontWeight: "900", lineHeight: 1 }}>
-            7,90€
-            <span style={{ fontSize: "20px", fontWeight: "500", color: "rgba(255,255,255,0.55)" }}>/mois</span>
+            {tr("pw.price")}
+            <span style={{ fontSize: "20px", fontWeight: "500", color: "rgba(255,255,255,0.55)" }}>{tr("pw.perMonth")}</span>
           </div>
           <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.5)", margin: "8px 0 32px" }}>
-            ou 69€/an · Annulable à tout moment
+            {tr("pw.orYear")}
           </div>
 
-          {["Import IA (PDF, CSV, Excel)", "Saisie vocale", "Analytics complets", "Détection d'abonnements", "Crypto & multi-devises", "Mises à jour incluses"].map(f => (
+          {[tr("pw.f1"), tr("pw.f2"), tr("pw.f3"), tr("pw.f4"), tr("pw.f5"), tr("lp.f6list")].map(f => (
             <div key={f} style={{
               display: "flex", alignItems: "center", gap: "10px",
               marginBottom: "10px", textAlign: "left",
@@ -240,7 +260,7 @@ export function LandingPage({ onStart }: Props) {
               boxShadow: "0 8px 24px rgba(0,122,255,0.4)",
             }}
           >
-            Commencer l'essai gratuit
+            {tr("lp.startTrial")}
           </button>
         </div>
       </section>
@@ -252,14 +272,14 @@ export function LandingPage({ onStart }: Props) {
         color: "rgba(255,255,255,0.35)", fontSize: "13px",
       }}>
         <p style={{ margin: "0 0 8px" }}>
-          <span style={{ marginRight: "4px" }}>🏺</span> Money Jars · par{" "}
+          <span style={{ marginRight: "4px" }}>🏺</span> Money Jars · {tr("lp.by")}{" "}
           <a href="https://association.effivital.org" target="_blank" rel="noopener noreferrer"
             style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none" }}>
             Effivital
           </a>
         </p>
         <p style={{ margin: 0 }}>
-          La méthode des 6 bocaux est une création de T. Harv Eker.
+          {tr("lp.credit")}
         </p>
       </footer>
     </div>

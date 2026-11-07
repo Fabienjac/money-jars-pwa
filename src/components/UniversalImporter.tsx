@@ -6,11 +6,29 @@ import { TransactionEditor } from "./TransactionEditor";
 import { RevenueTransactionEditor } from "./RevenueTransactionEditor";
 import { loadRevenueSources } from "../revenueSourcesUtils";
 import { getRevenueAccounts } from "../api";
+import { getHistoricalExchangeRate } from "../exchangeRate";
 import { supabase } from "../lib/supabase";
 import { loadTags } from "../tagsUtils";
 import { AutoTagRule, findRule, upsertRule, loadCachedRules } from "../autoTagRules";
 import { fetchAutoTagRules, saveAutoTagRulesToSheet } from "../api";
 
+import { getBaseCurrency, currencySymbol as curSym } from "../baseCurrency";
+import { t as tr, useLang } from "../i18n";
+import { ImportReadSettings } from "./ImportReadSettings";
+import {
+  addNetAmountColumn, suggestColumns, resolveReading, parseAmount, parseDate, findCancelledExpenses,
+  DEFAULT_READ_OPTIONS,
+  type ReadOptions, type SuggestedColumns, type DateOrder,
+} from "../importNormalize";
+
+function relTime(diffMin: number, diffH: number, diffD: number): string {
+  if (diffMin < 2) return tr("imp.justNow");
+  if (diffMin < 60) return tr("imp.minAgo", { n: diffMin });
+  if (diffH < 24) return tr("imp.hAgo", { n: diffH });
+  if (diffD === 1) return tr("imp.yesterday");
+  if (diffD < 7) return tr("imp.daysAgo", { n: diffD });
+  return tr("imp.weeksAgo", { n: Math.floor(diffD / 7) });
+}
 interface MatchDetails {
   dateMatch: string;
   amountMatch: string;
@@ -37,6 +55,7 @@ interface Transaction {
   originalCurrency?: string;
   conversionRate?: number | null;
   conversionNote?: string | null;
+  needsConversion?: boolean;
   suggestedJar?: JarKey;
   suggestedAccount?: string;
   suggestedSource?: string;  // Pour les revenus
@@ -77,13 +96,14 @@ interface UniversalImporterProps {
   accounts?: Account[];
 }
 
-type FileFormat = "pdf" | "csv" | "xlsx";
+type FileFormat = "pdf" | "csv" | "xlsx" | "ofx" | "qif";
 type TransactionType = "spending" | "revenue";
 
 export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   onImport,
   accounts = [],
 }) => {
+  useLang();
   const [transactionType, setTransactionType] = useState<TransactionType | null>(null);
   const [defaultAccount, setDefaultAccount] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
@@ -99,12 +119,20 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   // États pour le mapping de colonnes
   const [rawData, setRawData] = useState<any[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
+  // Lecture tolérante des CSV/XLSX/OFX/QIF : suggestions de colonnes, formats de dates/nombres, lignes ignorées
+  const [suggestedColumns, setSuggestedColumns] = useState<SuggestedColumns>({});
+  const [readOptions, setReadOptions] = useState<ReadOptions>(DEFAULT_READ_OPTIONS);
+  const [fileDateHint, setFileDateHint] = useState<DateOrder | undefined>(undefined);
+  const [importNotices, setImportNotices] = useState<string[]>([]);
+  const [pdfLocalFailed, setPdfLocalFailed] = useState(false);
+  const [pdfGuessed, setPdfGuessed] = useState(false);
   // On garde l'ancien state pour compatibilité mais on n'utilisera que le nouveau
   const [columnMappings, setColumnMappings] = useState<Array<{sourceColumn: string, targetColumn: string, confidence: number}>>([]);
   const [newColumnMappings, setNewColumnMappings] = useState<ColumnMapping[]>([]);
 
-  // Cache des taux de change par (devise, date) pour éviter des appels répétés au proxy
-  const rateCacheRef = useRef<Map<string, number>>(new Map());
+  // Lignes à convertir : montant EUR saisi à la main / état du réessai
+  const [manualEur, setManualEur] = useState<Record<number, string>>({});
+  const [retryingIdx, setRetryingIdx] = useState<number | null>(null);
 
   // ✨ Règles d'auto-tag chargées depuis Google Sheets (avec fallback localStorage)
   const autoTagRulesRef = useRef<AutoTagRule[]>([]);
@@ -154,199 +182,109 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     if (extension === "pdf") format = "pdf";
     else if (extension === "csv") format = "csv";
     else if (extension === "xlsx" || extension === "xls") format = "xlsx";
+    else if (extension === "tsv" || extension === "txt") format = "csv";
+    else if (extension === "ofx" || extension === "qfx") format = "ofx";
+    else if (extension === "qif") format = "qif";
 
     if (format) {
       setFile(selectedFile);
       setFileFormat(format);
       setError(null);
+      setPdfLocalFailed(false);
     } else {
-      setError(
-        "Format non supporté. Veuillez sélectionner un fichier PDF, CSV ou XLSX."
-      );
+      setError(tr("imp.badFormat"));
       setFile(null);
       setFileFormat(null);
     }
   };
 
-  // ÉTAPE 1 : Analyser le fichier pour détecter la structure
-  const extractTransactions = async () => {
+  // ÉTAPE 1 : Lire le fichier et détecter sa structure.
+  // CSV / XLSX / OFX / QIF / PDF sont lus ici, dans le navigateur : le fichier ne quitte pas l'appareil.
+  // Seul un PDF non reconnu peut, avec accord explicite, passer par notre serveur (serverPdf).
+  const extractTransactions = async (opts?: { serverPdf?: boolean }) => {
     if (!file || !fileFormat) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("format", fileFormat);
+      let structure: {
+        headers: string[];
+        rows: any[];
+        hints?: { dateOrder?: string };
+        suggestedMappings?: Array<{ sourceColumn: string; targetColumn: string; confidence: number }>;
+        guessed?: boolean;
+      };
 
-      console.log("🔍 Analyse de la structure du fichier...");
-
-      // Port 5173 = Vite seul → plugin local. Port 8888 = netlify dev → vraie fonction.
-      const analyzeUrl =
-        import.meta.env.DEV && window.location.port === "5173"
-          ? "/__vite-local/analyzeFile"
-          : "/.netlify/functions/analyzeFile";
-
-      const response = await fetch(analyzeUrl, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Erreur API:", errorText);
-        let backendMessage = "";
-        try {
-          const parsedError = JSON.parse(errorText);
-          backendMessage = parsedError?.message ? ` ${parsedError.message}` : "";
-        } catch {
-          backendMessage = "";
+      if (fileFormat === "pdf" && opts?.serverPdf) {
+        // Repli explicite : analyse par notre fonction serveur (extraction de texte, sans IA ni tiers)
+        const analyzeUrl =
+          import.meta.env.DEV && window.location.port === "5173"
+            ? "/__vite-local/analyzeFile"
+            : "/.netlify/functions/analyzeFile";
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("format", "pdf");
+        const response = await fetch(analyzeUrl, { method: "POST", body: formData });
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Erreur API:", errorText);
+          let backendMessage = "";
+          try {
+            const parsedError = JSON.parse(errorText);
+            backendMessage = parsedError?.message ? ` ${parsedError.message}` : "";
+          } catch {
+            backendMessage = "";
+          }
+          const is404 = response.status === 404;
+          const hint =
+            is404 && typeof window !== "undefined" && window.location.port === "8888"
+              ? tr("imp.netlifyHint")
+              : "";
+          throw new Error(tr("imp.analyzeError") + backendMessage + hint);
         }
-        const is404 = response.status === 404;
-        const hint =
-          is404 && typeof window !== "undefined" && window.location.port === "8888"
-            ? " Vérifiez que les fonctions Netlify sont déployées ou utilisez le build de préprod."
-            : "";
-        throw new Error("Erreur lors de l'analyse du fichier." + backendMessage + hint);
+        structure = (await response.json()).structure;
+      } else if (fileFormat === "pdf") {
+        try {
+          const { readPdfStatement } = await import("../pdfLocal");
+          const table = await readPdfStatement(file);
+          if (table.rows.length === 0) throw new Error("EMPTY_FILE");
+          structure = { headers: table.headers, rows: table.rows, guessed: table.guessed };
+        } catch (e: any) {
+          if (e?.name === "PdfPasswordError") throw new Error(tr("imp.pdfPassword"));
+          if (e?.name === "PdfUnreadableError") throw new Error(tr("imp.pdfUnreadable")); // le serveur lirait le même texte : pas de repli
+          setPdfLocalFailed(true);
+          throw new Error(tr("imp.pdfNothingLocal"));
+        }
+      } else {
+        try {
+          const { readTabularFile } = await import("../tabularParse");
+          structure = await readTabularFile(file, fileFormat);
+        } catch (e: any) {
+          if (e?.message === "EMPTY_FILE") throw new Error(tr("imp.noRows"));
+          throw new Error(tr("imp.analyzeError"));
+        }
       }
 
-      const data = await response.json();
-      
-      console.log("✅ Structure détectée:", {
-        headers: data.structure.headers,
-        rows: data.structure.totalRows
-      });
-      
-      // Stocker les données brutes et headers
-      setRawData(data.structure.rows);
-      setHeaders(data.structure.headers);
-      setColumnMappings(data.structure.suggestedMappings);
-      
+      setPdfLocalFailed(false);
+      setPdfGuessed(!!structure.guessed);
+
+      // Colonnes débit/crédit séparées → colonne « montant net » ; puis suggestion automatique des colonnes
+      const prepared = addNetAmountColumn(structure.headers, structure.rows);
+      setRawData(prepared.rows);
+      setHeaders(prepared.headers);
+      setSuggestedColumns(suggestColumns(prepared.headers, prepared.rows));
+      setFileDateHint(structure.hints?.dateOrder as DateOrder | undefined);
+      setReadOptions(DEFAULT_READ_OPTIONS);
+      setImportNotices([]);
+      setColumnMappings(structure.suggestedMappings ?? []);
+
       // Passer à l'étape de mapping
       setStep("mapping");
       
     } catch (err: any) {
       console.error("❌ Erreur extraction:", err);
-      setError(err.message || "Erreur lors de l'extraction du fichier");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ÉTAPE 2 : Appliquer le mapping de colonnes
-  const applyMapping = async () => {
-    setLoading(true);
-    
-    try {
-      console.log("🔄 Application du mapping...");
-      
-      // Transformer les données brutes selon le mapping
-      const mappedTransactions = rawData.map(row => {
-        const mapped: any = {};
-        
-        // Appliquer chaque mapping
-        columnMappings.forEach(mapping => {
-          if (mapping.targetColumn !== "ignore") {
-            const sourceValue = row[mapping.sourceColumn];
-            mapped[mapping.targetColumn] = sourceValue;
-          }
-        });
-        
-        // 🐛 DEBUG: Voir ce qui est dans mapped
-        console.log("📊 Mapped keys:", Object.keys(mapped));
-        console.log("📊 Mapped values:", mapped);
-        
-        // Adapter au format Transaction
-        const transaction: Transaction = {
-          date: mapped.Date || "",
-          description: String(mapped.Description ?? defaultAccount ?? "Transaction"),
-          amount: parseFloat(mapped.Amount || mapped.Montant || "0"),
-          suggestedAccount: transactionType === "spending" ? defaultAccount || mapped.Account || "" : "",
-          suggestedSource: transactionType === "revenue" ? defaultAccount : undefined,
-          suggestedJar: (mapped.Jar as JarKey) || "NEC",
-          currency: mapped.Currency || "EUR",
-          originalCurrency: mapped.Currency || "EUR",
-          originalAmount: row.OriginalAmount || parseFloat(mapped.Amount || mapped.Montant || "0"),
-          selected: true,
-          // ✅ AJOUT DES CHAMPS CRYPTO - Essayer plusieurs variantes
-          valeur: mapped["Valeur (devise)"] || mapped["Valeur"] || undefined, // ✅ Garder comme string
-          quantiteCrypto: mapped["Quantité Crypto"] || mapped["QuantitéCrypto"] || mapped["Quantité"] ? parseFloat(mapped["Quantité Crypto"] || mapped["QuantitéCrypto"] || mapped["Quantité"]) : undefined,
-          methodeCrypto: mapped["Méthode"] || mapped["Methode"] || undefined,
-          usdEurRate: mapped["Taux USD/EUR"] || mapped["TauxUSDEUR"] || mapped["Taux"] ? parseFloat(mapped["Taux USD/EUR"] || mapped["TauxUSDEUR"] || mapped["Taux"]) : undefined,
-          adresseCrypto: mapped["Adresse crypto"] || mapped["AdresseCrypto"] || mapped["Adresse"] || undefined,
-          compteDestination: mapped["Compte de destination"] || undefined,
-          type: mapped["Type"] || undefined,
-        };
-        
-        return transaction;
-      });
-      
-      console.log(`📊 ${mappedTransactions.length} transactions mappées`);
-      
-      // ✅ CONVERTIR LES DEVISES EN EUR AVANT LA VÉRIFICATION DES DOUBLONS
-      console.log("💱 Conversion des devises en EUR...");
-      const convertedTransactions = await convertCurrenciesToEUR(mappedTransactions);
-      
-      // Vérifier les doublons APRÈS conversion
-      console.log("🔍 Vérification des doublons...");
-      const checkedTransactions = await checkDuplicates(convertedTransactions);
-      
-      const duplicateCount = checkedTransactions.filter(t => t.isDuplicate).length;
-      console.log(`⚠️ ${duplicateCount} doublon(s) détecté(s)`);
-      
-      // 🔍 DEBUG : Afficher quelques exemples
-      console.log("🔍 DEBUG - Première transaction reçue:", JSON.stringify(checkedTransactions[0]));
-      if (checkedTransactions.length > 1) {
-        console.log("🔍 DEBUG - Deuxième transaction reçue:", JSON.stringify(checkedTransactions[1]));
-      }
-      
-      // ✅ LOGIQUE CORRECTE : 
-      // - DÉSÉLECTIONNER tous les doublons (déjà dans Google Sheets)
-      // - SÉLECTIONNER uniquement les nouvelles transactions (pas de doublon détecté)
-      const withSelection = checkedTransactions.map(t => {
-        // Si un doublon est détecté (quel que soit le niveau) → DÉSÉLECTIONNER
-        if (t.isDuplicate) {
-          console.log(`❌ Deselecting duplicate (level ${t.duplicateLevel}): ${t.description} | ${t.amount}€`);
-          return { ...t, selected: false };
-        }
-        
-        // Si aucun doublon détecté → SÉLECTIONNER (c'est une nouvelle transaction)
-        console.log(`✅ Keeping selected (new transaction): ${t.description} | ${t.amount}€`);
-        return { ...t, selected: true };
-      });
-      
-      const selectedCount = withSelection.filter(t => t.selected).length;
-      const deselectedCount = withSelection.length - selectedCount;
-      console.log(`✅ ${selectedCount} nouvelles transactions sélectionnées pour import`);
-      console.log(`❌ ${deselectedCount} doublons désélectionnés`);
-
-      // ✨ Appliquer les règles d'auto-tag mémorisées
-      const autoTagRules = autoTagRulesRef.current;
-      const withAutoTag = withSelection.map(t => {
-        const origDesc = t.description;
-        const rule = findRule(origDesc, autoTagRules);
-        if (!rule) return { ...t, _origDescription: origDesc };
-        const changed =
-          rule.correctedDescription !== origDesc ||
-          rule.tags.length > 0 ||
-          (rule.jar != null && rule.jar !== t.suggestedJar);
-        return {
-          ...t,
-          _origDescription: origDesc,
-          description: rule.correctedDescription,
-          tags: rule.tags.length > 0 ? rule.tags.join(",") : (t.tags ?? ""),
-          suggestedJar: (rule.jar as JarKey) ?? t.suggestedJar,
-          _autoTagged: changed,
-        };
-      });
-
-      setTransactions(withAutoTag);
-      setStep("review");
-      
-    } catch (err: any) {
-      console.error("❌ Erreur mapping:", err);
-      setError(err.message || "Erreur lors du mapping");
+      setError(err.message || tr("imp.extractError"));
     } finally {
       setLoading(false);
     }
@@ -359,6 +297,13 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     try {
       console.log("🔄 Application du nouveau mapping inversé...", mappings);
       
+      // Lecture tolérante : format des dates, des nombres, sens des montants (détectés sur les colonnes choisies)
+      const srcCol = (g: string) => {
+        const o = mappings.find(m => m.googleSheetColumn === g)?.option;
+        return o?.type === "column" ? o.value : undefined;
+      };
+      const reading = resolveReading(rawData, srcCol("Date"), srcCol("Montant"), readOptions, fileDateHint);
+
       // Transformer les données brutes selon le nouveau mapping
       const mappedTransactions = rawData.map(row => {
         const transaction: any = {};
@@ -382,15 +327,15 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         
         // Devise : dépenses = colonne Devise (ex. PDF Currency), revenus = Valeur (normaliser en majuscules pour l'API)
         const rawCurrency = transactionType === "spending"
-          ? (transaction.Devise || "EUR")
-          : (transaction.Valeur || "EUR");
-        const currencyFromFile = (rawCurrency && String(rawCurrency).trim().toUpperCase()) || "EUR";
+          ? (transaction.Devise || getBaseCurrency())
+          : (transaction.Valeur || getBaseCurrency());
+        const currencyFromFile = (rawCurrency && String(rawCurrency).trim().toUpperCase()) || getBaseCurrency();
 
         // Adapter au format Transaction complet
         const finalTransaction: Transaction = {
-          date: transaction.Date || "",
+          date: parseDate(transaction.Date, reading.order) ?? "",
           description: String(transaction.Description ?? transaction.Source ?? defaultAccount ?? "Transaction"),
-          amount: parseFloat(transaction.Montant || "0"),
+          amount: parseAmount(transaction.Montant, reading.decimal) ?? NaN,
           
           // Pour spending
           suggestedAccount: transactionType === "spending" 
@@ -408,7 +353,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           // Champs communs (devise détectée pour conversion en EUR selon la date)
           currency: currencyFromFile,
           originalCurrency: currencyFromFile,
-          originalAmount: parseFloat(transaction.Montant || "0"),
+          originalAmount: parseAmount(transaction.Montant, reading.decimal) ?? NaN,
           selected: true,
           tags: transaction.Tags || undefined,
           
@@ -429,11 +374,43 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         return finalTransaction;
       });
       
-      console.log(`✅ ${mappedTransactions.length} transactions créées avec le nouveau mapping`);
+      // Lignes illisibles, puis lignes dans le mauvais sens (rentrées d'argent dans un import de dépenses, et inversement)
+      const notices: string[] = [];
+      const readable = mappedTransactions.filter(tx => tx.date && Number.isFinite(tx.amount));
+      const invalidCount = mappedTransactions.length - readable.length;
+      if (invalidCount > 0) notices.push(tr("imp.notice.invalid", { n: invalidCount }));
+
+      const isExpenseRow = (a: number) => (reading.expenseSign === "negative" ? a < 0 : a > 0);
+      const keepRow = (a: number) => {
+        if (a === 0) return false;
+        if (transactionType === "spending") return isExpenseRow(a) || !reading.mixedSigns;
+        return reading.mixedSigns ? !isExpenseRow(a) : true;
+      };
+      // Dépenses annulées par un remboursement / une reversa (même montant, même référence ou même commerçant)
+      const cancelled = transactionType === "spending" && reading.mixedSigns
+        ? findCancelledExpenses(
+            readable.map(tx => ({ date: tx.date, amount: tx.amount, description: String(tx.description ?? "") })),
+            reading.expenseSign
+          ).cancelled
+        : new Set<number>();
+      if (cancelled.size > 0) notices.push(tr("imp.notice.cancelled", { n: cancelled.size }));
+      const kept = readable.filter((tx, i) => !cancelled.has(i) && keepRow(tx.amount)).map(tx => {
+        const amount = Math.abs(tx.amount);
+        return { ...tx, amount, originalAmount: amount };
+      });
+      const otherCount = readable.filter(tx => !keepRow(tx.amount)).length;
+      if (otherCount > 0) {
+        notices.push(tr(transactionType === "revenue" ? "imp.notice.otherRevenue" : "imp.notice.otherSpending", { n: otherCount }));
+      }
+      if (pdfGuessed) notices.push(tr("imp.pdfGuessed"));
+      setImportNotices(notices);
+      if (kept.length === 0) throw new Error(tr("imp.noRows"));
+
+      console.log(`✅ ${kept.length} transactions créées avec le nouveau mapping`);
       
       // Conversion des devises
       console.log("💱 Conversion des devises en EUR...");
-      const convertedTransactions = await convertCurrenciesToEUR(mappedTransactions);
+      const convertedTransactions = await convertCurrenciesToEUR(kept);
       
       // Vérification des doublons
       console.log("🔍 Vérification des doublons...");
@@ -448,7 +425,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           console.log(`❌ Deselecting duplicate: ${t.description} | ${t.amount}€`);
           return { ...t, selected: false };
         }
-        return { ...t, selected: true };
+        return { ...t, selected: !t.needsConversion };
       });
       
       const selectedCount = withSelection.filter(t => t.selected).length;
@@ -480,7 +457,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
     } catch (err: any) {
       console.error("❌ Erreur mapping:", err);
-      setError(err.message || "Erreur lors du mapping");
+      setError(err.message || tr("imp.mappingError"));
     } finally {
       setLoading(false);
     }
@@ -488,13 +465,12 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
   // Convertir les devises en EUR
   const convertCurrenciesToEUR = async (txns: Transaction[]): Promise<Transaction[]> => {
-    rateCacheRef.current.clear(); // un cache par session de conversion
     const converted: Transaction[] = [];
 
     for (const txn of txns) {
       // Pour les REVENUS : ne pas convertir le montant, juste récupérer le taux
       if (transactionType === "revenue") {
-        if (!txn.valeur || txn.valeur === "EUR") {
+        if (!txn.valeur || txn.valeur === getBaseCurrency()) {
           // Pas de taux nécessaire pour EUR
           converted.push({
             ...txn,
@@ -503,7 +479,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         } else {
           // Récupérer le taux Devise/EUR sans convertir le montant
           try {
-            const rate = await getHistoricalRate(txn.valeur, "EUR", txn.date);
+            const rate = await getHistoricalRate(txn.valeur, getBaseCurrency(), txn.date);
             console.log(`💱 Taux ${txn.valeur}/EUR pour ${txn.date}: ${rate}`);
             
             converted.push({
@@ -521,36 +497,45 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       } 
       // Pour les DÉPENSES : convertir comme avant
       else {
-        if (txn.currency === "EUR") {
+        if (txn.currency === getBaseCurrency()) {
           // Déjà en EUR
           converted.push({
             ...txn,
             conversionRate: 1,
+            needsConversion: false,
             conversionNote: null,
           });
         } else {
           // Conversion nécessaire
           try {
-            const rate = await getHistoricalRate(txn.currency ?? "USD", "EUR", txn.date);
+            const rate = await getHistoricalRate(txn.currency ?? "USD", getBaseCurrency(), txn.date);
             const convertedAmount = txn.amount * rate;
             
-            console.log(`💱 ${txn.amount} ${txn.currency} → ${convertedAmount.toFixed(2)} EUR (rate: ${rate})`);
+            console.log(`💱 ${txn.amount} ${txn.currency} → ${convertedAmount.toFixed(2)} ${getBaseCurrency()} (rate: ${rate})`);
             
+            const origAmount = txn.originalAmount ?? txn.amount;
+            const origCurrency = txn.originalCurrency ?? txn.currency ?? "USD";
             converted.push({
               ...txn,
               amount: parseFloat(convertedAmount.toFixed(2)),
-              currency: "EUR",
+              currency: getBaseCurrency(),
+              originalAmount: origAmount,
+              originalCurrency: origCurrency,
               conversionRate: rate,
-              conversionNote: `Converti de ${txn.originalAmount} ${txn.originalCurrency} au taux de ${rate.toFixed(4)}`,
+              needsConversion: false,
+              conversionNote: tr("imp.noteRate", { amount: origAmount.toFixed(2), cur: origCurrency, rate: rate.toFixed(4) }),
             });
           } catch (error) {
             console.error(`❌ Échec conversion ${txn.currency} pour ${txn.date}:`, error);
             
-            // En cas d'erreur, garder le montant original avec warning
+            // Taux indisponible : la ligne reste dans sa devise d'origine et ne peut pas être importée telle quelle
             converted.push({
               ...txn,
+              originalAmount: txn.originalAmount ?? txn.amount,
+              originalCurrency: txn.originalCurrency ?? txn.currency,
               conversionRate: null,
-              conversionNote: `⚠️ Conversion échouée - Montant en ${txn.currency}`,
+              needsConversion: true,
+              conversionNote: tr("imp.noteNoRate", { cur: txn.currency ?? "" }),
             });
           }
         }
@@ -560,86 +545,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     return converted;
   };
 
-  // Récupérer le taux de change historique via notre proxy (cache par devise+date pour limiter les appels)
-  const getHistoricalRate = async (fromCurrency: string, toCurrency: string, date: string): Promise<number> => {
-    const isoDate = convertToISODate(date);
-    const cacheKey = `${fromCurrency}-${toCurrency}-${isoDate}`;
-    const cached = rateCacheRef.current.get(cacheKey);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const url = `/.netlify/functions/getExchangeRate?from=${encodeURIComponent(fromCurrency)}&to=${encodeURIComponent(toCurrency)}&date=${encodeURIComponent(isoDate)}`;
-    console.log(`🔄 Fetching rate ${fromCurrency}→${toCurrency} for ${date} via proxy`);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 s max
-
-    try {
-      const response = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error(errBody.message || `Taux indisponible (${response.status})`);
-      }
-      const data = await response.json();
-      if (typeof data.rate !== "number") {
-        throw new Error("No rate in response");
-      }
-      rateCacheRef.current.set(cacheKey, data.rate);
-      return data.rate;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        throw new Error("Délai dépassé pour récupérer le taux");
-      }
-      throw err;
-    }
-  };
-
-  // ✅ Fonction pour convertir différents formats de date en ISO (YYYY-MM-DD)
-  const convertToISODate = (dateStr: string): string => {
-    if (!dateStr) return new Date().toISOString().split('T')[0];
-    
-    // Déjà au format ISO (YYYY-MM-DD)
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      return dateStr;
-    }
-    
-    // Format DD/MM/YYYY
-    const ddmmyyyyMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (ddmmyyyyMatch) {
-      const [, day, month, year] = ddmmyyyyMatch;
-      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-    }
-    
-    // Format "26 May 2025, 11:40am" ou "26 May 2025"
-    const longMatch = dateStr.match(/^(\d{1,2})\s+(\w+)\s+(\d{4})/);
-    if (longMatch) {
-      const [, day, monthName, year] = longMatch;
-      const months: { [key: string]: string } = {
-        'January': '01', 'February': '02', 'March': '03', 'April': '04',
-        'May': '05', 'June': '06', 'July': '07', 'August': '08',
-        'September': '09', 'October': '10', 'November': '11', 'December': '12'
-      };
-      const month = months[monthName];
-      if (month) {
-        return `${year}-${month}-${day.padStart(2, '0')}`;
-      }
-    }
-    
-    // Fallback : essayer de parser avec Date
-    try {
-      const parsed = new Date(dateStr);
-      if (!isNaN(parsed.getTime())) {
-        return parsed.toISOString().split('T')[0];
-      }
-    } catch {}
-    
-    // Si tout échoue, retourner la date actuelle
-    console.warn(`⚠️ Unable to parse date: ${dateStr}, using today`);
-    return new Date().toISOString().split('T')[0];
-  };
+  // Taux de change historique (proxy Netlify, puis Frankfurter en direct, avec cache)
+  const getHistoricalRate = (fromCurrency: string, toCurrency: string, date: string): Promise<number> =>
+    getHistoricalExchangeRate(fromCurrency, toCurrency, date);
 
 
   // Vérifier les doublons via l'API
@@ -671,10 +579,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
   // Importer les transactions sélectionnées
   const handleImport = async () => {
-    const selectedTransactions = transactions.filter(t => t.selected);
+    const selectedTransactions = transactions.filter(t => t.selected && !t.needsConversion);
     
     if (selectedTransactions.length === 0) {
-      setError("Aucune transaction sélectionnée");
+      setError(tr("imp.noneSelected"));
       return;
     }
 
@@ -736,6 +644,52 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     );
   };
 
+  const retryConversion = async (transaction: Transaction) => {
+    const idx = transactions.indexOf(transaction);
+    if (idx === -1) return;
+    const cur = transaction.originalCurrency ?? transaction.currency ?? "USD";
+    const orig = transaction.originalAmount ?? transaction.amount;
+    setRetryingIdx(idx);
+    try {
+      const rate = await getHistoricalRate(cur, getBaseCurrency(), transaction.date);
+      setTransactions(prev => prev.map((t, i) => i !== idx ? t : {
+        ...t,
+        amount: parseFloat((orig * rate).toFixed(2)),
+        currency: getBaseCurrency(),
+        originalAmount: orig,
+        originalCurrency: cur,
+        conversionRate: rate,
+        needsConversion: false,
+        selected: !t.isDuplicate,
+        conversionNote: tr("imp.noteRate", { amount: orig.toFixed(2), cur, rate: rate.toFixed(4) }),
+      }));
+    } catch {
+      setError(tr("imp.rateUnavailable", { cur, base: getBaseCurrency(), sym: curSym() }));
+    } finally {
+      setRetryingIdx(null);
+    }
+  };
+
+  const applyManualEur = (transaction: Transaction) => {
+    const idx = transactions.indexOf(transaction);
+    if (idx === -1) return;
+    const value = parseFloat((manualEur[idx] ?? "").replace(",", "."));
+    if (!isFinite(value) || value <= 0) return;
+    const cur = transaction.originalCurrency ?? transaction.currency ?? "";
+    const orig = transaction.originalAmount ?? transaction.amount;
+    setTransactions(prev => prev.map((t, i) => i !== idx ? t : {
+      ...t,
+      amount: parseFloat(value.toFixed(2)),
+      currency: getBaseCurrency(),
+      originalAmount: orig,
+      originalCurrency: cur,
+      conversionRate: null,
+      needsConversion: false,
+      selected: !t.isDuplicate,
+      conversionNote: tr("imp.noteManual", { amount: orig.toFixed(2), cur }),
+    }));
+  };
+
   // Available tags loaded once
   const availableTags = loadTags();
 
@@ -744,7 +698,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
 
   const toggleTransaction = (index: number) => {
     setTransactions(prev =>
-      prev.map((t, i) => (i === index ? { ...t, selected: !t.selected } : t))
+      prev.map((t, i) => (i === index && !t.needsConversion ? { ...t, selected: !t.selected } : t))
     );
   };
 
@@ -770,11 +724,6 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
     setEditingRevenueIndex(null);
   };
 
-  const toggleAll = () => {
-    const allSelected = transactions.every(t => t.selected);
-    setTransactions(prev => prev.map(t => ({ ...t, selected: !allSelected })));
-  };
-
   const filteredTransactions = transactions.filter(t => {
     const desc = t.description != null ? String(t.description) : "";
     const date = t.date != null ? String(t.date) : "";
@@ -782,6 +731,16 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
       date.includes(searchQuery) ||
       String(t.amount ?? "").includes(searchQuery);
   });
+
+  // N'agit que sur les transactions visibles (filtre de recherche actif)
+  const toggleAll = () => {
+    const selectable = filteredTransactions.filter(t => !t.needsConversion);
+    const allVisibleSelected = selectable.every(t => t.selected);
+    const visibleSet = new Set(selectable);
+    setTransactions(prev => prev.map(t =>
+      visibleSet.has(t) ? { ...t, selected: !allVisibleSelected } : t
+    ));
+  };
 
   // ÉTAPE 1 : Sélection du type
   if (step === "selectType") {
@@ -801,10 +760,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             color: "var(--text-main)",
             margin: "0 0 12px 0",
           }}>
-            📂 Importer des transactions
+            {tr("imp.title")}
           </h2>
           <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "15px" }}>
-            Sélectionnez le type de transactions à importer
+            {tr("imp.pickType")}
           </p>
           {(() => {
             try {
@@ -814,17 +773,11 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               const diffMin = Math.floor(diffMs / 60000);
               const diffH = Math.floor(diffMs / 3600000);
               const diffD = Math.floor(diffMs / 86400000);
-              let label = "";
-              if (diffMin < 2) label = "à l'instant";
-              else if (diffMin < 60) label = `il y a ${diffMin} min`;
-              else if (diffH < 24) label = `il y a ${diffH}h`;
-              else if (diffD === 1) label = "hier";
-              else if (diffD < 7) label = `il y a ${diffD} jours`;
-              else label = `il y a ${Math.floor(diffD / 7)} sem.`;
+              const label = relTime(diffMin, diffH, diffD);
               const color = diffD >= 7 ? "#FF9500" : diffD >= 3 ? "#AEAEB2" : "#34C759";
               return (
                 <div style={{ marginTop: "10px", fontSize: "12px", color, fontWeight: "600" }}>
-                  🔄 Dernier import : {label}
+                  {tr("imp.lastImport", { label })}
                 </div>
               );
             } catch { return null; }
@@ -864,7 +817,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               color: "var(--text-main)",
               marginBottom: "8px",
             }}>
-              Dépenses
+              {tr("imp.spending")}
             </div>
             <p style={{
               fontSize: "14px",
@@ -872,7 +825,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               margin: 0,
               lineHeight: 1.5,
             }}>
-              Importer des transactions de dépenses (achats, factures, etc.)
+              {tr("imp.spendingDesc")}
             </p>
           </button>
 
@@ -908,7 +861,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               color: "var(--text-main)",
               marginBottom: "8px",
             }}>
-              Revenus
+              {tr("imp.revenue")}
             </div>
             <p style={{
               fontSize: "14px",
@@ -916,7 +869,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               margin: 0,
               lineHeight: 1.5,
             }}>
-              Importer des revenus (salaires, ventes crypto, etc.)
+              {tr("imp.revenueDesc")}
             </p>
           </button>
         </div>
@@ -939,8 +892,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         borderRadius: "20px",
         padding: 0,
         boxShadow: "var(--shadow-md)",
-        height: "min(85vh, 900px)",
-        maxHeight: "85vh",
+        height: "100%",
         minHeight: 0,
         display: "flex",
         flexDirection: "column",
@@ -952,16 +904,24 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <div className="import-mapping-loading-overlay">
             <div className="import-mapping-spinner" />
             <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: "var(--text-main)" }}>
-              Chargement des données…
+              {tr("imp.loadingData")}
             </p>
             <p style={{ margin: 0, fontSize: "13px", color: "var(--text-muted)" }}>
-              Application du mapping, conversion des devises et vérification des doublons
+              {tr("imp.loadingHint")}
             </p>
           </div>
+        )}
+        {!loading && (
+          <ImportReadSettings
+            reading={resolveReading(rawData, suggestedColumns.Date, suggestedColumns.Montant, readOptions, fileDateHint)}
+            options={readOptions}
+            onChange={setReadOptions}
+          />
         )}
         <NewColumnMappingStep
           key={`mapping-${transactionType}-${defaultAccount}`}
           detectedColumns={headers}
+          suggested={suggestedColumns}
           transactionType={transactionType || "spending"}
           defaultSource={defaultAccount}
           onBack={() => setStep("upload")}
@@ -1000,10 +960,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               fontWeight: "700",
               color: "var(--text-main)",
             }}>
-              {transactionType === "spending" ? "💸 Dépenses" : "💰 Revenus"}
+              {transactionType === "spending" ? tr("imp.spendingHead") : tr("imp.revenueHead")}
             </h3>
             <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "14px" }}>
-              Étape 1 : Sélectionnez votre fichier
+              {tr("imp.step1")}
             </p>
             {(() => {
               try {
@@ -1013,17 +973,11 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                 const diffD = Math.floor(diffMs / 86400000);
                 const diffH = Math.floor(diffMs / 3600000);
                 const diffMin = Math.floor(diffMs / 60000);
-                let label = "";
-                if (diffMin < 2) label = "à l'instant";
-                else if (diffMin < 60) label = `il y a ${diffMin} min`;
-                else if (diffH < 24) label = `il y a ${diffH}h`;
-                else if (diffD === 1) label = "hier";
-                else if (diffD < 7) label = `il y a ${diffD} jours`;
-                else label = `il y a ${Math.floor(diffD / 7)} sem.`;
+                const label = relTime(diffMin, diffH, diffD);
                 const color = diffD >= 7 ? "#FF9500" : diffD >= 3 ? "#AEAEB2" : "#34C759";
                 return (
                   <p style={{ margin: "2px 0 0", fontSize: "12px", color, fontWeight: "600" }}>
-                    🔄 Dernier import : {label}
+                    {tr("imp.lastImport", { label })}
                   </p>
                 );
               } catch { return null; }
@@ -1046,9 +1000,143 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               cursor: "pointer",
             }}
           >
-            ← Retour
+            {tr("imp.back")}
           </button>
         </div>
+
+        {/* Sélection du compte OU de la source selon le type */}
+        {transactionType === "spending" && accounts.length > 0 && (
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "14px",
+              fontWeight: "600",
+              color: "var(--text-main)",
+              marginBottom: "12px",
+            }}>
+              {tr("imp.pickAccount")}
+            </label>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+              gap: "8px",
+            }}>
+              {accounts.map((account) => (
+                <button
+                  key={account.name}
+                  onClick={() => setDefaultAccount(account.name)}
+                  style={{
+                    padding: "10px 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    minWidth: 0,
+                    borderRadius: "12px",
+                    border: defaultAccount === account.name
+                      ? "2px solid var(--jar-nec)"
+                      : "1px solid var(--border-color)",
+                    background: defaultAccount === account.name
+                      ? "rgba(0, 122, 255, 0.1)"
+                      : "var(--bg-body)",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    textAlign: "left",
+                  }}
+                >
+                  <div style={{ fontSize: "22px", lineHeight: 1, flexShrink: 0 }}>
+                    {account.emoji}
+                  </div>
+                  <div style={{
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    color: "var(--text-main)",
+                  }}>
+                    {account.name}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Sélection de la source de revenu pour les revenus */}
+        {transactionType === "revenue" && revenueSources.length > 0 && (
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{
+              display: "block",
+              fontSize: "16px",
+              fontWeight: "700",
+              color: "var(--text-main)",
+              marginBottom: "16px",
+            }}>
+              {tr("imp.pickSource")}
+            </label>
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+              gap: "8px",
+            }}>
+              {revenueSources.map((source: any) => (
+                <button
+                  key={source.id}
+                  onClick={() => setDefaultAccount(source.name)}
+                  style={{
+                    padding: "10px 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    minWidth: 0,
+                    borderRadius: "12px",
+                    border: defaultAccount === source.name
+                      ? "2px solid #34C759"
+                      : "1px solid var(--border-color)",
+                    background: defaultAccount === source.name
+                      ? "rgba(52, 199, 89, 0.1)"
+                      : "var(--bg-body)",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    textAlign: "left",
+                  }}
+                >
+                  <div style={{ fontSize: "22px", lineHeight: 1, flexShrink: 0 }}>
+                    {source.icon}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      fontSize: "13px",
+                      fontWeight: "600",
+                      color: "var(--text-main)",
+                    }}>
+                      {source.name}
+                    </div>
+                    {source.category && (
+                      <div style={{
+                        fontSize: "11px",
+                        color: "var(--text-muted)",
+                        marginTop: "2px",
+                      }}>
+                        {source.category}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {transactionType === "spending" && accounts.length === 0 && (
+          <div style={{
+            marginBottom: "20px",
+            padding: "12px 16px",
+            borderRadius: "12px",
+            backgroundColor: "rgba(255, 149, 0, 0.1)",
+            color: "var(--text-main)",
+            fontSize: "14px",
+          }}>
+            {tr("imp.noAccounts")}
+          </div>
+        )}
 
         {/* Zone de drag & drop */}
         <div style={{
@@ -1062,7 +1150,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           <div style={{ fontSize: "48px", marginBottom: "16px" }}>📎</div>
           <input
             type="file"
-            accept=".pdf,.csv,.xlsx,.xls"
+            accept=".pdf,.csv,.tsv,.txt,.xlsx,.xls,.ofx,.qfx,.qif"
             onChange={handleFileChange}
             style={{ display: "none" }}
             id="file-upload"
@@ -1081,7 +1169,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               marginBottom: "12px",
             }}
           >
-            Choisir un fichier
+            {tr("imp.chooseFile")}
           </label>
           {file && (
             <div style={{ marginTop: "12px" }}>
@@ -1104,117 +1192,6 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           )}
         </div>
 
-        {/* Sélection du compte OU de la source selon le type */}
-        {file && transactionType === "spending" && accounts.length > 0 && (
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{
-              display: "block",
-              fontSize: "14px",
-              fontWeight: "600",
-              color: "var(--text-main)",
-              marginBottom: "12px",
-            }}>
-              💳 Sélectionnez le compte
-            </label>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-              gap: "12px",
-            }}>
-              {accounts.map((account) => (
-                <button
-                  key={account.name}
-                  onClick={() => setDefaultAccount(account.name)}
-                  style={{
-                    padding: "16px 12px",
-                    borderRadius: "12px",
-                    border: defaultAccount === account.name
-                      ? "2px solid var(--jar-nec)"
-                      : "1px solid var(--border-color)",
-                    background: defaultAccount === account.name
-                      ? "rgba(0, 122, 255, 0.1)"
-                      : "var(--bg-body)",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: "36px", marginBottom: "8px" }}>
-                    {account.emoji}
-                  </div>
-                  <div style={{
-                    fontSize: "13px",
-                    fontWeight: "600",
-                    color: "var(--text-main)",
-                  }}>
-                    {account.name}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Sélection de la source de revenu pour les revenus */}
-        {file && transactionType === "revenue" && revenueSources.length > 0 && (
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{
-              display: "block",
-              fontSize: "16px",
-              fontWeight: "700",
-              color: "var(--text-main)",
-              marginBottom: "16px",
-            }}>
-              💰 Sélectionnez la source de revenu
-            </label>
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
-              gap: "12px",
-            }}>
-              {revenueSources.map((source: any) => (
-                <button
-                  key={source.id}
-                  onClick={() => setDefaultAccount(source.name)}
-                  style={{
-                    padding: "16px 12px",
-                    borderRadius: "12px",
-                    border: defaultAccount === source.name
-                      ? "2px solid #34C759"
-                      : "1px solid var(--border-color)",
-                    background: defaultAccount === source.name
-                      ? "rgba(52, 199, 89, 0.1)"
-                      : "var(--bg-body)",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: "36px", marginBottom: "8px" }}>
-                    {source.icon}
-                  </div>
-                  <div style={{
-                    fontSize: "13px",
-                    fontWeight: "600",
-                    color: "var(--text-main)",
-                  }}>
-                    {source.name}
-                  </div>
-                  {source.category && (
-                    <div style={{
-                      fontSize: "11px",
-                      color: "var(--text-muted)",
-                      marginTop: "4px",
-                    }}>
-                      {source.category}
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {error && (
           <div style={{
             padding: "12px 16px",
@@ -1228,8 +1205,38 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
           </div>
         )}
 
+        {pdfLocalFailed && fileFormat === "pdf" && (
+          <div style={{
+            padding: "12px 16px",
+            borderRadius: "12px",
+            backgroundColor: "rgba(255, 149, 0, 0.1)",
+            color: "var(--text-main)",
+            marginBottom: "20px",
+            fontSize: "14px",
+          }}>
+            <p style={{ margin: "0 0 8px" }}>{tr("imp.pdfServerAsk")}</p>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => extractTransactions({ serverPdf: true })}
+              style={{
+                padding: "8px 14px",
+                borderRadius: "10px",
+                border: "1px solid var(--border-color)",
+                background: "var(--bg-body)",
+                color: "var(--text-main)",
+                fontSize: "14px",
+                fontWeight: 600,
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              {tr("imp.pdfServerBtn")}
+            </button>
+          </div>
+        )}
+
         <button
-          onClick={extractTransactions}
+          onClick={() => extractTransactions()}
           disabled={!file || loading}
           style={{
             width: "100%",
@@ -1245,7 +1252,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             cursor: !file || loading ? "not-allowed" : "pointer",
           }}
         >
-          {loading ? "Analyse en cours..." : "Analyser le fichier"}
+          {loading ? tr("imp.analyzing") : tr("imp.analyze")}
         </button>
 
         <div style={{
@@ -1261,7 +1268,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             color: "var(--text-muted)",
             lineHeight: 1.6,
           }}>
-            <strong>📌 Formats acceptés :</strong> PDF, CSV, XLSX. Le fichier sera analysé automatiquement et vous pourrez mapper les colonnes avant l'import.
+            <strong>{tr("imp.formatsLabel")}</strong>{tr("imp.formatsText")}
+          </p>
+          <p style={{ margin: "8px 0 0", fontSize: "13px", color: "var(--text-muted)", lineHeight: 1.6 }}>
+            {tr("imp.localNote")}
           </p>
         </div>
       </div>
@@ -1272,6 +1282,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   function renderReviewStep() {
     const selectedCount = transactions.filter(t => t.selected).length;
     const duplicateCount = transactions.filter(t => t.isDuplicate).length;
+    const unconvertedCount = transactions.filter(t => t.needsConversion).length;
 
     const jars: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
 
@@ -1316,7 +1327,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         borderRadius: "20px",
         padding: "24px",
         boxShadow: "var(--shadow-md)",
-        height: "85vh",
+        height: "100%",
         display: "flex",
         flexDirection: "column",
       }}>
@@ -1334,11 +1345,17 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               fontWeight: "700",
               color: "var(--text-main)",
             }}>
-              📋 Révision des transactions
+              {tr("imp.review")}
             </h3>
             <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "14px" }}>
-              {selectedCount} sélectionnée(s) • {duplicateCount} doublon(s) potentiel(s)
+              {tr("imp.reviewCount", { sel: selectedCount, dup: duplicateCount })}
+              {unconvertedCount > 0 && (
+                <span style={{ color: "#FF3B30", fontWeight: 600 }}>{tr("imp.toConvert", { n: unconvertedCount })}</span>
+              )}
             </p>
+            {importNotices.map((n, i) => (
+              <p key={i} style={{ margin: "4px 0 0", color: "#FF9500", fontSize: "13px", fontWeight: 600 }}>{n}</p>
+            ))}
           </div>
           <button
             onClick={() => setStep("mapping")}
@@ -1352,7 +1369,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               cursor: "pointer",
             }}
           >
-            ← Retour au mapping
+            {tr("imp.backToMapping")}
           </button>
         </div>
 
@@ -1364,7 +1381,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         }}>
           <input
             type="text"
-            placeholder="🔍 Rechercher..."
+            placeholder={tr("imp.search")}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             style={{
@@ -1391,7 +1408,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               whiteSpace: "nowrap",
             }}
           >
-            {transactions.every(t => t.selected) ? "Tout désélectionner" : "Tout sélectionner"}
+            {transactions.filter(t => !t.needsConversion).every(t => t.selected) ? tr("imp.unselectAll") : tr("imp.selectAll")}
           </button>
         </div>
 
@@ -1418,7 +1435,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                   padding: "14px 16px",
                   marginBottom: "12px",
                   borderRadius: "12px",
-                  border: transaction.isDuplicate
+                  border: transaction.needsConversion
+                    ? "2px solid #FF3B30"
+                    : transaction.isDuplicate
                     ? `2px solid ${transaction.duplicateLevel === 1 ? "#FF3B30" : transaction.duplicateLevel === 2 ? "#FF9500" : "#FFCC00"}`
                     : "1px solid var(--border-color)",
                   backgroundColor: transaction.selected ? "var(--bg-body)" : "rgba(0,0,0,0.02)",
@@ -1434,7 +1453,8 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                 }}>
                   <input
                     type="checkbox"
-                    checked={transaction.selected}
+                    checked={!!transaction.selected}
+                    disabled={!!transaction.needsConversion}
                     onChange={() => toggleTransaction(index)}
                     onClick={(e) => e.stopPropagation()}
                     style={{
@@ -1461,7 +1481,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                       padding: "2px 7px",
                       flexShrink: 0,
                     }}
-                      title="Pré-rempli automatiquement depuis vos règles mémorisées"
+                      title={tr("imp.autoFilled")}
                     >
                       ✨ Auto
                     </span>
@@ -1483,11 +1503,13 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                       color: "var(--text-main)",
                     }}>
                       {transactionType === "revenue"
-                        ? `${transaction.amount.toFixed(2)} ${transaction.valeur || transaction.currency || "EUR"}`
-                        : `${transaction.amount.toFixed(2)} €`
+                        ? `${transaction.amount.toFixed(2)} ${transaction.valeur || transaction.currency || getBaseCurrency()}`
+                        : transaction.needsConversion
+                        ? `${transaction.amount.toFixed(2)} ${transaction.currency || ""}`
+                        : `${transaction.amount.toFixed(2)} ${curSym()}`
                       }
                     </span>
-                    {transactionType === "spending" && transaction.conversionNote && (
+                    {transactionType === "spending" && transaction.conversionNote && !transaction.needsConversion && (
                       <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "2px" }}>
                         {transaction.conversionNote}
                       </div>
@@ -1495,12 +1517,64 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                   </div>
                 </div>
 
+                {transaction.needsConversion && (() => {
+                  const realIdx = transactions.indexOf(transaction);
+                  const cur = transaction.originalCurrency ?? transaction.currency ?? "";
+                  return (
+                    <div style={{
+                      marginBottom: "10px",
+                      padding: "10px 12px",
+                      borderRadius: "10px",
+                      backgroundColor: "rgba(255,59,48,0.1)",
+                      border: "1px solid rgba(255,59,48,0.35)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}>
+                      <div style={{ fontSize: "13px", fontWeight: 700, color: "#FF3B30" }}>
+                        {tr("imp.needsConvert", { amount: transaction.originalAmount?.toFixed(2) ?? transaction.amount.toFixed(2), cur })}
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder={tr("imp.amountIn", { cur: curSym() })}
+                          value={manualEur[realIdx] ?? ""}
+                          onChange={e => setManualEur(prev => ({ ...prev, [realIdx]: e.target.value }))}
+                          style={{ ...inputStyle, width: "130px", flex: "0 0 auto" }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => applyManualEur(transaction)}
+                          style={{
+                            padding: "8px 14px", borderRadius: "8px", border: "none",
+                            background: "#34C759", color: "white", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                          }}
+                        >
+                          {tr("imp.validate")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => retryConversion(transaction)}
+                          disabled={retryingIdx === realIdx}
+                          style={{
+                            padding: "8px 14px", borderRadius: "8px", border: "1px solid var(--border-color)",
+                            background: "var(--bg-card)", color: "var(--text-main)", fontSize: "13px", fontWeight: 600, cursor: "pointer",
+                          }}
+                        >
+                          {retryingIdx === realIdx ? "⏳…" : tr("imp.retry")}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Row 2: description input (full width) */}
                 <div style={{ marginBottom: "10px" }}>
                   <input
                     type="text"
                     value={transaction.description}
-                    placeholder="Description..."
+                    placeholder={tr("imp.descPh")}
                     onChange={e => updateTransactionField(transaction, "description", e.target.value)}
                     style={inputStyle}
                   />
@@ -1549,7 +1623,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                           const newTags = currentTagIds.filter(id => id !== tagId).join(",");
                           updateTransactionField(transaction, "tags", newTags || undefined);
                         }}
-                        title="Cliquer pour supprimer"
+                        title={tr("imp.clickRemove")}
                       >
                         {tagInfo ? `${tagInfo.emoji} ${tagInfo.name}` : tagId}
                         <span style={{ fontSize: "14px", lineHeight: 1 }}>×</span>
@@ -1631,7 +1705,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               color: "var(--text-muted)",
             }}>
               <div style={{ fontSize: "48px", marginBottom: "16px" }}>🔍</div>
-              <p>Aucune transaction trouvée</p>
+              <p>{tr("imp.noneFound")}</p>
             </div>
           )}
         </div>
@@ -1658,7 +1732,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               cursor: importing ? "not-allowed" : "pointer",
             }}
           >
-            Annuler
+            {tr("imp.cancel")}
           </button>
           <button
             onClick={handleImport}
@@ -1678,8 +1752,8 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             }}
           >
             {importing
-              ? `Import... (${importProgress.current}/${importProgress.total})`
-              : `Importer ${selectedCount} transaction(s)`
+              ? tr("imp.importing", { cur: importProgress.current, total: importProgress.total })
+              : tr("imp.importN", { n: selectedCount })
             }
           </button>
         </div>

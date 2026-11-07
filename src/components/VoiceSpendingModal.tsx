@@ -2,15 +2,18 @@
 // Modal de saisie vocale d'une dépense — Web Speech API + Gemini + appendSpending
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { appendSpending } from "../api";
+import { getBaseCurrency, currencySymbol } from "../baseCurrency";
+import { getRateToBase } from "../exchangeRate";
 import { updateStreak } from "../streakUtils";
 import { loadTags } from "../tagsUtils";
 import { loadAccounts } from "../accountsUtils";
+import { t as tr, useLang, getLang, JAR_LABELS as I18N_JARS } from "../i18n";
 
 const JAR_KEYS = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"] as const;
-const JAR_LABELS: Record<string, string> = {
-  NEC: "🏠 Nécessités", FFA: "🌱 Liberté Fin.", LTSS: "🏦 Épargne LT",
-  PLAY: "🎮 Fun", EDUC: "📚 Éducation", GIFT: "🎁 Don",
+const JAR_EMOJI: Record<string, string> = {
+  NEC: "🏠", FFA: "🌱", LTSS: "🏦", PLAY: "🎮", EDUC: "📚", GIFT: "🎁",
 };
+const jarLabel = (k: string) => `${JAR_EMOJI[k] ?? ""} ${I18N_JARS[k as keyof typeof I18N_JARS] ?? k}`.trim();
 
 type Step = "idle" | "recording" | "transcribed" | "parsing" | "confirm" | "saving" | "done" | "error";
 
@@ -36,6 +39,7 @@ const getSpeechRecognition = (): any => {
 };
 
 export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
+  useLang();
   const [step, setStep] = useState<Step>("idle");
   const [transcript, setTranscript] = useState("");
   const [interimText, setInterimText] = useState("");
@@ -56,7 +60,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
     if (!SR) return;
 
     const rec = new SR();
-    rec.lang = "fr-FR";
+    rec.lang = getLang() === "fr" ? "fr-FR" : "en-US";
     rec.continuous = false;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
@@ -80,7 +84,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       console.error("SpeechRecognition error:", e.error);
       setInterimText("");
       if (e.error !== "aborted") {
-        setErrorMsg(`Erreur reconnaissance vocale : ${e.error}`);
+        setErrorMsg(tr("vc.errSpeech", { err: e.error }));
         setStep("error");
       }
     };
@@ -103,14 +107,14 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       const res = await fetch("/.netlify/functions/parseVoiceSpending", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, today }),
+        body: JSON.stringify({ text, today, baseCurrency: getBaseCurrency(), accounts: loadAccounts().map((a) => a.name) }),
       });
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || `Erreur ${res.status}`);
+      if (!res.ok || data.error) throw new Error(data.error || tr("vc.errHttp", { status: res.status }));
       setParsed(data as ParsedSpending);
       setStep("confirm");
     } catch (e: any) {
-      setErrorMsg(e.message || "Erreur d'analyse");
+      setErrorMsg(e.message || tr("vc.errAnalyze"));
       setStep("error");
     }
   }, []);
@@ -121,14 +125,25 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
     if (!parsed) return;
     setStep("saving");
     try {
-      // Convertit YYYY-MM-DD en DD/MM/YYYY pour Google Sheets
-      const [y, m, d] = parsed.date.split("-");
-      const dateForSheet = `${d}/${m}/${y}`;
-
+      // Montant converti dans la devise de référence (montant d'origine rappelé dans la description)
+      const base = getBaseCurrency();
+      const cur = (parsed.currency || base).toUpperCase();
+      let amount = parsed.amount;
+      let description = parsed.description;
+      if (cur !== base) {
+        const rate = await getRateToBase(cur, parsed.date);
+        if (!rate) {
+          setErrorMsg(tr("vc.errRate", { cur, base }));
+          setStep("error");
+          return;
+        }
+        description = `${parsed.description} (${parsed.amount} ${cur})`;
+        amount = Math.round(parsed.amount * rate * 100) / 100;
+      }
       await appendSpending({
-        date: dateForSheet,
-        description: parsed.description,
-        amount: parsed.amount,
+        date: parsed.date,
+        description,
+        amount,
         jar: parsed.jar,
         account: parsed.account,
         tags: parsed.tags.join(","),
@@ -142,7 +157,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
         onClose();
       }, 1500);
     } catch (e: any) {
-      setErrorMsg(e.message || "Erreur de sauvegarde");
+      setErrorMsg(e.message || tr("vc.errSave"));
       setStep("error");
     }
   };
@@ -159,6 +174,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
 
   return (
     <div
+      className="fs-backdrop fs-voice"
       style={{
         position: "fixed", inset: 0, zIndex: 3000,
         background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)",
@@ -166,21 +182,21 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{
+      <div className="fs-card" style={{
         background: "var(--bg-card)", borderRadius: "24px 24px 0 0",
         padding: "24px 20px 40px", width: "100%", maxWidth: 540,
         boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
         maxHeight: "92vh", overflowY: "auto",
       }}>
         {/* Handle */}
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: "#E5E5EA", margin: "0 auto 20px" }} />
+        <div className="fs-handle" style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border-color)", margin: "0 auto 20px" }} />
 
         {/* Titre */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-main)" }}>🎙️ Saisie vocale</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "var(--text-main)" }}>{tr("vc.title")}</div>
             <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 2 }}>
-              Dites votre dépense en langage naturel
+              {tr("vc.subtitle")}
             </div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "var(--text-muted)", padding: 4 }}>✕</button>
@@ -193,8 +209,8 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "8px 0 20px" }}>
             {!hasSpeechAPI ? (
               <div style={{ padding: "16px 20px", background: "#FFF5E6", borderRadius: 12, fontSize: 14, color: "#FF9500", textAlign: "center" }}>
-                ⚠️ La reconnaissance vocale n'est pas disponible sur ce navigateur.<br />
-                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Utilisez Chrome ou Safari.</span>
+                {tr("vc.noSpeech")}<br />
+                <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{tr("vc.useBrowser")}</span>
               </div>
             ) : (
               <>
@@ -218,7 +234,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
                   {step === "recording" ? "⏹" : "🎙️"}
                 </button>
                 <div style={{ fontSize: 14, fontWeight: 600, color: step === "recording" ? "#FF3B30" : "var(--text-muted)" }}>
-                  {step === "recording" ? "En cours… Appuyez pour arrêter" : "Appuyez pour parler"}
+                  {step === "recording" ? tr("vc.recording") : tr("vc.tapToSpeak")}
                 </div>
               </>
             )}
@@ -228,7 +244,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
           {(transcript || interimText) && (
             <div style={{ background: "var(--bg-body)", borderRadius: 14, padding: "14px 16px", marginBottom: 16, minHeight: 60 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Texte reconnu
+                {tr("vc.recognized")}
               </div>
               <div style={{ fontSize: 16, color: "var(--text-main)", lineHeight: 1.5 }}>
                 {transcript}
@@ -240,7 +256,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
           {/* Saisie manuelle si pas de speech API */}
           {!hasSpeechAPI && (
             <textarea
-              placeholder="Tapez votre dépense ici…&#10;Ex : J'ai acheté des fruits au marché pour 45,70 en cash"
+              placeholder={tr("vc.typePh")}
               value={transcript}
               onChange={e => { setTranscript(e.target.value); setStep("transcribed"); }}
               style={{
@@ -263,7 +279,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
                 boxShadow: "0 4px 16px rgba(255,45,120,0.35)",
               }}
             >
-              ✨ Analyser avec l'IA
+              {tr("vc.analyze")}
             </button>
           )}
         </>)}
@@ -272,9 +288,9 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
         {step === "parsing" && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "32px 0" }}>
             <div style={{ width: 48, height: 48, borderRadius: "50%", border: "4px solid #E5E5EA", borderTopColor: "#FF2D78", animation: "spin 0.8s linear infinite" }} />
-            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}>Analyse en cours…</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}>{tr("vc.parsing")}</div>
             <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", maxWidth: 280 }}>
-              Gemini analyse votre texte pour détecter le montant, les tags et la jarre
+              {tr("vc.analyzeHint")}
             </div>
             <div style={{ background: "var(--bg-body)", borderRadius: 12, padding: "12px 16px", fontSize: 14, color: "var(--text-muted)", fontStyle: "italic", maxWidth: "100%" }}>
               « {transcript} »
@@ -300,7 +316,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
         {step === "saving" && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "32px 0" }}>
             <div style={{ width: 48, height: 48, borderRadius: "50%", border: "4px solid #E5E5EA", borderTopColor: "#34C759", animation: "spin 0.8s linear infinite" }} />
-            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}>Enregistrement…</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text-main)" }}>{tr("vc.saving")}</div>
           </div>
         )}
 
@@ -308,9 +324,9 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
         {step === "done" && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "32px 0" }}>
             <div style={{ fontSize: 64 }}>✅</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#34C759" }}>Dépense enregistrée !</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#34C759" }}>{tr("vc.saved")}</div>
             {parsed && (
-              <div style={{ fontSize: 28, fontWeight: 800, color: "#1C1C1E" }}>{parsed.amount.toFixed(2)} €</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#1C1C1E" }}>{parsed.amount.toFixed(2)} {currencySymbol(parsed.currency || getBaseCurrency())}</div>
             )}
           </div>
         )}
@@ -325,7 +341,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
               onClick={() => { setStep("idle"); setErrorMsg(""); }}
               style={{ padding: "14px", borderRadius: 12, border: "1.5px solid var(--border-color)", background: "var(--bg-card)", fontSize: 15, fontWeight: 600, cursor: "pointer", color: "var(--text-main)" }}
             >
-              Recommencer
+              {tr("vc.restart")}
             </button>
           </div>
         )}
@@ -350,6 +366,7 @@ interface ConfirmFormProps {
 const ConfirmForm: React.FC<ConfirmFormProps> = ({
   parsed, tags, accounts, transcript, onSave, onRetry, onChange, formatDateDisplay,
 }) => {
+  useLang();
   const tag = (id: string) => tags.find(t => t.id === id);
 
   const toggleTag = (id: string) => {
@@ -369,7 +386,7 @@ const ConfirmForm: React.FC<ConfirmFormProps> = ({
       {/* Montant — gros */}
       <div style={{ background: "linear-gradient(135deg, #FF2D78, #CC1960)", borderRadius: 16, padding: "20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>Montant détecté</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{tr("vc.detectedAmount")}</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 4 }}>
             <input
               type="number"
@@ -381,12 +398,12 @@ const ConfirmForm: React.FC<ConfirmFormProps> = ({
                 border: "none", outline: "none", width: 140, letterSpacing: "-0.5px",
               }}
             />
-            <span style={{ fontSize: 20, color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>€</span>
+            <span style={{ fontSize: 20, color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>{currencySymbol(parsed.currency || getBaseCurrency())}</span>
           </div>
         </div>
         {/* Date */}
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginBottom: 4 }}>Date</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginBottom: 4 }}>{tr("vc.date")}</div>
           <input
             type="date"
             value={parsed.date}
@@ -398,7 +415,7 @@ const ConfirmForm: React.FC<ConfirmFormProps> = ({
 
       {/* Description */}
       <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Description</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>{tr("vc.description")}</span>
         <input
           type="text"
           value={parsed.description}
@@ -410,19 +427,19 @@ const ConfirmForm: React.FC<ConfirmFormProps> = ({
       {/* Jarre + Compte côte à côte */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Jarre</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>{tr("vc.jar")}</span>
           <select
             value={parsed.jar}
             onChange={e => onChange({ ...parsed, jar: e.target.value })}
             style={{ padding: "10px 12px", border: "1.5px solid var(--border-color)", borderRadius: 12, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)", outline: "none" }}
           >
             {JAR_KEYS.map(k => (
-              <option key={k} value={k}>{JAR_LABELS[k]}</option>
+              <option key={k} value={k}>{jarLabel(k)}</option>
             ))}
           </select>
         </label>
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Compte</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>{tr("vc.account")}</span>
           <select
             value={parsed.account}
             onChange={e => onChange({ ...parsed, account: e.target.value })}
@@ -437,7 +454,7 @@ const ConfirmForm: React.FC<ConfirmFormProps> = ({
 
       {/* Tags */}
       <div>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>Tags</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>{tr("vc.tags")}</span>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
           {tags.map(t => {
             const active = parsed.tags.includes(t.id);
@@ -466,7 +483,7 @@ const ConfirmForm: React.FC<ConfirmFormProps> = ({
           onClick={onRetry}
           style={{ flex: 1, padding: "14px", borderRadius: 14, border: "1.5px solid var(--border-color)", background: "var(--bg-card)", fontSize: 15, fontWeight: 600, cursor: "pointer", color: "var(--text-muted)" }}
         >
-          🔄 Recommencer
+          {tr("vc.restartIcon")}
         </button>
         <button
           onClick={onSave}
@@ -477,7 +494,7 @@ const ConfirmForm: React.FC<ConfirmFormProps> = ({
             boxShadow: "0 4px 14px rgba(52,199,89,0.4)",
           }}
         >
-          ✅ Enregistrer
+          {tr("vc.save")}
         </button>
       </div>
     </div>

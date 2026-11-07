@@ -1,4 +1,7 @@
 /** Taux historiques : en prod via Netlify ; en dev (Vite seul) via Frankfurter en direct (CORS OK). */
+import { getBaseCurrency } from "./baseCurrency";
+import { t } from "./i18n";
+
 const rateCache = new Map<string, number>();
 
 /** Même logique que netlify/functions/getExchangeRate.js (partie fiat Frankfurter). */
@@ -15,7 +18,7 @@ async function fetchFrankfurterRate(from: string, to: string, isoDate: string): 
   if (!res.ok) throw new Error(`Frankfurter ${res.status}`);
   const data = (await res.json()) as { rates?: Record<string, number> };
   const rate = data.rates?.[to];
-  if (rate == null) throw new Error("Taux indisponible");
+  if (rate == null) throw new Error(t("err.rateUnavailable"));
   return rate;
 }
 
@@ -91,7 +94,7 @@ export async function getHistoricalExchangeRate(
       rateCache.set(cacheKey, rate);
       return rate;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erreur taux";
+      const msg = err instanceof Error ? err.message : t("err.rateError");
       throw new Error(msg);
     }
   }
@@ -108,19 +111,57 @@ export async function getHistoricalExchangeRate(
     clearTimeout(timeoutId);
     if (!response.ok) {
       const errBody = await response.json().catch(() => ({}));
-      throw new Error((errBody as { message?: string }).message || `Taux indisponible (${response.status})`);
+      throw new Error((errBody as { message?: string }).message || t("err.rateUnavailableCode", { code: response.status }));
     }
     const data = (await response.json()) as { rate?: number };
     if (typeof data.rate !== "number") {
-      throw new Error("Réponse taux invalide");
+      throw new Error(t("err.rateInvalid"));
     }
     rateCache.set(cacheKey, data.rate);
     return data.rate;
   } catch (err: unknown) {
     clearTimeout(timeoutId);
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("Délai dépassé pour récupérer le taux");
+    try {
+      const rate = await fetchFrankfurterRate(from, to, isoDate);
+      rateCache.set(cacheKey, rate);
+      return rate;
+    } catch {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new Error(t("err.rateTimeout"));
+      }
+      throw err;
     }
-    throw err;
+  }
+}
+
+// ── Taux vers la devise de référence ───────────────────────────────────────────
+
+const CRYPTO_COIN_IDS: Record<string, string> = {
+  BTC: "bitcoin", ETH: "ethereum", USDT: "tether", USDC: "usd-coin", XRP: "ripple", ADA: "cardano",
+  SOL: "solana", DOGE: "dogecoin", DOT: "polkadot", MATIC: "matic-network", LTC: "litecoin",
+  BCH: "bitcoin-cash", XMR: "monero",
+};
+
+/**
+ * Prix d'1 unité de `from` dans la devise de référence à une date donnée (null si indisponible).
+ * Fiat : taux de change historique ; crypto : prix CoinGecko du jour.
+ */
+export async function getRateToBase(from: string, date: string): Promise<number | null> {
+  const base = getBaseCurrency();
+  const code = from.toUpperCase();
+  if (code === base) return 1;
+  try {
+    const coinId = CRYPTO_COIN_IDS[code];
+    if (coinId) {
+      const [y, m, d] = convertToISODate(date).split("-");
+      const res = await fetch(`https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${d}-${m}-${y}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const price = data?.market_data?.current_price?.[base.toLowerCase()];
+      return typeof price === "number" ? price : null;
+    }
+    return await getHistoricalExchangeRate(code, base, date);
+  } catch {
+    return null;
   }
 }

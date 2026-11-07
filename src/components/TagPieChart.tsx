@@ -1,12 +1,15 @@
 // src/components/TagPieChart.tsx
 import React from "react";
 import { TagStat } from "../types";
+import { t as tr, useLang } from "../i18n";
 
+import { currencySymbol as curSym } from "../baseCurrency";
 interface TagPieChartProps {
   stats: TagStat[];
 }
 
 export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
+  useLang();
   if (stats.length === 0) {
     return (
       <div style={{
@@ -18,7 +21,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
         color: "var(--text-muted)",
         fontSize: "14px",
       }}>
-        Aucune donnée à afficher
+        {tr("tp.noData")}
       </div>
     );
   }
@@ -127,7 +130,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
                   }}
                 >
                   <title>
-                    {segment.tagName}: {segment.totalAmount.toFixed(2)}€ ({segment.percentage.toFixed(1)}%)
+                    {segment.tagName}: {segment.totalAmount.toFixed(2)}{curSym()} ({segment.percentage.toFixed(1)}%)
                   </title>
                 </path>
                 
@@ -189,7 +192,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
               fill: "var(--text-muted)",
             }}
           >
-            Total
+            {tr("tp.total")}
           </text>
           <text
             x={centerX}
@@ -202,7 +205,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
               fill: "var(--text-main)",
             }}
           >
-            {total.toFixed(0)}€
+            {total.toFixed(0)}{curSym()}
           </text>
         </svg>
       </div>
@@ -273,7 +276,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
                   fontWeight: "600",
                 }}
               >
-                {stat.percentage.toFixed(1)}% • {stat.totalAmount.toFixed(0)}€
+                {stat.percentage.toFixed(1)}% • {stat.totalAmount.toFixed(0)}{curSym()}
               </div>
             </div>
           </div>

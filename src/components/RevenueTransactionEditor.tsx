@@ -1,6 +1,9 @@
 // src/components/RevenueTransactionEditor.tsx
 import React, { useState, useEffect } from "react";
 import { loadRevenueSources, RevenueSource } from "../revenueSourcesUtils";
+import { getRateToBase } from "../exchangeRate";
+import { getBaseCurrency } from "../baseCurrency";
+import { t, useLang } from "../i18n";
 
 interface RevenueTransaction {
   date: string;
@@ -38,6 +41,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
   onCancel,
   accounts,
 }) => {
+  useLang();
   // 🐛 DEBUG: Voir ce que reçoit le modal
   console.log("🔍 RevenueTransactionEditor - Transaction reçue:", transaction);
   console.log("🔍 methodeCrypto:", transaction.methodeCrypto);
@@ -116,83 +120,9 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
     return null;
   };
 
-  // Fonction pour calculer le taux de change historique
-  const getHistoricalRate = async (fromCurrency: string, date: string): Promise<number | null> => {
-    try {
-      // Convertir la date en format ISO
-      const isoDate = date.match(/^\d{4}-\d{2}-\d{2}$/) 
-        ? date 
-        : new Date(date).toISOString().split('T')[0];
-      
-      // Cryptomonnaies : utiliser CoinGecko
-      const cryptoIds: { [key: string]: string } = {
-        'BTC': 'bitcoin',
-        'ETH': 'ethereum',
-        'USDT': 'tether',
-        'USDC': 'usd-coin',
-        'XRP': 'ripple',
-        'ADA': 'cardano',
-        'SOL': 'solana',
-        'DOGE': 'dogecoin',
-        'DOT': 'polkadot',
-        'MATIC': 'matic-network',
-        'LTC': 'litecoin',
-        'BCH': 'bitcoin-cash',
-      };
-      
-      if (cryptoIds[fromCurrency]) {
-        // Crypto : utiliser CoinGecko
-        const coinId = cryptoIds[fromCurrency];
-        const [year, month, day] = isoDate.split('-');
-        const dateFormatted = `${day}-${month}-${year}`; // DD-MM-YYYY pour CoinGecko
-        
-        const url = `https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${dateFormatted}`;
-        console.log(`🔄 Fetching crypto rate ${fromCurrency}→EUR for ${dateFormatted} via CoinGecko`);
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          console.error(`❌ CoinGecko API returned ${response.status}`);
-          return null;
-        }
-        
-        const data = await response.json();
-        
-        if (!data.market_data || !data.market_data.current_price || !data.market_data.current_price.eur) {
-          console.error(`❌ No rate found for ${fromCurrency}→EUR in CoinGecko response`);
-          return null;
-        }
-        
-        const rate = data.market_data.current_price.eur;
-        console.log(`✅ Rate ${fromCurrency}→EUR: ${rate}`);
-        return rate;
-      } else {
-        // Devise fiat : utiliser Frankfurter
-        const url = `https://api.frankfurter.app/${isoDate}?from=${fromCurrency}&to=EUR`;
-        console.log(`🔄 Fetching fiat rate ${fromCurrency}→EUR for ${isoDate} via Frankfurter`);
-        
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          console.error(`❌ Frankfurter API returned ${response.status}`);
-          return null;
-        }
-        
-        const data = await response.json();
-        
-        if (!data.rates || !data.rates.EUR) {
-          console.error(`❌ No rate found for ${fromCurrency}→EUR`);
-          return null;
-        }
-        
-        console.log(`✅ Rate ${fromCurrency}→EUR: ${data.rates.EUR}`);
-        return data.rates.EUR;
-      }
-    } catch (error) {
-      console.error(`❌ Error fetching rate:`, error);
-      return null;
-    }
-  };
+  // Taux vers la devise de référence (fiat : taux historique ; crypto : prix CoinGecko)
+  const getHistoricalRate = (fromCurrency: string, date: string): Promise<number | null> =>
+    getRateToBase(fromCurrency, date);
 
   const handleSave = async () => {
     console.log('💾 Sauvegarde revenu:', editedTx);
@@ -201,7 +131,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
     if (!editedTx.usdEurRate && editedTx.methodeCrypto) {
       const currency = extractCurrencyFromMethod(editedTx.methodeCrypto);
       
-      if (currency && currency !== 'EUR') {
+      if (currency && currency !== getBaseCurrency()) {
         console.log(`💱 Calcul automatique du taux ${currency}/EUR...`);
         
         // Utiliser la date de la transaction
@@ -219,8 +149,14 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
     onSave(editedTx);
   };
 
+  const rateFrom =
+    extractCurrencyFromMethod(editedTx.methodeCrypto || "") ||
+    (editedTx.valeur || "").trim().toUpperCase() ||
+    "USD";
+
   return (
     <div
+      className="fs-backdrop"
       style={{
         position: "fixed",
         inset: 0,
@@ -234,6 +170,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
       onClick={onCancel}
     >
       <div
+        className="fs-card"
         onClick={(e) => e.stopPropagation()}
         style={{
           backgroundColor: "var(--bg-card)",
@@ -265,7 +202,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
               color: "var(--text-main)",
             }}
           >
-            ✏️ Éditer le revenu
+            {t("rte.title")}
           </h3>
           <button
             onClick={onCancel}
@@ -303,7 +240,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                📅 Date
+                {t("rev.date")}
               </label>
               <input
                 type="date"
@@ -336,7 +273,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                     marginBottom: "16px",
                   }}
                 >
-                  💰 Source de revenu
+                  {t("rte.source")}
                 </label>
                 <div
                   style={{
@@ -398,7 +335,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                     marginBottom: "8px",
                   }}
                 >
-                  💰 Source de revenu
+                  {t("rte.source")}
                 </label>
                 <div
                   style={{
@@ -427,7 +364,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                💰 Montant
+                {t("rte.amount")}
               </label>
               <input
                 type="number"
@@ -463,7 +400,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                💵 Valeur (devise)
+                {t("rte.currencyValue")}
               </label>
               <input
                 type="text"
@@ -471,7 +408,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                 onChange={(e) =>
                   setEditedTx({ ...editedTx, valeur: e.target.value })
                 }
-                placeholder="USD, EUR, GBP, JPY, BRL..."
+                placeholder={t("rte.currencyPh")}
                 style={{
                   width: "100%",
                   padding: "12px 16px",
@@ -495,7 +432,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                🪙 Quantité Crypto
+                {t("rte.cryptoQty")}
               </label>
               <input
                 type="number"
@@ -532,7 +469,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                🔗 Méthode
+                {t("rte.network")}
               </label>
               <input
                 type="text"
@@ -540,7 +477,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                 onChange={(e) =>
                   setEditedTx({ ...editedTx, methodeCrypto: e.target.value })
                 }
-                placeholder="USDC_ETH, USDT(TRC20), Bitcoin, etc."
+                placeholder={t("rte.networkPh")}
                 style={{
                   width: "100%",
                   padding: "12px 16px",
@@ -564,7 +501,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                💱 Taux USD/EUR
+                {t("rte.rate", { from: rateFrom, to: getBaseCurrency() })}
               </label>
               <input
                 type="number"
@@ -601,7 +538,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                🔑 Adresse crypto
+                {t("rte.address")}
               </label>
               <input
                 type="text"
@@ -609,7 +546,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                 onChange={(e) =>
                   setEditedTx({ ...editedTx, adresseCrypto: e.target.value })
                 }
-                placeholder="0x175A66cFeBBF4506b88f90b15324A617a42FD480"
+                placeholder={t("rte.addressPh")}
                 style={{
                   width: "100%",
                   padding: "12px 16px",
@@ -634,7 +571,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                💳 Compte de destination
+                {t("rte.destAccount")}
               </label>
               <input
                 type="text"
@@ -646,7 +583,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                     suggestedMethod: e.target.value 
                   })
                 }
-                placeholder="Keystone, Binance, etc."
+                placeholder={t("rte.destAccountPh")}
                 style={{
                   width: "100%",
                   padding: "12px 16px",
@@ -670,11 +607,12 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
                   marginBottom: "8px",
                 }}
               >
-                🏷️ Type
+                {t("rte.type")}
               </label>
               <input
                 type="text"
-                value={editedTx.type || "Passive Income"}
+                value={editedTx.type || ""}
+                placeholder={t("rte.typeDefault")}
                 onChange={(e) =>
                   setEditedTx({ ...editedTx, type: e.target.value })
                 }
@@ -715,7 +653,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
               cursor: "pointer",
             }}
           >
-            Annuler
+            {t("txe.cancel")}
           </button>
           <button
             onClick={handleSave}
@@ -731,7 +669,7 @@ export const RevenueTransactionEditor: React.FC<RevenueTransactionEditorProps> =
               cursor: "pointer",
             }}
           >
-            Enregistrer
+            {t("txe.save")}
           </button>
         </div>
       </div>

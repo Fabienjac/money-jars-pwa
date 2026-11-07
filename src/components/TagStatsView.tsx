@@ -11,6 +11,8 @@ import { calculateTagStats, filterByTags } from "../tagStatsUtils";
 import { applyAdvancedFilters, DEFAULT_ADVANCED_FILTERS } from "../advancedTagFiltersUtils";
 import { getTagById } from "../tagsUtils";
 import { loadAccounts } from "../accountsUtils";
+import { currencySymbol as curSym } from "../baseCurrency";
+import { t as tr, useLang } from "../i18n";
 import {
   computeReceivedByAccount,
   computeSpentByAccountByTag,
@@ -19,6 +21,7 @@ import {
 } from "../accountStatsUtils";
 
 const TagStatsView: React.FC = () => {
+  useLang();
   const [loading, setLoading] = useState(true);
   const [allTransactions, setAllTransactions] = useState<SearchSpendingResult[]>([]);
   const [allRevenues, setAllRevenues] = useState<SearchRevenueResult[]>([]);
@@ -103,7 +106,7 @@ const TagStatsView: React.FC = () => {
       <main className="page">
         <div style={{ textAlign: "center", padding: "40px" }}>
           <p style={{ fontSize: "14px", color: "var(--text-muted)" }}>
-            Chargement des données...
+            {tr("stats.loading")}
           </p>
         </div>
       </main>
@@ -118,7 +121,7 @@ const TagStatsView: React.FC = () => {
         alignItems: "center",
         marginBottom: "20px",
       }}>
-        <h2 style={{ margin: 0 }}>📊 Statistiques par tags</h2>
+        <h2 style={{ margin: 0 }}>{tr("stats.title")}</h2>
         {stats.length > 0 && (
           <ExportButton
             stats={stats}
@@ -157,15 +160,15 @@ const TagStatsView: React.FC = () => {
         }}>
           <div>
             <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>
-              Total dépensé
+              {tr("stats.totalSpent")}
             </div>
             <div style={{ fontSize: "24px", fontWeight: "700", color: "#FF3B30" }}>
-              {totalAmount.toFixed(2)}€
+              {totalAmount.toFixed(2)}{curSym()}
             </div>
           </div>
           <div>
             <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>
-              Transactions
+              {tr("stats.transactions")}
             </div>
             <div style={{ fontSize: "24px", fontWeight: "700", color: "var(--text-main)" }}>
               {filteredTransactions.length}
@@ -173,7 +176,7 @@ const TagStatsView: React.FC = () => {
           </div>
           <div>
             <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>
-              Tags utilisés
+              {tr("stats.tagsUsed")}
             </div>
             <div style={{ fontSize: "24px", fontWeight: "700", color: "var(--text-main)" }}>
               {stats.length}
@@ -196,18 +199,18 @@ const TagStatsView: React.FC = () => {
           marginBottom: "8px",
           color: "var(--text-main)",
         }}>
-          🏦 Par compte de dépense
+          {tr("stats.byAccount")}
         </h3>
         <p style={{
           fontSize: "12px",
           color: "var(--text-muted)",
           marginBottom: "16px",
         }}>
-          Montant reçu (revenus → compte) et montant dépensé par tag. Période : même filtre que ci‑dessus (30 j, 90 j, 6 mois ou personnalisé).
+          {tr("stats.byAccountHint")}
         </p>
         {accountReportRows.length === 0 ? (
           <p style={{ fontSize: "13px", color: "var(--text-muted)", fontStyle: "italic" }}>
-            Aucun compte avec des données sur la période.
+            {tr("stats.noAccountData")}
           </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -234,15 +237,15 @@ const TagStatsView: React.FC = () => {
                   </span>
                   <div style={{ display: "flex", gap: "16px", alignItems: "baseline" }}>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Reçu</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{tr("stats.received")}</div>
                       <div style={{ fontSize: "18px", fontWeight: "700", color: "#34C759" }}>
-                        {row.totalReceived.toFixed(2)} €
+                        {row.totalReceived.toFixed(2)} {curSym()}
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>Dépensé</div>
+                      <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{tr("stats.spent")}</div>
                       <div style={{ fontSize: "18px", fontWeight: "700", color: "#FF3B30" }}>
-                        {row.totalSpent.toFixed(2)} €
+                        {row.totalSpent.toFixed(2)} {curSym()}
                       </div>
                     </div>
                   </div>
@@ -253,7 +256,7 @@ const TagStatsView: React.FC = () => {
                     paddingTop: "12px",
                   }}>
                     <div style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)", marginBottom: "8px" }}>
-                      Détail par tag
+                      {tr("stats.detailByTag")}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                       {row.tagStats.map((t) => (
@@ -269,7 +272,7 @@ const TagStatsView: React.FC = () => {
                             color: t.color,
                           }}
                         >
-                          {t.emoji} {t.tagName} · {t.totalAmount.toFixed(2)} €
+                          {t.emoji} {t.tagName} · {t.totalAmount.toFixed(2)} {curSym()}
                         </span>
                       ))}
                     </div>
@@ -297,7 +300,7 @@ const TagStatsView: React.FC = () => {
             color: "var(--text-main)",
             textAlign: "center",
           }}>
-            📊 Répartition visuelle
+            {tr("stats.visual")}
           </h3>
           <TagPieChart stats={stats} />
         </div>
@@ -317,7 +320,7 @@ const TagStatsView: React.FC = () => {
             fontWeight: "700", 
             color: "var(--text-main)",
           }}>
-            Détails par tag
+            {tr("stats.detailsByTag")}
           </h3>
           <button
             type="button"
@@ -333,7 +336,7 @@ const TagStatsView: React.FC = () => {
               cursor: "pointer",
             }}
           >
-            {showAdvancedStats ? "📊 Stats visibles" : "📈 Voir stats avancées"}
+            {showAdvancedStats ? tr("stats.advHide") : tr("stats.advShow")}
           </button>
         </div>
 
@@ -356,7 +359,7 @@ const TagStatsView: React.FC = () => {
             background: "var(--bg-card)",
           }}>
             <p style={{ fontSize: "14px", color: "var(--text-muted)", fontStyle: "italic" }}>
-              Aucune transaction avec des tags
+              {tr("stats.noTagged")}
             </p>
           </div>
         ) : (
@@ -395,7 +398,7 @@ const TagStatsView: React.FC = () => {
                       fontSize: "12px",
                       color: "var(--text-muted)",
                     }}>
-                      {stat.count} transaction{stat.count > 1 ? 's' : ''}
+                      {tr(stat.count > 1 ? "stats.txN" : "stats.tx1", { n: stat.count })}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
@@ -405,7 +408,7 @@ const TagStatsView: React.FC = () => {
                       color: "#FF3B30",
                       marginBottom: "2px",
                     }}>
-                      {stat.totalAmount.toFixed(2)}€
+                      {stat.totalAmount.toFixed(2)}{curSym()}
                     </div>
                     <div style={{
                       fontSize: "12px",
@@ -413,7 +416,7 @@ const TagStatsView: React.FC = () => {
                       color: "var(--text-muted)",
                       marginBottom: "2px",
                     }}>
-                      ≈ {(stat.totalAmount / periodDays).toFixed(1)} €/j
+                      ≈ {(stat.totalAmount / periodDays).toFixed(1)} {curSym()}/j
                     </div>
                     <div style={{
                       fontSize: "13px",
@@ -468,7 +471,7 @@ const TagStatsView: React.FC = () => {
             background: "var(--bg-card)",
           }}>
             <p style={{ fontSize: "14px", color: "var(--text-muted)", fontStyle: "italic" }}>
-              Aucune transaction trouvée
+              {tr("stats.noneFound")}
             </p>
           </div>
         ) : (
@@ -513,7 +516,7 @@ const TagStatsView: React.FC = () => {
                       whiteSpace: "nowrap",
                       flexShrink: 0,
                     }}>
-                      {transaction.amount?.toFixed(2)}€
+                      {transaction.amount?.toFixed(2)}{curSym()}
                     </div>
                   </div>
 
@@ -563,7 +566,7 @@ const TagStatsView: React.FC = () => {
                 color: "var(--text-muted)",
                 padding: "12px",
               }}>
-                ... et {filteredTransactions.length - 50} transaction(s) de plus
+                {tr("stats.moreTx", { n: filteredTransactions.length - 50 })}
               </p>
             )}
           </div>

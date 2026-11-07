@@ -1,6 +1,7 @@
 // src/accountsUtils.ts
 import { Account } from "./types";
 
+import { t } from "./i18n";
 const ACCOUNTS_KEY = "mjars:accounts";
 
 /**
@@ -38,8 +39,8 @@ export function saveAccounts(accounts: Account[]): void {
  */
 function getDefaultAccounts(): Account[] {
   return [
-    { id: "acc_1", name: "Cash", icon: "💵" },
-    { id: "acc_2", name: "Revolut", icon: "💳" },
-    { id: "acc_3", name: "N26", icon: "🏦" },
+    { id: "acc_1", name: t("default.acc.cash"), icon: "💵" },
+    { id: "acc_2", name: t("default.acc.card"), icon: "💳" },
+    { id: "acc_3", name: t("default.acc.checking"), icon: "🏦" },
   ];
 }

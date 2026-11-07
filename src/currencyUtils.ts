@@ -1,3 +1,4 @@
+import { currencyName } from "./i18n";
 export interface CurrencyInfo {
   code: string;
   label: string;
@@ -43,6 +44,9 @@ export const ALL_CURRENCIES: CurrencyInfo[] = [
   { code: "SOL", label: "Solana", flag: "◎" },
 ];
 
+// Le libellé suit la langue de l'application
+for (const c of ALL_CURRENCIES) Object.defineProperty(c, "label", { get: () => currencyName(c.code), enumerable: true });
+
 export const DEFAULT_PREFERRED = ["EUR", "USD", "GBP", "CHF", "HKD", "CAD", "JPY"];
 const STORAGE_KEY = "mjars:preferredCurrencies";
 
@@ -66,5 +70,5 @@ export function savePreferredCurrencies(currencies: string[]): void {
 }
 
 export function getCurrencyInfo(code: string): CurrencyInfo {
-  return ALL_CURRENCIES.find((c) => c.code === code) ?? { code, label: code, flag: "💱" };
+  return ALL_CURRENCIES.find((c) => c.code === code) ?? { code, label: currencyName(code), flag: "💱" };
 }

@@ -1,4 +1,5 @@
 // src/tagsUtils.ts
+import { t, type TKey } from "./i18n";
 
 export interface Tag {
   id: string;
@@ -14,17 +15,18 @@ export interface Tag {
  * Les IDs correspondent exactement à ce qui sera sauvegardé dans Google Sheets
  */
 export function getDefaultTags(): Tag[] {
+  const n = (id: string) => t(`default.tag.${id}` as TKey);
   return [
     // Palette: cyan, violet, rouge, orange, rose, vert, bleu indigo
-    { id: "vie_quotidienne", name: "Vie quotidienne", emoji: "🛒", color: "#06B6D4", favori: true },
-    { id: "alimentaire",    name: "Alimentation",    emoji: "🍓", color: "#81CF6B", favori: true },
-    { id: "sante_corps",    name: "Santé & corps",   emoji: "🧘", color: "#EC4899", favori: true },
-    { id: "transport",      name: "Transport",       emoji: "🚗", color: "#F97316", favori: true },
-    { id: "habitat",        name: "Habitat",         emoji: "🏠", color: "#8B5CF6", favori: true },
-    { id: "loisirs",        name: "Loisirs",         emoji: "🎉", color: "#22C55E", favori: true },
-    { id: "evolution",      name: "Évolution",       emoji: "🌱", color: "#6366F1", favori: true },
-    { id: "administratif",  name: "Administratif",   emoji: "📄", color: "#EF4444", favori: false },
-    { id: "don_cadeau",     name: "Don / Cadeau",    emoji: "🎁", color: "#0EA5E9", favori: false },
+    { id: "vie_quotidienne", name: n("vie_quotidienne"), emoji: "🛒", color: "#06B6D4", favori: true },
+    { id: "alimentaire",    name: n("alimentaire"),    emoji: "🍓", color: "#81CF6B", favori: true },
+    { id: "sante_corps",    name: n("sante_corps"),   emoji: "🧘", color: "#EC4899", favori: true },
+    { id: "transport",      name: n("transport"),       emoji: "🚗", color: "#F97316", favori: true },
+    { id: "habitat",        name: n("habitat"),       emoji: "🏠", color: "#8B5CF6", favori: true },
+    { id: "loisirs",        name: n("loisirs"),       emoji: "🎉", color: "#22C55E", favori: true },
+    { id: "evolution",      name: n("evolution"),       emoji: "🌱", color: "#6366F1", favori: true },
+    { id: "administratif",  name: n("administratif"),   emoji: "📄", color: "#EF4444", favori: false },
+    { id: "don_cadeau",     name: n("don_cadeau"),     emoji: "🎁", color: "#0EA5E9", favori: false },
   ];
 }
 

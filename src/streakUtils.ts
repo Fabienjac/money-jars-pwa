@@ -6,7 +6,8 @@ const KEY_COUNT     = "mjars:streakCount";
 
 /** Enregistre une saisie du jour et recalcule le streak. Retourne le nouveau compteur. */
 export function updateStreak(): number {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const _d = new Date();
+  const today = `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, "0")}-${String(_d.getDate()).padStart(2, "0")}`; // YYYY-MM-DD local
   const lastDate = localStorage.getItem(KEY_LAST_DATE);
   let count = parseInt(localStorage.getItem(KEY_COUNT) || "0", 10);
 
@@ -34,8 +35,10 @@ export interface StreakState {
 
 /** Lit le streak actuel sans le modifier. */
 export function getStreak(): StreakState {
-  const today     = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const _now = new Date();
+  const today = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
+  const _yst = new Date(_now); _yst.setDate(_yst.getDate() - 1);
+  const yesterday = `${_yst.getFullYear()}-${String(_yst.getMonth() + 1).padStart(2, "0")}-${String(_yst.getDate()).padStart(2, "0")}`;
   const lastDate  = localStorage.getItem(KEY_LAST_DATE);
   const count     = parseInt(localStorage.getItem(KEY_COUNT) || "0", 10);
 

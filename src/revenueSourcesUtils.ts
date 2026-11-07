@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 // src/revenueSourcesUtils.ts
 
 // Même clé que revenueAccountsUtils pour que l'importateur voie les comptes ajoutés dans Réglages
@@ -48,41 +49,10 @@ export function loadRevenueSources(): RevenueSource[] {
  */
 export function getDefaultRevenueSources(): RevenueSource[] {
   return [
-    { 
-      id: 'dtsmoney', 
-      name: 'Dtsmoney', 
-      icon: '💰', 
-      type: 'Passive',
-      category: 'Passive'
-    },
-    { 
-      id: 'lgmcorp_fabien', 
-      name: 'LGMCorp Fabien', 
-      icon: '💎', 
-      type: 'Passive Income',
-      category: 'Passive Income'
-    },
-    { 
-      id: 'lgmcorp_margot', 
-      name: 'LGMCorp Margot', 
-      icon: '💎', 
-      type: 'Passive Income',
-      category: 'Passive Income'
-    },
-    { 
-      id: 'lgmcorp_lise', 
-      name: 'LGMCorp Lise', 
-      icon: '💎', 
-      type: 'Passive Income',
-      category: 'Passive Income'
-    },
-    { 
-      id: 'ushare', 
-      name: 'Ushare', 
-      icon: '🎯', 
-      type: 'Business Income',
-      category: 'Business Income'
-    },
+    { id: 'rev_1', name: t("default.rev.salary"), icon: '💼', type: t("default.revtype.salary"), category: t("default.revtype.salary") },
+    { id: 'rev_2', name: t("default.rev.freelance"), icon: '🧑‍💻', type: t("default.revtype.freelance"), category: t("default.revtype.freelance") },
+    { id: 'rev_3', name: t("default.rev.investments"), icon: '📈', type: t("default.revtype.passive"), category: t("default.revtype.passive") },
+    { id: 'rev_4', name: t("default.rev.other"), icon: '📊', type: t("default.revtype.other"), category: t("default.revtype.other") },
   ];
 }
 

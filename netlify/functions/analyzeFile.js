@@ -1,8 +1,7 @@
 // netlify/functions/analyzeFile.js
-// Analyse la structure d'un fichier et détecte les colonnes
+// Repli serveur pour les PDF non reconnus localement (extraction de texte, sans IA).
+// CSV / XLSX / OFX / QIF et PDF courants sont lus dans le navigateur (src/tabularParse.ts, src/pdfStatement.ts).
 const pdfParse = require("pdf-parse");
-const Papa = require("papaparse");
-const XLSX = require("xlsx");
 const Busboy = require("busboy");
 
 exports.handler = async (event) => {
@@ -34,12 +33,6 @@ exports.handler = async (event) => {
     switch (format) {
       case "pdf":
         structure = await analyzePDF(fileBuffer);
-        break;
-      case "csv":
-        structure = analyzeCSV(fileBuffer);
-        break;
-      case "xlsx":
-        structure = analyzeXLSX(fileBuffer);
         break;
       default:
         throw new Error(`Format non supporté: ${format}`);
@@ -74,69 +67,6 @@ exports.handler = async (event) => {
     };
   }
 };
-
-/**
- * Analyse un CSV
- */
-function analyzeCSV(buffer) {
-  const text = buffer.toString("utf-8");
-  const parsed = Papa.parse(text, {
-    header: true,
-    skipEmptyLines: true,
-    preview: 100, // Limiter à 100 lignes pour l'analyse
-  });
-
-  const headers = parsed.meta.fields || [];
-  const rows = parsed.data;
-
-  // Suggérer les mappings automatiquement
-  const suggestedMappings = headers.map(header => ({
-    sourceColumn: header,
-    targetColumn: suggestMapping(header),
-    confidence: calculateConfidence(header),
-  }));
-
-  return {
-    headers,
-    rows,
-    preview: rows.slice(0, 5),
-    suggestedMappings,
-    totalRows: rows.length,
-  };
-}
-
-/**
- * Analyse un XLSX
- */
-function analyzeXLSX(buffer) {
-  const workbook = XLSX.read(buffer, { type: "buffer" });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  
-  // Convertir en JSON avec header
-  const data = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-  
-  if (data.length === 0) {
-    throw new Error("Le fichier Excel est vide");
-  }
-
-  const headers = Object.keys(data[0]);
-  const rows = data;
-
-  const suggestedMappings = headers.map(header => ({
-    sourceColumn: header,
-    targetColumn: suggestMapping(header),
-    confidence: calculateConfidence(header),
-  }));
-
-  return {
-    headers,
-    rows,
-    preview: rows.slice(0, 5),
-    suggestedMappings,
-    totalRows: rows.length,
-  };
-}
 
 /**
  * Analyse un PDF et tente d'extraire une structure tabulaire

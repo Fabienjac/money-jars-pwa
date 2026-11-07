@@ -2,6 +2,8 @@
 import React from "react";
 import { SearchSpendingResult } from "../types";
 
+import { currencySymbol as curSym } from "../baseCurrency";
+import { t as tr, useLang, localeTag, JAR_LABELS as I18N_JARS } from "../i18n";
 interface JarBarChartProps {
   transactions: SearchSpendingResult[];
 }
@@ -23,16 +25,9 @@ const JAR_COLORS: { [key: string]: string } = {
   GIFT: "#5AC8FA",   // Cyan
 };
 
-const JAR_LABELS: { [key: string]: string } = {
-  NEC: "Nécessités",
-  FFA: "Liberté Financière",
-  LTSS: "Épargne Long Terme",
-  PLAY: "Fun / Play",
-  EDUC: "Éducation",
-  GIFT: "Don / Gift",
-};
 
 export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
+  useLang();
   console.log("📊 JarBarChart - Transactions reçues:", transactions?.length);
 
   if (!transactions || transactions.length === 0) {
@@ -46,10 +41,10 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
       }}>
         <div style={{ fontSize: "48px", marginBottom: "16px" }}>📊</div>
         <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>
-          Aucune transaction à afficher
+          {tr("chart.noTx")}
         </div>
         <div style={{ fontSize: "13px" }}>
-          Ajoutez des transactions pour voir le graphique
+          {tr("chart.addToSee")}
         </div>
       </div>
     );
@@ -69,7 +64,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
       }}>
         <div style={{ fontSize: "48px", marginBottom: "16px" }}>📊</div>
         <div style={{ fontSize: "16px", fontWeight: "600" }}>
-          Impossible de grouper les données
+          {tr("chart.cannotGroup")}
         </div>
       </div>
     );
@@ -103,7 +98,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
     try {
       const [year, month] = monthStr.split('-');
       const date = new Date(parseInt(year), parseInt(month) - 1);
-      return date.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+      return date.toLocaleDateString(localeTag(), { month: 'short', year: 'numeric' });
     } catch (e) {
       return monthStr;
     }
@@ -135,7 +130,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
             fill: "var(--text-main)",
           }}
         >
-          Dépenses par Jarre par Mois
+          {tr("chart.jarByMonth")}
         </text>
 
         {/* Grille horizontale */}
@@ -159,7 +154,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                 fill: "var(--text-muted)",
               }}
             >
-              {tick.toLocaleString()}€
+              {tick.toLocaleString(localeTag())}{curSym()}
             </text>
           </g>
         ))}
@@ -196,7 +191,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
             fill: "var(--text-muted)",
           }}
         >
-          Montant (€)
+          {tr("chart.amount", { cur: curSym() })}
         </text>
 
         {/* Label axe X */}
@@ -210,7 +205,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
             fill: "var(--text-muted)",
           }}
         >
-          Mois
+          {tr("chart.month")}
         </text>
 
         {/* Barres empilées par mois */}
@@ -241,7 +236,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                     style={{ cursor: "pointer" }}
                   >
                     <title>
-                      {formatMonth(data.month)} - {JAR_LABELS[jar] || jar}: {amount.toFixed(2)}€
+                      {formatMonth(data.month)} - {I18N_JARS[jar as keyof typeof I18N_JARS] || jar}: {amount.toFixed(2)}{curSym()}
                     </title>
                   </rect>
                 );
@@ -285,7 +280,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                   fill: "var(--text-main)",
                 }}
               >
-                {data.total.toFixed(0)}€
+                {data.total.toFixed(0)}{curSym()}
               </text>
             </g>
           );
@@ -302,7 +297,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
               fill: "var(--text-main)",
             }}
           >
-            Jarres
+            {tr("chart.jars")}
           </text>
           {usedJars.map((jar, i) => (
             <g key={jar} transform={`translate(0, ${25 + i * 25})`}>
@@ -323,7 +318,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                   fill: "var(--text-main)",
                 }}
               >
-                {JAR_LABELS[jar] || jar}
+                {I18N_JARS[jar as keyof typeof I18N_JARS] || jar}
               </text>
             </g>
           ))}
@@ -363,7 +358,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
               color: "#FF3B30",
               marginBottom: "8px",
             }}>
-              {data.total.toFixed(2)}€
+              {data.total.toFixed(2)}{curSym()}
             </div>
             <div style={{
               display: "flex",
@@ -392,7 +387,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                     <span style={{
                       color: "var(--text-muted)",
                     }}>
-                      {amount.toFixed(0)}€
+                      {amount.toFixed(0)}{curSym()}
                     </span>
                   </div>
                 );

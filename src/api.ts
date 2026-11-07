@@ -1,5 +1,6 @@
 // src/api.ts — backend Supabase
 import { supabase } from "./lib/supabase";
+import { t } from "./i18n";
 import type {
   SpendingRow,
   RevenueRow,
@@ -52,7 +53,7 @@ function clearCache(...keys: string[]) {
 
 export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Non connecté" };
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const { error } = await supabase.from("transactions_spending").insert({
     user_id:      user.id,
@@ -71,6 +72,8 @@ export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; e
 }
 
 export async function updateSpending(rowIndex: number, row: SpendingRow): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("transactions_spending").update({
     date:         toISO(row.date),
     jar:          row.jar,
@@ -79,7 +82,7 @@ export async function updateSpending(rowIndex: number, row: SpendingRow): Promis
     description:  row.description,
     tags:         row.tags ?? "",
     subscription: row.subscription ?? "",
-  }).eq("id", rowIndex);
+  }).eq("id", rowIndex).eq("user_id", user.id);
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
@@ -87,7 +90,9 @@ export async function updateSpending(rowIndex: number, row: SpendingRow): Promis
 }
 
 export async function deleteSpending(rowIndex: number): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("transactions_spending").delete().eq("id", rowIndex);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("transactions_spending").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
   return { ok: true };
@@ -99,7 +104,7 @@ export async function bulkRenameSpendingAccount(
   newName: string
 ): Promise<{ ok: boolean; count: number; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, count: 0, error: "Non connecté" };
+  if (!user) return { ok: false, count: 0, error: t("err.notLoggedIn") };
   const { data, error } = await supabase
     .from("transactions_spending")
     .update({ account: newName })
@@ -147,7 +152,7 @@ export async function searchSpendings(q: string, max = 50): Promise<{ rows: Sear
 
 export async function appendRevenue(row: RevenueRow): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Non connecté" };
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const { error } = await supabase.from("transactions_revenue").insert({
     user_id:         user.id,
@@ -170,6 +175,8 @@ export async function appendRevenue(row: RevenueRow): Promise<{ ok: boolean; err
 }
 
 export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("transactions_revenue").update({
     date:            toISO(row.date),
     source:          row.source,
@@ -182,7 +189,7 @@ export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<
     destination:     row.destination ?? null,
     income_type:     row.incomeType ?? null,
     tags:            row.tags ?? "",
-  }).eq("id", rowIndex);
+  }).eq("id", rowIndex).eq("user_id", user.id);
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
@@ -190,7 +197,9 @@ export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<
 }
 
 export async function deleteRevenue(rowIndex: number): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await supabase.from("transactions_revenue").delete().eq("id", rowIndex);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("transactions_revenue").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
   return { ok: true };
@@ -202,7 +211,7 @@ export async function bulkRenameRevenueSource(
   newName: string
 ): Promise<{ ok: boolean; count: number; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, count: 0, error: "Non connecté" };
+  if (!user) return { ok: false, count: 0, error: t("err.notLoggedIn") };
   const { data, error } = await supabase
     .from("transactions_revenue")
     .update({ source: newName })
@@ -395,7 +404,7 @@ export async function getAccounts(): Promise<Account[]> {
 
 export async function setAccounts(accounts: Account[]): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Non connecté" };
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const rows = accounts.map(a => ({
     user_id:    user.id,
@@ -425,7 +434,7 @@ export async function getRevenueAccounts(): Promise<RevenueAccount[]> {
 
 export async function setRevenueAccounts(accounts: RevenueAccount[]): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Non connecté" };
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const rows = accounts.map(a => ({
     user_id:    user.id,
@@ -461,7 +470,7 @@ export async function saveJarSettings(
   settings: Array<{key: JarKey; percent: number; initialBalance: number}>
 ): Promise<{ok: boolean; error?: string}> {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Non connecté" };
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const rows = settings.map(s => ({
     user_id:         user.id,
     jar_key:         s.key,
@@ -704,18 +713,57 @@ export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<voi
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  // Remplacement complet : supprimer puis réinsérer
-  await supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
+  // Upsert d'abord (les anciennes règles restent intactes si ça échoue),
+  // puis suppression des patterns obsolètes.
+  if (rules.length > 0) {
+    const rows = rules.map(r => ({
+      user_id: user.id,
+      pattern: r.originalKey,
+      jar:     r.jar ?? null,
+      tags:    r.tags.join(","),
+    }));
+    const { error } = await supabase
+      .from("auto_tag_rules")
+      .upsert(rows, { onConflict: "user_id,pattern" });
+    if (error) {
+      console.warn("saveAutoTagRules: erreur upsert", error.message);
+      return;
+    }
+  }
 
-  if (rules.length === 0) return;
+  // Supprimer les règles qui n'existent plus dans le nouveau jeu
+  const activePatterns = rules.map(r => r.originalKey);
+  if (activePatterns.length > 0) {
+    await supabase
+      .from("auto_tag_rules")
+      .delete()
+      .eq("user_id", user.id)
+      .not("pattern", "in", `(${activePatterns.map(p => `"${p.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",")})`);
+  } else {
+    await supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
+  }
+}
 
-  const rows = rules.map(r => ({
-    user_id: user.id,
-    pattern: r.originalKey,
-    jar:     r.jar ?? null,
-    tags:    r.tags.join(","),
-  }));
+// ── Suggestions des utilisateurs ───────────────────────────────────────────────
 
-  const { error } = await supabase.from("auto_tag_rules").insert(rows);
-  if (error) console.warn("saveAutoTagRules: erreur Supabase", error.message);
+export type FeedbackCategory = "bug" | "idea" | "ux";
+
+export async function sendFeedback(input: {
+  category: FeedbackCategory;
+  message: string;
+  email?: string;
+  lang?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+
+  const { error } = await supabase.from("feedback").insert({
+    user_id:  user.id,
+    category: input.category,
+    message:  input.message.slice(0, 2000),
+    email:    input.email || null,
+    lang:     input.lang ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
 }

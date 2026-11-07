@@ -2,6 +2,8 @@
 import React from "react";
 import { SearchSpendingResult } from "../types";
 
+import { currencySymbol as curSym } from "../baseCurrency";
+import { t as tr, useLang, localeTag } from "../i18n";
 interface MonthlyTrendChartProps {
   transactions: SearchSpendingResult[];
 }
@@ -15,6 +17,7 @@ interface MonthlyData {
 export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
   transactions,
 }) => {
+  useLang();
   console.log("📊 MonthlyTrendChart - Transactions reçues:", transactions?.length);
 
   // Vérifier que les transactions existent
@@ -29,10 +32,10 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
       }}>
         <div style={{ fontSize: "48px", marginBottom: "16px" }}>📊</div>
         <div style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>
-          Aucune transaction à afficher
+          {tr("chart.noTx")}
         </div>
         <div style={{ fontSize: "13px" }}>
-          Ajoutez des transactions avec des tags pour voir le graphique
+          {tr("chart.addTagged")}
         </div>
       </div>
     );
@@ -52,7 +55,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
       }}>
         <div style={{ fontSize: "48px", marginBottom: "16px" }}>📊</div>
         <div style={{ fontSize: "16px", fontWeight: "600" }}>
-          Impossible de grouper les transactions par mois
+          {tr("chart.cannotGroupMonth")}
         </div>
       </div>
     );
@@ -108,7 +111,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
     try {
       const [year, month] = monthStr.split('-');
       const date = new Date(parseInt(year), parseInt(month) - 1);
-      return date.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+      return date.toLocaleDateString(localeTag(), { month: 'short', year: 'numeric' });
     } catch (e) {
       return monthStr;
     }
@@ -137,7 +140,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
             fill: "var(--text-main)",
           }}
         >
-          Tendance Mensuelle des Dépenses
+          {tr("chart.trendTitle")}
         </text>
 
         {/* Grille horizontale */}
@@ -161,7 +164,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
                 fill: "var(--text-muted)",
               }}
             >
-              {tick.toLocaleString()}
+              {tick.toLocaleString(localeTag())}
             </text>
           </g>
         ))}
@@ -212,7 +215,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
             fill: "var(--text-muted)",
           }}
         >
-          Montant des Dépenses (€)
+          {tr("chart.spendAmount", { cur: curSym() })}
         </text>
 
         {/* Label axe X */}
@@ -226,7 +229,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
             fill: "var(--text-muted)",
           }}
         >
-          Mois
+          {tr("chart.month")}
         </text>
 
         {/* Gradient pour l'aire */}
@@ -271,7 +274,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
                 style={{ cursor: "pointer" }}
               >
                 <title>
-                  {formatMonth(data.month)}: {data.total.toFixed(2)}€ ({data.count} transactions)
+                  {formatMonth(data.month)}: {data.total.toFixed(2)}{curSym()} ({tr(data.count > 1 ? "stats.txN" : "stats.tx1", { n: data.count })})
                 </title>
               </circle>
 
@@ -333,14 +336,14 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
               fontWeight: "700",
               color: "#007AFF",
             }}>
-              {data.total.toFixed(2)}€
+              {data.total.toFixed(2)}{curSym()}
             </div>
             <div style={{
               fontSize: "10px",
               color: "var(--text-muted)",
               marginTop: "2px",
             }}>
-              {data.count} transaction{data.count > 1 ? "s" : ""}
+              {tr(data.count > 1 ? "stats.txN" : "stats.tx1", { n: data.count })}
             </div>
           </div>
         ))}
