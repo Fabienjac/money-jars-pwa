@@ -12,6 +12,7 @@ import type {
   JarKey,
 } from "./types";
 import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
+import { fetchAllPages } from "./paginate";
 
 // ── Helpers dates ──────────────────────────────────────────────────────────────
 // L'app utilise DD/MM/YYYY en interne ; Supabase stocke en YYYY-MM-DD (type date)
@@ -45,8 +46,22 @@ function setCache<T>(key: string, data: T): void {
   try { localStorage.setItem(key, JSON.stringify({ data, ts: Date.now() })); } catch {}
 }
 
+// Lectures en cours, partagées : plusieurs écrans demandent les mêmes totaux au démarrage ; avec la lecture
+// paginée, chaque doublon coûterait plusieurs requêtes. Une écriture (clearCache) invalide la lecture en cours.
+const inflight = new Map<string, Promise<unknown>>();
+
+function shared<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const existing = inflight.get(key);
+  if (existing) return existing as Promise<T>;
+  const p: Promise<T> = run().finally(() => {
+    if (inflight.get(key) === p) inflight.delete(key);
+  });
+  inflight.set(key, p);
+  return p;
+}
+
 function clearCache(...keys: string[]) {
-  keys.forEach(k => localStorage.removeItem(k));
+  keys.forEach(k => { localStorage.removeItem(k); inflight.delete(k); });
 }
 
 // ── Dépenses ───────────────────────────────────────────────────────────────────
@@ -261,7 +276,11 @@ export async function searchRevenues(q: string, max = 50): Promise<{ rows: Searc
 
 // ── Totaux (calculés depuis les transactions) ──────────────────────────────────
 
-export async function fetchTotals(forceRefresh = false): Promise<TotalsResponse> {
+export function fetchTotals(forceRefresh = false): Promise<TotalsResponse> {
+  return shared("mjars:cache:totals", () => fetchTotalsImpl(forceRefresh));
+}
+
+async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
   const CACHE_KEY = "mjars:cache:totals";
   if (!forceRefresh) {
     const cached = getCached<TotalsResponse>(CACHE_KEY);
@@ -280,17 +299,26 @@ export async function fetchTotals(forceRefresh = false): Promise<TotalsResponse>
     .select("jar_key, percent, initial_balance")
     .eq("user_id", user.id);
 
-  // Dépenses depuis le début (pour le net global) — on group par jar côté JS
-  const { data: spendings } = await supabase
-    .from("transactions_spending")
-    .select("jar, amount")
-    .eq("user_id", user.id);
+  // Dépenses depuis le début (pour le net global) — on group par jar côté JS.
+  // Lecture paginée : Supabase tronque à 1000 lignes par requête, sans erreur.
+  const spendings = await fetchAllPages((from, to) =>
+    supabase
+      .from("transactions_spending")
+      .select("jar, amount")
+      .eq("user_id", user.id)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
   // Revenus depuis le début
-  const { data: revenues } = await supabase
-    .from("transactions_revenue")
-    .select("amount, rate, crypto_quantity")
-    .eq("user_id", user.id);
+  const revenues = await fetchAllPages((from, to) =>
+    supabase
+      .from("transactions_revenue")
+      .select("amount, rate, crypto_quantity")
+      .eq("user_id", user.id)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
   const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
   const DEFAULT_PCT: Record<JarKey, number> = { NEC: 55, FFA: 10, LTSS: 10, PLAY: 10, EDUC: 10, GIFT: 5 };
@@ -516,7 +544,11 @@ export interface AnalyticsResponse {
   };
 }
 
-export async function fetchAnalytics(forceRefresh = false): Promise<AnalyticsResponse> {
+export function fetchAnalytics(forceRefresh = false): Promise<AnalyticsResponse> {
+  return shared("mjars:cache:analytics", () => fetchAnalyticsImpl(forceRefresh));
+}
+
+async function fetchAnalyticsImpl(forceRefresh: boolean): Promise<AnalyticsResponse> {
   const CACHE_KEY = "mjars:cache:analytics";
   if (!forceRefresh) {
     const cached = getCached<AnalyticsResponse>(CACHE_KEY);
@@ -531,15 +563,24 @@ export async function fetchAnalytics(forceRefresh = false): Promise<AnalyticsRes
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
   const fromDate = twelveMonthsAgo.toISOString().split("T")[0];
 
-  const [{ data: spData }, { data: revData }] = await Promise.all([
-    supabase.from("transactions_spending")
-      .select("date, jar, amount")
-      .eq("user_id", user.id)
-      .gte("date", fromDate),
-    supabase.from("transactions_revenue")
-      .select("date, source, amount, crypto_quantity, rate")
-      .eq("user_id", user.id)
-      .gte("date", fromDate),
+  // Lectures paginées (Supabase tronque à 1000 lignes par requête, sans erreur)
+  const [spData, revData] = await Promise.all([
+    fetchAllPages((from, to) =>
+      supabase.from("transactions_spending")
+        .select("date, jar, amount")
+        .eq("user_id", user.id)
+        .gte("date", fromDate)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllPages((from, to) =>
+      supabase.from("transactions_revenue")
+        .select("date, source, amount, crypto_quantity, rate")
+        .eq("user_id", user.id)
+        .gte("date", fromDate)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
   ]);
 
   // Group par mois YYYY-MM
@@ -778,23 +819,17 @@ export async function fetchSpendingsSince(fromISO: string): Promise<Array<{ date
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const PAGE = 1000;
-  const out: Array<{ date: string; amount: number; tags: string }> = [];
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase
+  const data = await fetchAllPages((rangeFrom, rangeTo) =>
+    supabase
       .from("transactions_spending")
       .select("date, amount, tags")
       .eq("user_id", user.id)
       .gte("date", fromISO)
       .order("date", { ascending: true })
       .order("id", { ascending: true })
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
-    if (!data || data.length === 0) break;
-    for (const r of data) out.push({ date: String(r.date), amount: Number(r.amount), tags: r.tags ?? "" });
-    if (data.length < PAGE) break;
-  }
-  return out;
+      .range(rangeFrom, rangeTo)
+  );
+  return data.map((r) => ({ date: String(r.date), amount: Number(r.amount), tags: r.tags ?? "" }));
 }
 
 // Étiquettes que l'utilisateur considère « extraordinaires », stockées dans column_mappings
