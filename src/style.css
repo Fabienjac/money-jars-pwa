@@ -60,6 +60,12 @@
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
   --border-color: rgba(0, 0, 0, 0.08);
+
+  /* Variantes de texte (contraste WCAG AA sur fond clair) des couleurs vives de statut */
+  --ok-text: #1b7f37;
+  --warn-text: #b85c00;
+  --danger-text: #c4130a;
+  --lime-text: #4d7c0f;
 }
 
 .dark {
@@ -73,7 +79,13 @@
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  
+
+  /* Sur fond sombre, les couleurs vives d'origine sont assez contrastées */
+  --ok-text: #34c759;
+  --warn-text: #ff9f0a;
+  --danger-text: #ff6961;
+  --lime-text: #a3e635;
+
   --jar-nec-bg: linear-gradient(135deg, rgba(0, 122, 255, 0.15) 0%, rgba(0, 122, 255, 0.08) 100%);
   --jar-ffa-bg: linear-gradient(135deg, rgba(52, 199, 89, 0.15) 0%, rgba(52, 199, 89, 0.08) 100%);
   --jar-ltss-bg: linear-gradient(135deg, rgba(255, 214, 10, 0.15) 0%, rgba(255, 214, 10, 0.08) 100%);
@@ -3715,3 +3727,42 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .feedback-error { margin-top: 8px; font-size: 13px; color: #FF3B30; }
 .feedback-panel .settings-btn-group { margin-top: 18px; display: flex; gap: 10px; }
 .feedback-close { width: 100%; margin-top: 8px; }
+
+
+/* ========================================
+   ACCUEIL — corrections ergonomie (mobile)
+   ======================================== */
+
+/* Pourcentage de jarre : teinte assombrie en clair pour rester lisible (le jaune LTSS est quasi invisible sinon) */
+.jar-percent { color: color-mix(in srgb, var(--c, var(--text-main)) 60%, #000); }
+.dark .jar-percent { color: var(--c, var(--text-main)); }
+
+/* En-tête de carte : badge « Dépassé » + pourcentage passent à la ligne au lieu de déborder */
+.jar-card-v2 .jar-card-header { flex-wrap: wrap; gap: 6px 8px; }
+.jar-card-v2 .jar-card-header > div:last-child { flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
+
+/* Montant : le symbole reste collé au nombre */
+.jar-card-v2 .jar-amount { flex-wrap: nowrap; white-space: nowrap; }
+
+.jar-remaining-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.jars-v2-summary-scope {
+  margin: 2px 0 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* En-tête compact : nom de la jarre + pourcentage tiennent sur une ligne dans une carte étroite (≈ 130 px) */
+.jar-card-v2 .jar-emoji { font-size: 22px; }
+.jar-card-v2 .jar-card-title { gap: 6px; min-width: 0; }
+.jar-card-v2 .jar-percent { font-size: 15px; padding: 3px 8px; }
+@media (max-width: 420px) {
+  .jar-card-v2 { padding: 16px; }
+}
