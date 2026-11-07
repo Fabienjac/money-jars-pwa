@@ -767,3 +767,51 @@ export async function sendFeedback(input: {
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
+
+// ── Train de vie (dépenses hors extraordinaires) ───────────────────────────────
+
+/**
+ * Dépenses (date ISO, montant, étiquettes) depuis une date. Lues par pages de 1000 :
+ * Supabase plafonne chaque requête, et la moyenne annuelle doit porter sur toutes les lignes.
+ */
+export async function fetchSpendingsSince(fromISO: string): Promise<Array<{ date: string; amount: number; tags: string }>> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const PAGE = 1000;
+  const out: Array<{ date: string; amount: number; tags: string }> = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("transactions_spending")
+      .select("date, amount, tags")
+      .eq("user_id", user.id)
+      .gte("date", fromISO)
+      .order("date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    if (!data || data.length === 0) break;
+    for (const r of data) out.push({ date: String(r.date), amount: Number(r.amount), tags: r.tags ?? "" });
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
+// Étiquettes que l'utilisateur considère « extraordinaires », stockées dans column_mappings
+// sous une clé à part (n'interfère pas avec user_budget_prefs).
+const LIFESTYLE_PREFS_KEY = "lifestyle_prefs";
+
+export async function fetchLifestylePrefs(): Promise<{ extraordinaryTags: string[] }> {
+  try {
+    const mappings = await fetchColumnMappings();
+    const prefs = mappings[LIFESTYLE_PREFS_KEY] as { extraordinaryTags?: unknown } | undefined;
+    const tags = Array.isArray(prefs?.extraordinaryTags) ? prefs!.extraordinaryTags.filter((x): x is string => typeof x === "string") : [];
+    return { extraordinaryTags: tags };
+  } catch {
+    return { extraordinaryTags: [] };
+  }
+}
+
+export async function saveLifestylePrefs(prefs: { extraordinaryTags: string[] }): Promise<void> {
+  await saveColumnMappingToSheet(LIFESTYLE_PREFS_KEY, prefs);
+}

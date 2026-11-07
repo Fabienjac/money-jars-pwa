@@ -5,6 +5,7 @@ import { fetchTotals, fetchAnalytics, fetchNetWorth, AnalyticsResponse, searchSp
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, StreakState } from "../streakUtils";
+import LifestyleCard from "./LifestyleCard";
 
 import { currencySymbol as curSym } from "../baseCurrency";
 import { t, useT, type TKey, localeTag, monthShort, monthLong, JAR_LABELS, JAR_EMPTY_COPY } from "../i18n";
@@ -930,6 +931,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
         )}
       </div>
 
+      {/* 🧭 Train de vie : dépense / jour hors dépenses extraordinaires */}
+      <LifestyleCard />
+
       {/* 📉 Widget dépenses / jour — toujours visible */}
       <section style={{ padding: "0 16px 12px" }}>
         <div style={{
@@ -943,6 +947,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
             <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               {t("home.avgPerDay")}
+              <span style={{ display: "block", textTransform: "none", letterSpacing: 0, fontWeight: 500, fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>
+                {t("home.avgAllIncluded")}
+              </span>
             </div>
             <div style={{ fontSize: "10px", color: lastImportLabel === t("home.never") ? "var(--warn-text)" : "var(--text-light)", display: "flex", alignItems: "center", gap: "3px" }}>
               <span>🔄</span>
