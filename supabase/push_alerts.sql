@@ -29,3 +29,9 @@ create table if not exists jar_alert_notified (
   primary key (user_id, jar_key)
 );
 alter table jar_alert_notified enable row level security;
+
+-- Droits de la clé serveur (service_role) : la fonction Netlify lit tes abonnements et tes totaux, et mémorise les niveaux notifiés.
+-- Sur un projet où Supabase n'accorde pas ces droits automatiquement, sans cela : « permission denied for table ... ».
+grant usage on schema public to service_role;
+grant select, insert, update, delete on push_subscriptions, jar_alert_notified to service_role;
+grant select on jar_settings, transactions_spending, transactions_revenue to service_role;
