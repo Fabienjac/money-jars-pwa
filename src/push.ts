@@ -112,22 +112,32 @@ export async function sendTestPush(): Promise<{ sent: number; devices: number } 
 // Si aucun appareil n'est abonné, inutile d'interroger le serveur à chaque alerte : on réessaie après 24 h.
 const NO_DEVICE_KEY = "mjars:pushNoDeviceUntil";
 
+let jarAlertRequest: Promise<boolean> | null = null;
+
 /**
- * Demande au serveur d'envoyer les alertes de jarres qui viennent d'apparaître. Silencieux en cas d'échec :
- * le point rouge dans l'app reste la source de vérité.
+ * Demande au serveur d'envoyer les alertes de jarres qui viennent d'apparaître. Renvoie true si la demande a été
+ * traitée (ou inutile), false si elle a échoué : l'appelant ne doit alors pas la considérer comme faite, pour
+ * réessayer plus tard. Silencieux : le point rouge dans l'app reste la source de vérité.
  */
-export async function requestJarAlertPush(): Promise<void> {
-  if (!VAPID_PUBLIC_KEY) return;
-  try {
-    const until = Number(localStorage.getItem(NO_DEVICE_KEY) || 0);
-    if (until > Date.now()) return;
-  } catch { /* stockage indisponible : on continue */ }
-  try {
-    const r = await call("jarAlerts");
-    if (r && r.devices === 0) {
-      try { localStorage.setItem(NO_DEVICE_KEY, String(Date.now() + 24 * 3600 * 1000)); } catch { /* idem */ }
+export function requestJarAlertPush(): Promise<boolean> {
+  if (!VAPID_PUBLIC_KEY) return Promise.resolve(true);
+  if (jarAlertRequest) return jarAlertRequest; // une seule demande à la fois
+  jarAlertRequest = (async () => {
+    try {
+      const until = Number(localStorage.getItem(NO_DEVICE_KEY) || 0);
+      if (until > Date.now()) return true;
+    } catch { /* stockage indisponible : on continue */ }
+    try {
+      const r = await call("jarAlerts");
+      if (r && r.devices === 0) {
+        try { localStorage.setItem(NO_DEVICE_KEY, String(Date.now() + 24 * 3600 * 1000)); } catch { /* idem */ }
+      }
+      return r !== null;
+    } catch {
+      return false; // hors ligne, fonction indisponible ou mal configurée
     }
-  } catch { /* hors ligne ou fonction indisponible */ }
+  })().finally(() => { jarAlertRequest = null; });
+  return jarAlertRequest;
 }
 
 // Textes d'état pour l'écran « Plus »

@@ -75,8 +75,9 @@ export function useJarAlerts(userId: string | null, refreshOn: unknown) {
       // Notification push : seulement quand un niveau vient d'être franchi (le serveur relit tout et dédoublonne)
       const pushedBefore = readLevels(pushedKey(userId));
       if (hasUnseenAlerts(next, pushedBefore)) {
-        writeLevels(pushedKey(userId), markAllSeen(next));
-        void requestJarAlertPush();
+        // Le niveau n'est mémorisé qu'une fois la demande réussie : en cas d'échec on réessaiera au prochain rafraîchissement
+        const snapshot = markAllSeen(next);
+        void requestJarAlertPush().then((ok) => { if (ok) writeLevels(pushedKey(userId), snapshot); });
       } else {
         const lowered = reconcileSeen(next, pushedBefore);
         if (JSON.stringify(lowered) !== JSON.stringify(pushedBefore)) writeLevels(pushedKey(userId), lowered);
