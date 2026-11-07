@@ -10,3 +10,7 @@ scripts/
 
 # Relevés bancaires réels (données sensibles, jamais commités)
 EXEMPLE DE RELEVES/
+
+# Build et archives locales
+dist/
+*.zip
