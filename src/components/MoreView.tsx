@@ -1,7 +1,8 @@
 // src/components/MoreView.tsx
-import React from "react";
+import React, { useState } from "react";
 
 import { useT } from "../i18n";
+import FeedbackForm from "./FeedbackForm";
 interface MoreViewProps {
   darkMode: boolean;
   onToggleDark: () => void;
@@ -11,6 +12,7 @@ interface MoreViewProps {
 
 const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, onOpenSettings }) => {
   const t = useT();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   return (
   <div className="more-view">
     <h2 className="more-title">{t("nav.more")}</h2>
@@ -31,6 +33,14 @@ const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, o
         </span>
         <span className="more-item-chevron">›</span>
       </button>
+      <button type="button" className="more-item" onClick={() => setFeedbackOpen((v) => !v)} aria-expanded={feedbackOpen}>
+        <span className="more-item-icon">💡</span>
+        <span className="more-item-text">
+          <span className="more-item-label">{t("more.feedback")}</span>
+          <span className="more-item-sub">{t("more.feedbackSub")}</span>
+        </span>
+        <span className="more-item-chevron">{feedbackOpen ? "⌄" : "›"}</span>
+      </button>
       <button type="button" className="more-item" onClick={onToggleDark}>
         <span className="more-item-icon">{darkMode ? "☀️" : "🌙"}</span>
         <span className="more-item-text">
@@ -39,6 +49,7 @@ const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, o
         </span>
       </button>
     </div>
+    {feedbackOpen && <FeedbackForm onClose={() => setFeedbackOpen(false)} />}
   </div>
   );
 };

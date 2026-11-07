@@ -743,3 +743,27 @@ export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<voi
     await supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
   }
 }
+
+// ── Suggestions des utilisateurs ───────────────────────────────────────────────
+
+export type FeedbackCategory = "bug" | "idea" | "ux";
+
+export async function sendFeedback(input: {
+  category: FeedbackCategory;
+  message: string;
+  email?: string;
+  lang?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+
+  const { error } = await supabase.from("feedback").insert({
+    user_id:  user.id,
+    category: input.category,
+    message:  input.message.slice(0, 2000),
+    email:    input.email || null,
+    lang:     input.lang ?? null,
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}

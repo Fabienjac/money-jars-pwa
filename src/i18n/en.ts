@@ -790,6 +790,27 @@ const en: Record<keyof typeof fr, string> = {
   "imp.localNote": "🔒 Your file is read on your device: it is not sent anywhere.",
   "imp.pdfUnreadable": "The text of this PDF is unreadable (printed, copied or protected file). Download the original statement from your bank's app, or export it as CSV or OFX.",
   "imp.notice.cancelled": "{n} expense(s) skipped because a refund or reversal of the same amount cancels them.",
+  // Feedback form
+  "more.feedback": "An idea, a bug?",
+  "more.feedbackSub": "Tell us what's missing or what's stuck",
+  "fb.title": "An idea, a bug?",
+  "fb.desc": "Your message goes straight to my inbox: I read everything.",
+  "fb.category": "Message type",
+  "fb.cat.idea": "💡 Idea",
+  "fb.cat.bug": "🐞 Bug",
+  "fb.cat.ux": "🎨 Ease of use",
+  "fb.message": "Your message",
+  "fb.messagePlaceholder": "Describe your idea or what happened…",
+  "fb.email": "Email (optional, so I can reply)",
+  "fb.emailPlaceholder": "you@example.com",
+  "fb.emailInvalid": "This email address doesn't look valid.",
+  "fb.send": "Send",
+  "fb.sending": "Sending…",
+  "fb.cancel": "Cancel",
+  "fb.close": "Close",
+  "fb.thanksTitle": "Thank you!",
+  "fb.thanks": "Your message has been sent.",
+  "fb.error": "Couldn't send right now. Please try again later.",
 };
 
 export default en;

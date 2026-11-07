@@ -788,6 +788,27 @@ const fr = {
   "imp.localNote": "🔒 Votre fichier est lu sur votre appareil : il n'est envoyé nulle part.",
   "imp.pdfUnreadable": "Le texte de ce PDF est illisible (fichier imprimé, copié ou protégé). Téléchargez le relevé original depuis l'application de votre banque, ou exportez-le en CSV ou OFX.",
   "imp.notice.cancelled": "{n} dépense(s) ignorée(s) car annulée(s) par un remboursement ou une reversa du même montant.",
+  // Formulaire de suggestions
+  "more.feedback": "Une idée, un bug ?",
+  "more.feedbackSub": "Dites-nous ce qui manque ou ce qui coince",
+  "fb.title": "Une idée, un bug ?",
+  "fb.desc": "Votre message arrive directement dans ma boîte : je lis tout.",
+  "fb.category": "Type de message",
+  "fb.cat.idea": "💡 Idée",
+  "fb.cat.bug": "🐞 Bug",
+  "fb.cat.ux": "🎨 Confort d'utilisation",
+  "fb.message": "Votre message",
+  "fb.messagePlaceholder": "Décrivez votre idée ou ce qui s'est passé…",
+  "fb.email": "E-mail (facultatif, pour vous répondre)",
+  "fb.emailPlaceholder": "vous@exemple.com",
+  "fb.emailInvalid": "Cette adresse e-mail ne semble pas valide.",
+  "fb.send": "Envoyer",
+  "fb.sending": "Envoi…",
+  "fb.cancel": "Annuler",
+  "fb.close": "Fermer",
+  "fb.thanksTitle": "Merci !",
+  "fb.thanks": "Votre message a bien été envoyé.",
+  "fb.error": "Envoi impossible pour le moment. Réessayez plus tard.",
 } as const;
 
 export default fr;
