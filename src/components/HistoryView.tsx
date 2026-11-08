@@ -60,6 +60,16 @@ const fmt = (value: number | undefined | null, dec = 2) => {
   return value.toFixed(dec);
 };
 
+/**
+ * Montant signé pour l'affichage. Une dépense s'affiche « - » et un revenu « + », sauf si le montant est négatif
+ * (remboursement, correction) : le signe s'inverse au lieu d'afficher « --20 ».
+ */
+const signedAmount = (amount: number, kind: Mode): { sign: "+" | "-"; abs: number; refund: boolean } => {
+  const neg = (amount || 0) < 0;
+  const spending = kind === "spending";
+  return { sign: spending !== neg ? "-" : "+", abs: Math.abs(amount || 0), refund: neg };
+};
+
 const parseDate = (v: string): Date | null => {
   if (!v) return null;
   // DD/MM/YYYY → forcer l'interprétation correcte
@@ -654,7 +664,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
         <span className="hist-day-label">{label}</span>
         {stats && (
           <span className="hist-day-total">
-            {mode === "spending" ? "-" : "+"}{fmt(stats.total)} {curSym()}
+            {signedAmount(stats.total, mode).sign}{fmt(signedAmount(stats.total, mode).abs)} {curSym()}
             {stats.count > 1 && <span className="hist-day-count"> · {stats.count}</span>}
           </span>
         )}
@@ -694,7 +704,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, color: "#FF3B30" }}>-{fmt(row.amount)}{curSym()}</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: row.amount < 0 ? "#34C759" : "#FF3B30" }}>{signedAmount(row.amount, "spending").sign}{fmt(Math.abs(row.amount))}{curSym()}</span>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
           </div>
         </div>
@@ -750,7 +760,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, color: "#34C759" }}>+{fmt(row.amount)}{curSym()}</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: row.amount < 0 ? "#FF3B30" : "#34C759" }}>{signedAmount(row.amount, "revenue").sign}{fmt(Math.abs(row.amount))}{curSym()}</span>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
           </div>
         </div>
@@ -1193,7 +1203,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                   )}
                 </div>
                 <span style={{ fontSize: 17, fontWeight: 700, color: mode === "spending" ? "#FF3B30" : "#34C759" }}>
-                  {mode === "spending" ? "-" : "+"}{fmt(totalFiltered)} {curSym()}
+                  {signedAmount(totalFiltered, mode).sign}{fmt(signedAmount(totalFiltered, mode).abs)} {curSym()}
                 </span>
               </div>
               <button type="button" className="hist-export" onClick={exportCsv}>
