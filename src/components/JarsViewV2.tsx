@@ -344,7 +344,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   }, []);
 
   /** Top 5 tags du mois */
-  const topTags = useMemo(() => monthlyTagStats.slice(0, 5), [monthlyTagStats]);
+  const [showAllTags, setShowAllTags] = useState(false);
+  const topTags = useMemo(() => (showAllTags ? monthlyTagStats : monthlyTagStats.slice(0, 5)), [monthlyTagStats, showAllTags]);
 
   /** Mois affiché dans le bloc « Mes jarres » (0 = mois en cours, jusqu'à 11 mois en arrière) */
   const MAX_MONTHS_BACK = 11;
@@ -722,9 +723,16 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                   );
                 })}
                 {monthlyTagStats.length > 5 && (
-                  <div style={{ fontSize: "11px", color: "var(--text-light)", textAlign: "center", marginTop: "4px" }}>
-                    {t("home.moreCategories", { n: monthlyTagStats.length - 5 })}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllTags((v) => !v)}
+                    aria-expanded={showAllTags}
+                    style={{ display: "block", width: "100%", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: "12px", fontWeight: 600, color: "#007AFF", textAlign: "center", marginTop: "6px", padding: "6px 0" }}
+                  >
+                    {showAllTags
+                      ? t("home.fewerCategories")
+                      : t(monthlyTagStats.length - 5 === 1 ? "home.moreCategoriesOne" : "home.moreCategories", { n: monthlyTagStats.length - 5 })}
+                  </button>
                 )}
               </>
             )}

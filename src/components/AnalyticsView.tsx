@@ -9,6 +9,13 @@ import GlobalSummary from "./GlobalSummary";
 import { loadTab, saveTab, type AnalyticsTab } from "../analyticsState";
 
 
+/** « 🔁 Abonnements » → pastille + texte : l'émoji se masque quand l'écran est étroit pour que le texte tienne. */
+const TabLabel: React.FC<{ text: string }> = ({ text }) => {
+  const m = text.match(/^(\S+)\s+(.+)$/);
+  const hasIcon = !!m && !/^[\p{L}\p{N}]/u.test(m[1]);
+  return hasIcon ? (<><span className="analytics-tab-icon" aria-hidden="true">{m![1]}</span><span className="analytics-tab-text">{m![2]}</span></>) : <span className="analytics-tab-text">{text}</span>;
+};
+
 const Fallback = () => {
   const t = useT();
   return (
@@ -36,7 +43,7 @@ const AnalyticsView: React.FC = () => {
             className={`analytics-tab${tab === "report" ? " analytics-tab--active" : ""}`}
             onClick={() => setTab("report")}
           >
-            {t("analytics.report")}
+            <TabLabel text={t("analytics.report")} />
           </button>
           <button
             type="button"
@@ -45,7 +52,7 @@ const AnalyticsView: React.FC = () => {
             className={`analytics-tab${tab === "tags" ? " analytics-tab--active" : ""}`}
             onClick={() => setTab("tags")}
           >
-            {t("analytics.byTag")}
+            <TabLabel text={t("analytics.byTag")} />
           </button>
           <button
             type="button"
@@ -54,7 +61,7 @@ const AnalyticsView: React.FC = () => {
             className={`analytics-tab${tab === "subs" ? " analytics-tab--active" : ""}`}
             onClick={() => setTab("subs")}
           >
-            {t("analytics.subscriptions")}
+            <TabLabel text={t("analytics.subscriptions")} />
           </button>
         </div>
       </div>

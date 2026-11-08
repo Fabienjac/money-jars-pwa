@@ -221,6 +221,8 @@ const fr = {
   "home.setBudget": "Fixer un budget",
   "home.budgetPlaceholder": "budget",
   "home.moreCategories": "+{n} autres catégories",
+  "home.moreCategoriesOne": "+1 autre catégorie",
+  "home.fewerCategories": "Voir moins",
   "home.allocated": "reçu {amount}",
   "home.basedOn": "Basé sur {amount} de revenus ce mois",
   "home.jarsActivate": "🌱 Vos jarres s'activent dès votre premier revenu",

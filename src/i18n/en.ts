@@ -223,6 +223,8 @@ const en: Record<keyof typeof fr, string> = {
   "home.setBudget": "Set a budget",
   "home.budgetPlaceholder": "budget",
   "home.moreCategories": "+{n} more categories",
+  "home.moreCategoriesOne": "+1 more category",
+  "home.fewerCategories": "Show less",
   "home.allocated": "received {amount}",
   "home.basedOn": "Based on {amount} of income this month",
   "home.jarsActivate": "🌱 Your jars activate with your first income",
