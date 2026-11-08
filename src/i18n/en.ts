@@ -881,6 +881,7 @@ const en: Record<keyof typeof fr, string> = {
   "xfer.all": "All",
   "xfer.note": "Note (optional)",
   "xfer.submit": "Transfer",
+  "xfer.available": "Available balance: {amount}",
   "xfer.balance": "balance {amount}",
   "xfer.noSource": "No jar has a positive balance to transfer.",
   "xfer.warnSavings": "You are taking from a savings jar: this dips into your capital.",

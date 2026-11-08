@@ -263,7 +263,7 @@ const JarTransfers: React.FC = () => {
                   <select value={from} onChange={(e) => setFrom(e.target.value as JarKey | "")} className="jar-input">
                     <option value="" disabled>—</option>
                     {sources.map((k) => (
-                      <option key={k} value={k}>{label(k)} · {t("xfer.balance", { amount: money(availableToTransfer(net(k))) })}</option>
+                      <option key={k} value={k}>{label(k)}</option>
                     ))}
                   </select>
                 </label>
@@ -304,8 +304,9 @@ const JarTransfers: React.FC = () => {
                 </label>
               </div>
 
+              {from && <p className="jt-hint">{t("xfer.available", { amount: money(availableToTransfer(net(from))) })}</p>}
               {from && isSavingsJar(from) && <p className="jt-warn">{t("xfer.warnSavings")}</p>}
-              {net(to) < -0.005 && <p className="jt-hint">{t("xfer.toDeficit", { amount: money(-net(to)) })}</p>}
+              {deficitToForgive(net(to)) > 0 && <p className="jt-hint">{t("xfer.toDeficit", { amount: money(deficitToForgive(net(to))) })}</p>}
               {from && Number.isFinite(parsed) && parsed > 0 && !manualError && (
                 <p className="jt-hint">
                   {t("xfer.after", { from: label(from), fromAmount: money(afterFrom), to: label(to), toAmount: money(afterTo) })}

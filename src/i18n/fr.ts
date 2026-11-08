@@ -879,6 +879,7 @@ const fr = {
   "xfer.all": "Tout",
   "xfer.note": "Note (facultatif)",
   "xfer.submit": "Transférer",
+  "xfer.available": "Solde disponible : {amount}",
   "xfer.balance": "solde {amount}",
   "xfer.noSource": "Aucune jarre n'a de solde positif à transférer.",
   "xfer.warnSavings": "Tu prélèves sur une jarre d'épargne : tu entames ton capital.",
