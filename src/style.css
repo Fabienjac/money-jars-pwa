@@ -4028,3 +4028,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .hist-range-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 140px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--text-muted); }
 .hist-range-field input { padding: 9px 10px; border: 1.5px solid var(--border-color); border-radius: 10px; background: var(--bg-card); color: var(--text-main); font-family: inherit; font-size: 15px; min-width: 0; }
 .hist-more { padding: 12px; border: 1.5px solid var(--border-color); border-radius: 12px; background: var(--bg-card); color: #007AFF; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* Historique : recherche élargie, étiquette, montant minimum, tri, titres par jour, export */
+.hist-min { display: flex; flex-direction: column; gap: 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.hist-min-input { display: inline-flex; align-items: center; gap: 8px; width: 160px; max-width: 100%; padding: 0 12px; border: 1.5px solid var(--border-color); border-radius: 10px; background: var(--bg-card); font-size: 15px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.hist-min-input input { flex: 1; min-width: 0; padding: 9px 0; border: 0; outline: 0; background: none; color: var(--text-main); font-family: inherit; font-size: 15px; }
+.hist-day { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 4px 0; }
+.hist-day:first-child { padding-top: 2px; }
+.hist-day-label { min-width: 0; font-size: 13px; font-weight: 700; color: var(--text-main); }
+.hist-day-label::first-letter { text-transform: uppercase; }
+.hist-day-total { flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.hist-day-count { font-weight: 500; }
+.hist-export { margin-top: 8px; padding: 4px 0; border: 0; background: none; color: #007AFF; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }

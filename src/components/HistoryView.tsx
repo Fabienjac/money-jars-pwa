@@ -1,5 +1,5 @@
 // src/components/HistoryView.tsx - VERSION REFACTORISÉE (Features 4 & 5)
-import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   fetchAllSpendings, fetchAllRevenues,
   updateSpending, updateRevenue,
@@ -15,6 +15,10 @@ import { Account } from "../types";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { useT, t as tr, localeTag } from "../i18n";
 import { inBounds, periodBounds, type PeriodFilter } from "../historyPeriod";
+import {
+  NO_TAG, csvNumber, dayKey, dayTotals, matchesSearch, matchesTag, parseMinAmount, passesMinAmount, sortRows, toCsv,
+  type SortKey,
+} from "../historyFilters";
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
@@ -35,6 +39,9 @@ type MainTab = "history" | "report";
 /** Nombre de lignes affichées d'un coup ; le reste s'ouvre par « Afficher plus » (les totaux portent sur tout). */
 const PAGE = 50;
 const FILTERS_OPEN_KEY = "mjars:historyFiltersOpen";
+const SORT_LABEL_KEYS = {
+  dateDesc: "hist.sortNewest", dateAsc: "hist.sortOldest", amountDesc: "hist.sortBiggest", amountAsc: "hist.sortSmallest",
+} as const;
 
 export type HistoryUseEntry =
   | { kind: "spending"; row: SearchSpendingResult }
@@ -110,6 +117,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const [accountFilter, setAccountFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [destinationFilter, setDestinationFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [minAmountRaw, setMinAmountRaw] = useState(""); // montant minimum saisi (« 100 »)
+  const [sort, setSort] = useState<SortKey>("dateDesc");
 
   // ── Card & edit state ─────────────────────────────────────────────
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
@@ -129,19 +139,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const [reportRevenues, setReportRevenues] = useState<SearchRevenueResult[]>([]);
   const [reportGenerated, setReportGenerated] = useState(false);
 
-  // ── Search (debounced) ────────────────────────────────────────────
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const doSearch = useCallback(async (q: string, m: Mode) => {
+  // ── Search ────────────────────────────────────────────────────────
+  // Tout l'historique est lu une fois (par pages) ; la recherche, les filtres et le tri se font ensuite sur l'appareil :
+  // pas de nouvelle requête à chaque frappe, et la recherche peut porter sur les étiquettes et le compte, pas
+  // seulement sur le libellé.
+  const doSearch = useCallback(async (m: Mode) => {
     setLoading(true);
     setError(null);
     try {
       if (m === "spending") {
-        // Tout l'historique (lecture par pages) : une limite fixe tronquait en silence les totaux et les périodes
-        setSpendings(await fetchAllSpendings(q));
+        setSpendings(await fetchAllSpendings());
         setRevenues([]);
       } else {
-        setRevenues(await fetchAllRevenues(q));
+        setRevenues(await fetchAllRevenues());
         setSpendings([]);
       }
     } catch (e: any) {
@@ -159,11 +169,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   }, []);
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const delay = query === "" ? 0 : 400;
-    debounceRef.current = setTimeout(() => doSearch(query, mode), delay);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [mode, query, doSearch]);
+    doSearch(mode);
+  }, [mode, doSearch]);
 
   // ── Computed filters ──────────────────────────────────────────────
   const periodRange = useMemo(() => periodBounds(periodFilter, new Date(), customFrom, customTo), [periodFilter, customFrom, customTo]);
@@ -186,24 +193,73 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     return null;
   }, [periodFilter, periodRange, customFrom, customTo]);
 
+  const minAmount = useMemo(() => parseMinAmount(minAmountRaw), [minAmountRaw]);
+
+  /** Noms des étiquettes d'une ligne (pour la recherche) : « Alimentation » se trouve en tapant « alim ». */
+  const tagNames = (tags: string | undefined) =>
+    tagsFromString(tags).map((id) => getTagById(id)?.name ?? id).join(" ");
+
+  const timeOf = (dateStr: string) => parseDate(dateStr)?.getTime() ?? 0;
+
   const filteredSpendings = useMemo(() =>
-    spendings.filter(s => {
-      if (!inBounds(parseDate(s.date), periodRange)) return false;
-      if (jarFilter !== "all" && s.jar !== jarFilter) return false;
-      if (accountFilter !== "all" && s.account !== accountFilter) return false;
-      return true;
-    }),
-    [spendings, periodRange, jarFilter, accountFilter]
+    sortRows(
+      spendings.filter(s => {
+        if (!inBounds(parseDate(s.date), periodRange)) return false;
+        if (jarFilter !== "all" && s.jar !== jarFilter) return false;
+        if (accountFilter !== "all" && s.account !== accountFilter) return false;
+        if (!matchesTag(tagsFromString(s.tags), tagFilter)) return false;
+        if (!passesMinAmount(s.amount, minAmount)) return false;
+        return matchesSearch([s.description, tagNames(s.tags), s.account, s.jar, s.subscription], query);
+      }),
+      sort, (s) => timeOf(s.date), (s) => s.amount || 0
+    ),
+    [spendings, periodRange, jarFilter, accountFilter, tagFilter, minAmount, query, sort]
   );
 
   const filteredRevenues = useMemo(() =>
-    revenues.filter(r => {
-      if (!inBounds(parseDate(r.date), periodRange)) return false;
-      if (typeFilter !== "all" && r.incomeType !== typeFilter) return false;
-      if (destinationFilter !== "all" && r.destination !== destinationFilter) return false;
-      return true;
-    }),
-    [revenues, periodRange, typeFilter, destinationFilter]
+    sortRows(
+      revenues.filter(r => {
+        if (!inBounds(parseDate(r.date), periodRange)) return false;
+        if (typeFilter !== "all" && r.incomeType !== typeFilter) return false;
+        if (destinationFilter !== "all" && r.destination !== destinationFilter) return false;
+        if (!matchesTag(tagsFromString(r.tags), tagFilter)) return false;
+        if (!passesMinAmount(r.amount, minAmount)) return false;
+        return matchesSearch([r.source, tagNames(r.tags), r.destination, r.incomeType, r.method], query);
+      }),
+      sort, (r) => timeOf(r.date), (r) => r.amount || 0
+    ),
+    [revenues, periodRange, typeFilter, destinationFilter, tagFilter, minAmount, query, sort]
+  );
+
+  // Étiquettes présentes dans les lignes chargées, les plus fréquentes d'abord ; « sans étiquette » si certaines n'en ont pas
+  const tagOptions = useMemo(() => {
+    const rows = mode === "spending" ? spendings : revenues;
+    const counts = new Map<string, number>();
+    let untagged = 0;
+    for (const r of rows) {
+      const ids = tagsFromString(r.tags);
+      if (ids.length === 0) untagged++;
+      for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    const items = Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([id]) => {
+        const tag = getTagById(id);
+        return { label: tag ? `${tag.emoji} ${tag.name}` : id, value: id };
+      });
+    return { items, hasUntagged: untagged > 0 };
+  }, [mode, spendings, revenues]);
+
+  // Titres par jour : seulement quand la liste est triée par date (sinon les jours se mélangent)
+  const groupByDay = sort === "dateDesc" || sort === "dateAsc";
+  const rowDayKey = (dateStr: string) => dayKey(parseDate(dateStr));
+  const dayStats = useMemo(
+    () => dayTotals<{ date: string; amount: number }>(
+      mode === "spending" ? filteredSpendings : filteredRevenues,
+      (r) => dayKey(parseDate(r.date)),
+      (r) => r.amount || 0
+    ),
+    [mode, filteredSpendings, filteredRevenues]
   );
 
   // On garde seulement les valeurs reconnues comme JarKey pour éviter que des données
@@ -227,7 +283,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   // Un nouveau filtre ou une nouvelle recherche repart de la première page
   useEffect(() => {
     setVisibleCount(PAGE);
-  }, [mode, query, periodFilter, customFrom, customTo, jarFilter, accountFilter, typeFilter, destinationFilter]);
+  }, [mode, query, periodFilter, customFrom, customTo, jarFilter, accountFilter, typeFilter, destinationFilter, tagFilter, minAmountRaw, sort]);
 
   // ── Edit helpers ──────────────────────────────────────────────────
   const isSpendingRow = (row: any): row is SearchSpendingResult => "jar" in row;
@@ -409,6 +465,34 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const resetFilters = () => {
     setPeriodFilter("all"); setCustomFrom(""); setCustomTo("");
     setJarFilter("all"); setAccountFilter("all"); setTypeFilter("all"); setDestinationFilter("all");
+    setTagFilter("all"); setMinAmountRaw(""); setSort("dateDesc");
+  };
+
+  /** Export CSV de toutes les lignes filtrées (pas seulement les 50 affichées), dans l'ordre courant. */
+  const exportCsv = () => {
+    const decimalComma = localeTag().toLowerCase().startsWith("fr");
+    const num = (n: number) => csvNumber(n, decimalComma);
+    const iso = (d: string) => dayKey(parseDate(d)) || d;
+    const lines: Array<Array<string | number>> =
+      mode === "spending"
+        ? [
+            [t("hist.fDate"), t("hist.fDescription"), t("hist.fAmount"), t("hist.fJar"), t("hist.fAccount"), t("hist.fTags"), t("hist.csvSubscription")],
+            ...filteredSpendings.map((s) => [iso(s.date), s.description, num(s.amount), s.jar, s.account, tagNames(s.tags), s.subscription ?? ""]),
+          ]
+        : [
+            [t("hist.fDate"), t("hist.fSource"), t("hist.fAmount"), t("hist.fType"), t("hist.fDestination"), t("hist.fMethod"), t("hist.fTags")],
+            ...filteredRevenues.map((r) => [iso(r.date), r.source, num(r.amount), r.incomeType ?? "", r.destination ?? "", r.method ?? "", tagNames(r.tags)]),
+          ];
+    // BOM UTF-8 : Excel affiche correctement les accents
+    const blob = new Blob(["\ufeff" + toCsv(lines, decimalComma ? ";" : ",")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${mode === "spending" ? "depenses" : "revenus"}-${dayKey(new Date())}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   // Résumé des filtres actifs (la recherche n'en fait pas partie : elle a son propre champ)
@@ -427,8 +511,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
       if (typeFilter !== "all") out.push(typeFilter);
       if (destinationFilter !== "all") out.push(destinationFilter);
     }
+    if (tagFilter !== "all") {
+      const tag = getTagById(tagFilter);
+      out.push(tagFilter === NO_TAG ? t("hist.noTag") : tag ? `${tag.emoji} ${tag.name}` : tagFilter);
+    }
+    if (minAmount != null) out.push(t("hist.minShort", { amount: `${minAmount} ${curSym()}` }));
+    if (sort !== "dateDesc") out.push(t(SORT_LABEL_KEYS[sort]));
     return out;
-  }, [periodFilter, customFrom, customTo, periodLabel, mode, jarFilter, accountFilter, typeFilter, destinationFilter, t]);
+  }, [periodFilter, customFrom, customTo, periodLabel, mode, jarFilter, accountFilter, typeFilter, destinationFilter, tagFilter, minAmount, sort, t]);
 
   const renderPills = (
     items: { label: string; value: string }[],
@@ -547,6 +637,27 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
           </button>
           <button style={actionBtnStyle("ghost")} onClick={cancelEdit}>{t("common.cancel").replace(/^\S+\s/, "")}</button>
         </div>
+      </div>
+    );
+  };
+
+  /** Titre de jour : « samedi 8 novembre » + total et nombre de lignes de CE jour (même si la page en coupe une partie). */
+  const renderDayHeader = (key: string) => {
+    const stats = dayStats.get(key);
+    const d = key ? new Date(`${key}T00:00:00`) : null;
+    const sameYear = d != null && d.getFullYear() === new Date().getFullYear();
+    const label = d
+      ? d.toLocaleDateString(localeTag(), { weekday: "long", day: "numeric", month: "long", ...(sameYear ? {} : { year: "numeric" }) })
+      : t("hist.noDate");
+    return (
+      <div className="hist-day" key={`day-${key}`}>
+        <span className="hist-day-label">{label}</span>
+        {stats && (
+          <span className="hist-day-total">
+            {mode === "spending" ? "-" : "+"}{fmt(stats.total)} {curSym()}
+            {stats.count > 1 && <span className="hist-day-count"> · {stats.count}</span>}
+          </span>
+        )}
       </div>
     );
   };
@@ -940,13 +1051,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             <div style={tabBarStyle}>
               <button
                 style={tabBtnStyle(mode === "spending", "#FF3B30")}
-                onClick={() => { setMode("spending"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setCustomFrom(""); setCustomTo(""); setJarFilter("all"); setAccountFilter("all"); }}
+                onClick={() => { setMode("spending"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setCustomFrom(""); setCustomTo(""); setJarFilter("all"); setAccountFilter("all"); setTagFilter("all"); setMinAmountRaw(""); }}
               >
                 {t("hist.spendings")}
               </button>
               <button
                 style={tabBtnStyle(mode === "revenue", "#34C759")}
-                onClick={() => { setMode("revenue"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setCustomFrom(""); setCustomTo(""); setTypeFilter("all"); setDestinationFilter("all"); }}
+                onClick={() => { setMode("revenue"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setCustomFrom(""); setCustomTo(""); setTypeFilter("all"); setDestinationFilter("all"); setTagFilter("all"); setMinAmountRaw(""); }}
               >
                 {t("hist.revenues")}
               </button>
@@ -1024,6 +1135,35 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                     [{ label: t("hist.allF"), value: "all" }, ...uniqueDestinations.map(d => ({ label: d, value: d }))],
                     destinationFilter, setDestinationFilter, "#FF9500", t("hist.destLabel"), true
                   )}
+
+                  {tagOptions.items.length > 0 && renderPills(
+                    [
+                      { label: t("hist.allF"), value: "all" },
+                      ...tagOptions.items,
+                      ...(tagOptions.hasUntagged ? [{ label: t("hist.noTag"), value: NO_TAG }] : []),
+                    ],
+                    tagFilter, setTagFilter, "#AF52DE", t("hist.tagLabel"), true
+                  )}
+
+                  <label className="hist-min">
+                    <span>{t("hist.minAmount")}</span>
+                    <span className="hist-min-input">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={minAmountRaw}
+                        onChange={(e) => setMinAmountRaw(e.target.value)}
+                        aria-label={t("hist.minAmount")}
+                      />
+                      <span>{curSym()}</span>
+                    </span>
+                  </label>
+
+                  {renderPills(
+                    (Object.keys(SORT_LABEL_KEYS) as SortKey[]).map((k) => ({ label: t(SORT_LABEL_KEYS[k]), value: k })),
+                    sort, (v) => setSort(v as SortKey), "#8E8E93", t("hist.sortLabel"), true
+                  )}
                 </div>
               )}
 
@@ -1056,6 +1196,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                   {mode === "spending" ? "-" : "+"}{fmt(totalFiltered)} {curSym()}
                 </span>
               </div>
+              <button type="button" className="hist-export" onClick={exportCsv}>
+                {t("hist.exportCsv", { n: mode === "spending" ? filteredSpendings.length : filteredRevenues.length })}
+              </button>
             </div>
           )}
 
@@ -1068,8 +1211,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
           {/* Cards */}
           <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-            {mode === "spending" && filteredSpendings.slice(0, visibleCount).map((row, i) => renderSpendingCard(row, i))}
-            {mode === "revenue" && filteredRevenues.slice(0, visibleCount).map((row, i) => renderRevenueCard(row, i))}
+            {(mode === "spending" ? filteredSpendings : filteredRevenues).slice(0, visibleCount).map((row, i, shown) => {
+              const key = rowDayKey(row.date);
+              const newDay = groupByDay && (i === 0 || key !== rowDayKey(shown[i - 1].date));
+              const card = mode === "spending"
+                ? renderSpendingCard(row as SearchSpendingResult, i)
+                : renderRevenueCard(row as SearchRevenueResult, i);
+              return (
+                <React.Fragment key={`${mode}-${(row as { rowIndex?: number }).rowIndex ?? i}`}>
+                  {newDay && renderDayHeader(key)}
+                  {card}
+                </React.Fragment>
+              );
+            })}
 
             {(() => {
               const total = mode === "spending" ? filteredSpendings.length : filteredRevenues.length;
