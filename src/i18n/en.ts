@@ -863,6 +863,7 @@ const en: Record<keyof typeof fr, string> = {
   "life.noneTagged": "Nothing excluded yet: add the “{name}” tag to a one-off expense.",
   "home.projectionPace": "at the current pace",
   "home.projectionLater": "from the 10th",
+  "home.projectionOneOff": "regular pace + {amount} one-off",
   "home.notSub": "Not a subscription",
   "home.dismissedCount": "{n} hidden",
   "home.restoreAll": "Restore all",

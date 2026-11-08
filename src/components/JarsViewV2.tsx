@@ -1,7 +1,9 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince} from "../api";
+import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince, fetchLifestylePrefs } from "../api";
+import { projectMonthEnd, projectionReady as isProjectionReady, splitOneOff } from "../monthProjection";
+import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, computeStreak, StreakState } from "../streakUtils";
@@ -245,8 +247,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
     // les abonnements annuels, la détection sur 6 mois et le graphique de l'année en ont besoin.
     const since = new Date();
     since.setMonth(since.getMonth() - 14, 1);
-    fetchSpendingRowsSince(`${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-01`)
-      .then(all => {
+    Promise.all([
+      fetchSpendingRowsSince(`${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-01`),
+      fetchLifestylePrefs().catch(() => ({ extraordinaryTags: [] as string[] })),
+    ])
+      .then(([all, prefs]) => {
         const now = new Date();
         const targetMonth = now.getMonth() + 1;
         const targetYear  = now.getFullYear();
@@ -265,6 +270,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
         });
 
         setMonthlyTagStats(calculateTagStats(currentMonthTxns));
+        // Courantes / exceptionnelles du mois : la projection ne prolonge que le rythme courant
+        setOneOffTagIds([EXCEPTIONAL_TAG_ID, ...prefs.extraordinaryTags]);
+        setMonthSplit(splitOneOff(currentMonthTxns, [EXCEPTIONAL_TAG_ID, ...prefs.extraordinaryTags]));
 
         // Toutes les transactions pour l'overlay de tag sur le graphique
         setAllTransactionsForChart(all);
@@ -301,18 +309,27 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   /** Dépense mois en cours depuis analytics */
   const currentMonthSpending = analytics?.trends?.spendings?.current ?? null;
 
-  /** Projection dépense fin de mois (linéaire sur jours écoulés) */
-  const projectedMonthSpending = useMemo(() => {
+  /** Courantes / exceptionnelles du mois en cours (null tant que les dépenses ne sont pas lues) */
+  const [monthSplit, setMonthSplit] = useState<{ regular: number; oneOff: number } | null>(null);
+  const [oneOffTagIds, setOneOffTagIds] = useState<string[]>([EXCEPTIONAL_TAG_ID]);
+
+  /**
+   * Projection dépense fin de mois : on prolonge le rythme des dépenses courantes et on ajoute telles quelles les
+   * exceptionnelles déjà faites (un billet d'avion le 3 ne se répète pas dix fois). Avant la lecture des dépenses, ou
+   * sans elles, règle de trois sur le total.
+   */
+  const projectionDetail = useMemo(() => {
     if (currentMonthSpending == null) return null;
     const now = new Date();
     const day = now.getDate();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    if (day <= 0) return null;
-    return (currentMonthSpending / day) * daysInMonth;
-  }, [currentMonthSpending]);
+    const split = monthSplit ?? { regular: currentMonthSpending, oneOff: 0 };
+    return projectMonthEnd({ regularSoFar: split.regular, oneOffSoFar: split.oneOff, day, daysInMonth });
+  }, [currentMonthSpending, monthSplit]);
+  const projectedMonthSpending = projectionDetail?.projected ?? null;
 
   /** Avant le 10 du mois, une extrapolation sur quelques jours est trop instable pour être affichée. */
-  const projectionReady = new Date().getDate() >= 10;
+  const projectionReady = isProjectionReady(new Date().getDate());
 
   /** % du budget consommé */
   const budgetPercent = useMemo(() => {
@@ -364,11 +381,14 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
         return false;
       });
       const spent = jarTxns.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
-      const projected = isCurrentView && daysElapsed > 0 ? (spent / daysElapsed) * daysInMonth : spent;
+      // Même règle que la carte « Ce mois » : on prolonge le rythme courant, les exceptionnelles restent telles quelles
+      const split = splitOneOff(jarTxns.map((t) => ({ amount: Math.abs(t.amount || 0), tags: t.tags })), oneOffTagIds);
+      const detail = isCurrentView ? projectMonthEnd({ regularSoFar: split.regular, oneOffSoFar: split.oneOff, day: daysElapsed, daysInMonth }) : null;
+      const projected = detail ? detail.projected : spent;
       result[jarKey] = { spent, projected };
     }
     return result;
-  }, [allTransactionsForChart, viewDate, isCurrentView]);
+  }, [allTransactionsForChart, viewDate, isCurrentView, oneOffTagIds]);
 
   /** Revenu du mois affiché (le mois en cours vient des tendances, les autres de l'historique mensuel) */
   const viewMonthRevenue = useMemo(() => {
@@ -528,7 +548,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                   {projectedMonthSpending != null && projectionReady ? `≈ ${formatMoney(projectedMonthSpending)}\u00A0${curSym()}` : "—"}
                 </div>
                 <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>
-                  {projectionReady ? t("home.projectionPace") : t("home.projectionLater")}
+                  {!projectionReady
+                    ? t("home.projectionLater")
+                    : projectionDetail && projectionDetail.oneOff > 0
+                      ? t("home.projectionOneOff", { amount: `${formatMoney(projectionDetail.oneOff)}\u00A0${curSym()}` })
+                      : t("home.projectionPace")}
                 </div>
               </div>
 

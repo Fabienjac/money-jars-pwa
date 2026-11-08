@@ -861,6 +861,7 @@ const fr = {
   "life.noneTagged": "Rien d'exclu pour l'instant : ajoute l'étiquette « {name} » à une dépense exceptionnelle.",
   "home.projectionPace": "au rythme actuel",
   "home.projectionLater": "dès le 10 du mois",
+  "home.projectionOneOff": "rythme courant + {amount} exceptionnels",
   "home.notSub": "Pas un abonnement",
   "home.dismissedCount": "{n} écarté(s)",
   "home.restoreAll": "Tout restaurer",
