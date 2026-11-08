@@ -7,7 +7,7 @@
     "dev:netlify": "netlify dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/importNormalize.test.ts tests/importSave.test.ts tests/tabular.test.mjs tests/pdfStatement.test.mjs tests/notifyFeedback.test.mjs tests/lifestyle.test.ts tests/jarAlerts.test.ts tests/jarTransfers.test.ts tests/exceptional.test.mjs tests/historyPeriod.test.ts tests/historyFilters.test.ts tests/historyCache.test.ts tests/accountMerge.test.ts tests/historyPreset.test.ts tests/analyticsFilters.test.mjs tests/analyticsState.test.mjs tests/monthProjection.test.ts tests/upcomingCharges.test.mjs tests/tagStatsUtils.test.mjs tests/paginate.test.ts tests/streak.test.ts tests/subscriptions.test.ts tests/lifestyleSeed.test.ts tests/push.test.ts tests/sw.test.mjs tests/pushJarAlerts.test.mjs"
+    "test": "node --test tests/importNormalize.test.ts tests/importSave.test.ts tests/tabular.test.mjs tests/pdfStatement.test.mjs tests/notifyFeedback.test.mjs tests/lifestyle.test.ts tests/jarAlerts.test.ts tests/jarTransfers.test.ts tests/exceptional.test.mjs tests/historyPeriod.test.ts tests/historyFilters.test.ts tests/historyCache.test.ts tests/accountMerge.test.ts tests/historyPreset.test.ts tests/analyticsFilters.test.mjs tests/analyticsState.test.mjs tests/monthProjection.test.ts tests/upcomingCharges.test.mjs tests/tagWeight.test.ts tests/tagStatsUtils.test.mjs tests/paginate.test.ts tests/streak.test.ts tests/subscriptions.test.ts tests/lifestyleSeed.test.ts tests/push.test.ts tests/sw.test.mjs tests/pushJarAlerts.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

@@ -10,9 +10,11 @@ interface TagPieChartProps {
   totalSpent?: number;
   /** Légende sous le graphique (par défaut oui). L'écran Par tag la remplace par sa propre liste. */
   showLegend?: boolean;
+  /** Pourcentage seul dans les parts (sans emoji), en plus gros : plus lisible. */
+  percentLabels?: boolean;
 }
 
-export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent, showLegend = true }) => {
+export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent, showLegend = true, percentLabels = false }) => {
   useLang();
   if (stats.length === 0) {
     return (
@@ -139,8 +141,27 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent, sho
                   </title>
                 </path>
                 
+                {percentLabels && segment.pieShare >= 7 && (
+                  <text
+                    x={labelPos.x}
+                    y={labelPos.y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    style={{
+                      fontSize: "30px",
+                      fontWeight: "800",
+                      fill: "white",
+                      stroke: "rgba(0,0,0,0.35)",
+                      strokeWidth: "4px",
+                      paintOrder: "stroke",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {Math.round(segment.pieShare)} %
+                  </text>
+                )}
                 {/* Emoji si le segment est assez large */}
-                {segment.pieShare > 4 && (
+                {!percentLabels && segment.pieShare > 4 && (
                   <text
                     x={labelPos.x}
                     y={labelPos.y}

@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchAllRevenuesCached, fetchAllSpendingsCached, fetchLifestylePrefs } from "../api";
 import { JarKey, SearchRevenueResult, SearchSpendingResult } from "../types";
-import { TagPieChart } from "./TagPieChart";
+import TagWeightPanel from "./TagWeightPanel";
 import { AdvancedTagStats } from "./AdvancedTagStats";
 import { ExportButton } from "./ExportButton";
 import { calculateTagStats } from "../tagStatsUtils";
@@ -288,56 +288,29 @@ const TagStatsView: React.FC = () => {
         <div className="stats-empty">{tr("stats.noSpendingPeriod")}</div>
       ) : (
         <>
-          {/* 3. Une seule liste d'étiquettes : un clic filtre l'écran dessus */}
-          <section className="stats-card">
-            <div className="stats-card-head">
-              <h3>{tr("stats.byTagTitle")}</h3>
+          {/* 3. Poids relatif des étiquettes : anneau, synthèse et tableau (un clic filtre, › ouvre l'Historique) */}
+          {stats.length === 0 ? (
+            <section className="stats-card"><p className="stats-hint">{tr("stats.noTagged")}</p></section>
+          ) : (
+            <>
               {filters.tags.length > 0 && (
-                <button type="button" className="stats-link" onClick={() => set({ tags: [] })}>{tr("stats.clearTags")}</button>
+                <div className="stats-clear-row">
+                  <span>{tr("stats.tapHint")}</span>
+                  <button type="button" className="stats-link" onClick={() => set({ tags: [] })}>{tr("stats.clearTags")}</button>
+                </div>
               )}
-            </div>
-            <p className="stats-hint">{tr("stats.tapHint")}</p>
-            {stats.length === 0 ? (
-              <p className="stats-hint">{tr("stats.noTagged")}</p>
-            ) : (
-              <ul className="stats-tags">
-                {stats.map((s) => {
-                  const active = filters.tags.includes(s.tagId);
-                  return (
-                    <li key={s.tagId} className={`stats-tag${active ? " is-active" : ""}`}>
-                      <button type="button" className="stats-tag-main" aria-pressed={active} onClick={() => set({ tags: toggleIn(filters.tags, s.tagId) })}>
-                        <span className="stats-tag-emoji" aria-hidden="true">{s.emoji}</span>
-                        <span className="stats-tag-body">
-                          <span className="stats-tag-line">
-                            <span className="stats-tag-name">{s.tagName}</span>
-                            <span className="stats-tag-amount">{money(s.totalAmount)}</span>
-                          </span>
-                          <span className="stats-tag-bar"><span style={{ width: `${Math.max(2, (s.totalAmount / maxTagAmount) * 100)}%`, background: s.color }} /></span>
-                          <span className="stats-tag-meta">
-                            {pct(s.percentage)} · {tr(s.count === 1 ? "stats.tx1" : "stats.txN", { n: s.count })} · ≈ {money(s.totalAmount / days, 2)}{tr("life.perDayShort")}
-                          </span>
-                        </span>
-                      </button>
-                      <button type="button" className="stats-tag-open" onClick={() => openHistory(s.tagId)} aria-label={`${tr("stats.openHistoryTag")} — ${s.tagName}`}>
-                        {tr("stats.openHistoryTag")} ›
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {untagged.length > 0 && (
-              <p className="stats-hint">{tr("stats.untagged", { amount: money(untaggedAmount), n: untagged.length })}</p>
-            )}
-            <p className="stats-hint">{tr("stats.overlapShort")}</p>
-          </section>
-
-          {/* 4. Graphique */}
-          {stats.length > 0 && (
-            <details className="stats-card stats-details" open>
-              <summary>{tr("stats.pieTitle")}</summary>
-              <TagPieChart stats={stats} totalSpent={total} showLegend={false} />
-            </details>
+              <TagWeightPanel
+                stats={stats}
+                totalSpent={total}
+                activeTags={filters.tags}
+                onToggleTag={(id) => set({ tags: toggleIn(filters.tags, id) })}
+                onOpenHistory={(id) => openHistory(id)}
+                money={money}
+              />
+              {untagged.length > 0 && (
+                <p className="stats-hint stats-untagged">{tr("stats.untagged", { amount: money(untaggedAmount), n: untagged.length })}</p>
+              )}
+            </>
           )}
         </>
       )}
