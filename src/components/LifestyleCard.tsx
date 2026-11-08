@@ -8,7 +8,7 @@ import DailyAverageChart from "./DailyAverageChart";
 import { suggestExceptional } from "../exceptional";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import { loadTags } from "../tagsUtils";
-import { currencySymbol as curSym } from "../baseCurrency";
+import { formatMoney as formatMoneyBase } from "../baseCurrency";
 import { t, useT, localeTag, monthShort } from "../i18n";
 
 function todayISO(): string {
@@ -17,8 +17,7 @@ function todayISO(): string {
 }
 
 function money(n: number, digits = 2): string {
-  const v = Number.isFinite(n) ? n : 0;
-  return `${v.toLocaleString(localeTag(), { minimumFractionDigits: digits, maximumFractionDigits: digits })} ${curSym()}`;
+  return formatMoneyBase(Number.isFinite(n) ? n : 0, undefined, digits);
 }
 
 function shortDate(iso: string): string {

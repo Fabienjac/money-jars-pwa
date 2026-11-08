@@ -6,7 +6,7 @@ import { MonthlyTrendChart } from "./MonthlyTrendChart";
 import { JarBarChart } from "./JarBarChart";
 import { t as tr, useLang } from "../i18n";
 
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney, formatPercent } from "../baseCurrency";
 interface AdvancedTagStatsProps {
   stats: TagStat[];
   allTransactions: SearchSpendingResult[];
@@ -112,7 +112,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
               fontWeight: "700",
               color: "#FF3B30",
             }}>
-              {currentMonthTotal.toFixed(2)}{curSym()}
+              {formatMoney(currentMonthTotal, undefined, 2)}
             </div>
             <div style={{
               fontSize: "11px",
@@ -136,7 +136,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
               fontWeight: "700",
               color: "var(--text-muted)",
             }}>
-              {previousMonthTotal.toFixed(2)}{curSym()}
+              {formatMoney(previousMonthTotal, undefined, 2)}
             </div>
             <div style={{
               fontSize: "11px",
@@ -178,13 +178,13 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
                 fontWeight: "700",
                 color: monthDiff > 0 ? "#FF3B30" : "#34C759",
               }}>
-                {monthDiff > 0 ? "+" : ""}{monthDiff.toFixed(2)}{curSym()}
+                {monthDiff > 0 ? "+" : ""}{formatMoney(monthDiff, undefined, 2)}
               </div>
               <div style={{
                 fontSize: "12px",
                 color: monthDiff > 0 ? "#FF3B30" : "#34C759",
               }}>
-                {monthDiffPercent > 0 ? "+" : ""}{monthDiffPercent.toFixed(1)}%
+                {monthDiffPercent > 0 ? "+" : ""}{formatPercent(monthDiffPercent, 1)}
               </div>
             </div>
           </div>
@@ -265,7 +265,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
                 color: "#FF3B30",
                 whiteSpace: "nowrap",
               }}>
-                {transaction.amount?.toFixed(2)}{curSym()}
+                {formatMoney(transaction.amount ?? 0)}
               </div>
             </div>
           ))}
@@ -333,7 +333,7 @@ export const AdvancedTagStats: React.FC<AdvancedTagStatsProps> = ({
                   fontWeight: "700",
                   color: stat.color,
                 }}>
-                  {stat.average.toFixed(2)}{curSym()}
+                  {formatMoney(stat.average, undefined, 2)}
                 </div>
                 <div style={{
                   fontSize: "11px",

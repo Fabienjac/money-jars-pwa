@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 
 import { useT, localeTag, JAR_LABELS } from "../i18n";
-import { currencySymbol as curSym } from "../baseCurrency";
+import { formatMoney } from "../baseCurrency";
 import { JAR_ALERT_EMOJIS, WARN_RATIO, type JarAlert } from "../jarAlerts";
 import FeedbackForm from "./FeedbackForm";
 import PushAlertsRow from "./PushAlertsRow";
@@ -25,7 +25,7 @@ const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, o
         <h3 className="alert-card-title">{t("alerts.title")}</h3>
         <ul className="alert-list">
           {jarAlerts.map((a) => {
-            const amount = `${Math.abs(a.net).toLocaleString(localeTag(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\u00A0${curSym()}`;
+            const amount = formatMoney(Math.abs(a.net));
             const message =
               a.level === 2
                 ? t("alerts.over", { amount })

@@ -1,7 +1,7 @@
 // Courbe « dépense moyenne par jour » (glissante sur 30 jours, par semaine) avec une 2e courbe optionnelle pour une
 // étiquette (alimentation). Les points viennent de rollingAverageSeries (src/lifestyle.ts).
 import React from "react";
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney, formatPercent } from "../baseCurrency";
 import { monthShort } from "../i18n";
 import type { RollingPoint } from "../lifestyle";
 
@@ -163,7 +163,7 @@ const DailyAverageChart: React.FC<{ points: readonly RollingPoint[]; overlay?: r
           fontSize="9"
           fill="#AEAEB2"
         >
-          {Math.round(v)}&nbsp;{curSym()}
+          {formatMoney(v, undefined, 0)}
         </text>
       ))}
 

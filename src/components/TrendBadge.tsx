@@ -1,3 +1,4 @@
+import { formatPercent } from "../baseCurrency";
 // src/components/TrendBadge.tsx
 import React from "react";
 
@@ -62,7 +63,7 @@ export const TrendBadge: React.FC<TrendBadgeProps> = ({
       {showValue && (
         <span>
           {isPositive && "+"}
-          {percentChange.toFixed(1)}%
+          {formatPercent(percentChange, 1)}
         </span>
       )}
       {label && <span style={{ opacity: 0.8 }}>{label}</span>}
@@ -109,7 +110,7 @@ export const TrendBadgeMini: React.FC<TrendBadgeProps> = ({
       <span>{arrow}</span>
       <span>
         {isPositive && "+"}
-        {Math.abs(percentChange).toFixed(0)}%
+        {formatPercent(Math.abs(percentChange))}
       </span>
     </div>
   );

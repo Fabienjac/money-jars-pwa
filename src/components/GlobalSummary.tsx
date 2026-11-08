@@ -1,12 +1,12 @@
 // Bilan global depuis le début : revenus, dépenses, solde. Affiché en tête de l'onglet « Rapport » des Analyses.
 import React, { useEffect, useState } from "react";
 import { fetchTotals } from "../api";
-import { currencySymbol as curSym } from "../baseCurrency";
+import { formatMoney as formatMoneyBase } from "../baseCurrency";
 import { localeTag, useT } from "../i18n";
 import type { TotalsResponse } from "../types";
 
-function formatMoney(value: number): string {
-  return (Number.isFinite(value) ? value : 0).toLocaleString(localeTag(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatMoney(value: number | null | undefined, digits = 2): string {
+  return formatMoneyBase(typeof value === "number" && Number.isFinite(value) ? value : 0, undefined, digits);
 }
 
 const GlobalSummary: React.FC = () => {
@@ -38,15 +38,15 @@ const GlobalSummary: React.FC = () => {
       <div className="jars-v2-summary-grid">
         <div className="summary-item summary-revenues">
           <span className="summary-label">{t("home.income")}</span>
-          <span className="summary-value">{formatMoney(totalRevenues)}&nbsp;{curSym()}</span>
+          <span className="summary-value">{formatMoney(totalRevenues)}</span>
         </div>
         <div className="summary-item summary-spendings">
           <span className="summary-label">{t("home.spending")}</span>
-          <span className="summary-value">{formatMoney(totalSpendings)}&nbsp;{curSym()}</span>
+          <span className="summary-value">{formatMoney(totalSpendings)}</span>
         </div>
         <div className="summary-item summary-balance" style={{ gridColumn: "1 / -1" }}>
           <span className="summary-label">{t("home.balance")}</span>
-          <span className="summary-value summary-value--highlight">{formatMoney(totalBalance)}&nbsp;{curSym()}</span>
+          <span className="summary-value summary-value--highlight">{formatMoney(totalBalance)}</span>
         </div>
       </div>
     </section>

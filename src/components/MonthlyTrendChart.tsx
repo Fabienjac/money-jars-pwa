@@ -2,7 +2,7 @@
 import React from "react";
 import { SearchSpendingResult } from "../types";
 
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney, formatPercent } from "../baseCurrency";
 import { t as tr, useLang, localeTag } from "../i18n";
 interface MonthlyTrendChartProps {
   transactions: SearchSpendingResult[];
@@ -274,7 +274,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
                 style={{ cursor: "pointer" }}
               >
                 <title>
-                  {formatMonth(data.month)}: {data.total.toFixed(2)}{curSym()} ({tr(data.count > 1 ? "stats.txN" : "stats.tx1", { n: data.count })})
+                  {formatMonth(data.month)}: {formatMoney(data.total, undefined, 2)} ({tr(data.count > 1 ? "stats.txN" : "stats.tx1", { n: data.count })})
                 </title>
               </circle>
 
@@ -336,7 +336,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
               fontWeight: "700",
               color: "#007AFF",
             }}>
-              {data.total.toFixed(2)}{curSym()}
+              {formatMoney(data.total, undefined, 2)}
             </div>
             <div style={{
               fontSize: "10px",

@@ -5,12 +5,11 @@ import { fetchDismissedSubscriptions, fetchSpendingRowsSince, saveDismissedSubsc
 import { detectRecurring, explainRecurring, type ExplainReason, type ExplainResult, type RecurringItem, type SubscriptionFreq } from "../subscriptions";
 import type { SearchSpendingResult } from "../types";
 import { totalUpcoming, upcomingCharges } from "../upcomingCharges";
-import { currencySymbol as curSym } from "../baseCurrency";
+import { formatMoney as formatMoneyBase } from "../baseCurrency";
 import { t, useT, type TKey, localeTag } from "../i18n";
 
-function formatMoney(value: number | null | undefined): string {
-  const v = typeof value === "number" && !isNaN(value) ? value : 0;
-  return v.toLocaleString(localeTag(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatMoney(value: number | null | undefined, digits = 2): string {
+  return formatMoneyBase(typeof value === "number" && Number.isFinite(value) ? value : 0, undefined, digits);
 }
 
 const FREQ_LABEL = {} as Record<SubscriptionFreq, string>;
@@ -134,7 +133,7 @@ const SubscriptionsPanel: React.FC = () => {
                 <div className="subs-upcoming-sub">{t("subs.upHorizon")}</div>
               </div>
               {upcoming.length > 0 && (
-                <div className="subs-upcoming-total">{formatMoney(totalUpcoming(upcoming))}&nbsp;{curSym()}</div>
+                <div className="subs-upcoming-total">{formatMoney(totalUpcoming(upcoming))}</div>
               )}
             </div>
             {upcoming.length === 0 ? (
@@ -151,7 +150,7 @@ const SubscriptionsPanel: React.FC = () => {
                       <span className="subs-upcoming-name">{c.description}</span>
                       {c.account && <span className="subs-upcoming-account">{c.account}</span>}
                     </div>
-                    <div className="subs-upcoming-amount">{c.approximate ? "≈ " : ""}{formatMoney(c.amount)}&nbsp;{curSym()}</div>
+                    <div className="subs-upcoming-amount">{c.approximate ? "≈ " : ""}{formatMoney(c.amount)}</div>
                   </li>
                 ))}
               </ul>
@@ -194,7 +193,7 @@ const SubscriptionsPanel: React.FC = () => {
                   const fixedTotal = subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0);
                   return fixedTotal > 0 ? (
                     <span style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)" }}>
-                      {formatMoney(fixedTotal)}&nbsp;{curSym()}{t("home.perMonth")}
+                      {formatMoney(fixedTotal)}{t("home.perMonth")}
                     </span>
                   ) : null;
                 })()}
@@ -255,15 +254,15 @@ const SubscriptionsPanel: React.FC = () => {
                           {sub.freq && sub.freq !== "mensuel" ? (
                             <>
                               <div style={{ fontSize: "12px", fontWeight: "800", color: "var(--text-main)" }}>
-                                {formatMoney(sub.monthlyAmount)}&nbsp;{curSym()}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
+                                {formatMoney(sub.monthlyAmount)}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
                               </div>
                               <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
-                                {formatMoney(sub.avgAmount)}&nbsp;{curSym()}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
+                                {formatMoney(sub.avgAmount)}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
                               </div>
                             </>
                           ) : (
                             <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>
-                              {formatMoney(sub.avgAmount)}&nbsp;{curSym()}
+                              {formatMoney(sub.avgAmount)}
                             </div>
                           )}
                         </div>
@@ -319,15 +318,15 @@ const SubscriptionsPanel: React.FC = () => {
                           {sub.freq && sub.freq !== "mensuel" ? (
                             <>
                               <div style={{ fontSize: "12px", fontWeight: "800", color: "var(--warn-text)" }}>
-                                ~{formatMoney(sub.monthlyAmount)}&nbsp;{curSym()}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
+                                ~{formatMoney(sub.monthlyAmount)}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
                               </div>
                               <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
-                                {formatMoney(sub.avgAmount)}&nbsp;{curSym()}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
+                                {formatMoney(sub.avgAmount)}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
                               </div>
                             </>
                           ) : (
                             <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--warn-text)" }}>
-                              ~{formatMoney(sub.avgAmount)}&nbsp;{curSym()}
+                              ~{formatMoney(sub.avgAmount)}
                             </div>
                           )}
                         </div>
@@ -349,13 +348,13 @@ const SubscriptionsPanel: React.FC = () => {
                   <div>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("home.totalFixed")}</div>
                     <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--text-main)" }}>
-                      {formatMoney(subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))}&nbsp;{curSym()}
+                      {formatMoney(subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))}
                     </div>
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("home.totalVariable")}</div>
                     <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--warn-text)" }}>
-                      ~{formatMoney(subscriptions.filter(s => !s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))}&nbsp;{curSym()}
+                      ~{formatMoney(subscriptions.filter(s => !s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))}
                     </div>
                   </div>
                 </div>

@@ -2,7 +2,7 @@
 import React from "react";
 import { SearchSpendingResult } from "../types";
 
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney, formatPercent } from "../baseCurrency";
 import { t as tr, useLang, localeTag, JAR_LABELS as I18N_JARS } from "../i18n";
 interface JarBarChartProps {
   transactions: SearchSpendingResult[];
@@ -154,7 +154,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                 fill: "var(--text-muted)",
               }}
             >
-              {tick.toLocaleString(localeTag())}{curSym()}
+              {formatMoney(tick, undefined, 0)}
             </text>
           </g>
         ))}
@@ -236,7 +236,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                     style={{ cursor: "pointer" }}
                   >
                     <title>
-                      {formatMonth(data.month)} - {I18N_JARS[jar as keyof typeof I18N_JARS] || jar}: {amount.toFixed(2)}{curSym()}
+                      {formatMonth(data.month)} - {I18N_JARS[jar as keyof typeof I18N_JARS] || jar}: {formatMoney(amount, undefined, 2)}
                     </title>
                   </rect>
                 );
@@ -280,7 +280,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                   fill: "var(--text-main)",
                 }}
               >
-                {data.total.toFixed(0)}{curSym()}
+                {formatMoney(data.total, undefined, 0)}
               </text>
             </g>
           );
@@ -358,7 +358,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
               color: "#FF3B30",
               marginBottom: "8px",
             }}>
-              {data.total.toFixed(2)}{curSym()}
+              {formatMoney(data.total, undefined, 2)}
             </div>
             <div style={{
               display: "flex",
@@ -387,7 +387,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
                     <span style={{
                       color: "var(--text-muted)",
                     }}>
-                      {amount.toFixed(0)}{curSym()}
+                      {formatMoney(amount, undefined, 0)}
                     </span>
                   </div>
                 );

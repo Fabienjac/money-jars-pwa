@@ -2,7 +2,7 @@
 // Modal de saisie vocale d'une dépense — Web Speech API + Gemini + appendSpending
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { appendSpending } from "../api";
-import { getBaseCurrency, currencySymbol } from "../baseCurrency";
+import { getBaseCurrency, currencySymbol, formatMoney } from "../baseCurrency";
 import { getRateToBase } from "../exchangeRate";
 import { updateStreak } from "../streakUtils";
 import { loadTags } from "../tagsUtils";
@@ -326,7 +326,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
             <div style={{ fontSize: 64 }}>✅</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: "#34C759" }}>{tr("vc.saved")}</div>
             {parsed && (
-              <div style={{ fontSize: 28, fontWeight: 800, color: "#1C1C1E" }}>{parsed.amount.toFixed(2)} {currencySymbol(parsed.currency || getBaseCurrency())}</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#1C1C1E" }}>{formatMoney(parsed.amount, parsed.currency || getBaseCurrency())}</div>
             )}
           </div>
         )}

@@ -3,7 +3,7 @@ import React from "react";
 import { TagStat } from "../types";
 import { t as tr, useLang } from "../i18n";
 
-import { currencySymbol as curSym, formatMoney } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney, formatPercent } from "../baseCurrency";
 interface TagPieChartProps {
   stats: TagStat[];
   /** Total réellement dépensé (chaque dépense une seule fois). Sans lui, la somme des étiquettes, qui peut être plus grande. */
@@ -137,7 +137,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent, sho
                   }}
                 >
                   <title>
-                    {segment.tagName}: {segment.totalAmount.toFixed(2)}{curSym()} ({segment.percentage.toFixed(1)}%)
+                    {segment.tagName}: {formatMoney(segment.totalAmount)} ({formatPercent(segment.pieShare, 1)})
                   </title>
                 </path>
                 
@@ -284,7 +284,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent, sho
                   fontWeight: "600",
                 }}
               >
-                {stat.percentage.toFixed(1)}% • {stat.totalAmount.toFixed(0)}{curSym()}
+                {formatPercent(stat.pieShare, 1)} • {formatMoney(stat.totalAmount, undefined, 0)}
               </div>
             </div>
           </div>

@@ -12,7 +12,7 @@ import { loadTags } from "../tagsUtils";
 import { AutoTagRule, findRule, upsertRule, loadCachedRules } from "../autoTagRules";
 import { fetchAutoTagRules, saveAutoTagRulesToSheet } from "../api";
 
-import { getBaseCurrency, currencySymbol as curSym } from "../baseCurrency";
+import { getBaseCurrency, currencySymbol as curSym, formatMoney } from "../baseCurrency";
 import { t as tr, useLang } from "../i18n";
 import { ImportReadSettings } from "./ImportReadSettings";
 import {
@@ -1503,10 +1503,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                       color: "var(--text-main)",
                     }}>
                       {transactionType === "revenue"
-                        ? `${transaction.amount.toFixed(2)} ${transaction.valeur || transaction.currency || getBaseCurrency()}`
+                        ? formatMoney(transaction.amount, transaction.valeur || transaction.currency || getBaseCurrency())
                         : transaction.needsConversion
-                        ? `${transaction.amount.toFixed(2)} ${transaction.currency || ""}`
-                        : `${transaction.amount.toFixed(2)} ${curSym()}`
+                        ? formatMoney(transaction.amount, transaction.currency || getBaseCurrency())
+                        : formatMoney(transaction.amount)
                       }
                     </span>
                     {transactionType === "spending" && transaction.conversionNote && !transaction.needsConversion && (

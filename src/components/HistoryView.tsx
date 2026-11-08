@@ -15,7 +15,7 @@ import { Account } from "../types";
 import { supabase } from "../lib/supabase";
 import { clearPreset, peekPreset } from "../historyPreset";
 import { cacheVersion, invalidateHistoryCache, readHistoryCache, rememberHistoryRows, writeHistoryCache } from "../historyCache";
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney } from "../baseCurrency";
 import { useT, t as tr, localeTag } from "../i18n";
 import { inBounds, parseAppDate, periodBounds, type PeriodFilter } from "../historyPeriod";
 import {
@@ -62,6 +62,10 @@ const fmt = (value: number | undefined | null, dec = 2) => {
   if (value == null || isNaN(value)) return "—";
   return value.toFixed(dec);
 };
+
+/** Montant dans la devise de référence, au format de la langue (« 1 240,00 € » en français, « $1,240.00 » en anglais). */
+const money = (value: number | undefined | null, digits = 2) =>
+  value == null || isNaN(value) ? "—" : formatMoney(value, undefined, digits);
 
 /**
  * Montant signé pour l'affichage. Une dépense s'affiche « - » et un revenu « + », sauf si le montant est négatif
@@ -389,7 +393,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
   const handleDeleteSpending = async (row: SearchSpendingResult) => {
     if (!row.rowIndex) { alert(t("hist.rowMissing")); return; }
-    if (!window.confirm(t("hist.confirmDelete", { name: row.description, amount: `${row.amount} ${curSym()}` }))) return;
+    if (!window.confirm(t("hist.confirmDelete", { name: row.description, amount: formatMoney(row.amount) }))) return;
     try {
       const res = await deleteSpending(row.rowIndex);
       if (!res.ok) throw new Error(res.error || t("hist.unknownError"));
@@ -402,7 +406,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
   const handleDeleteRevenue = async (row: SearchRevenueResult) => {
     if (!row.rowIndex) { alert(t("hist.rowMissing")); return; }
-    if (!window.confirm(t("hist.confirmDelete", { name: row.source, amount: `${row.amount} ${curSym()}` }))) return;
+    if (!window.confirm(t("hist.confirmDelete", { name: row.source, amount: formatMoney(row.amount) }))) return;
     try {
       const res = await deleteRevenue(row.rowIndex);
       if (!res.ok) throw new Error(res.error || t("hist.unknownError"));
@@ -575,7 +579,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
       const tag = getTagById(tagFilter);
       out.push(tagFilter === NO_TAG ? t("hist.noTag") : tag ? `${tag.emoji} ${tag.name}` : tagFilter);
     }
-    if (minAmount != null) out.push(t("hist.minShort", { amount: `${minAmount} ${curSym()}` }));
+    if (minAmount != null) out.push(t("hist.minShort", { amount: formatMoney(minAmount) }));
     if (sort !== "dateDesc") out.push(t(SORT_LABEL_KEYS[sort]));
     return out;
   }, [periodFilter, customFrom, customTo, periodLabel, mode, jarFilter, accountFilter, typeFilter, destinationFilter, tagFilter, minAmount, sort, t]);
@@ -714,7 +718,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
         <span className="hist-day-label">{label}</span>
         {stats && (
           <span className="hist-day-total">
-            {signedAmount(stats.total, mode).sign}{fmt(signedAmount(stats.total, mode).abs)} {curSym()}
+            {signedAmount(stats.total, mode).sign}{money(signedAmount(stats.total, mode).abs)}
             {stats.count > 1 && <span className="hist-day-count"> · {stats.count}</span>}
           </span>
         )}
@@ -754,7 +758,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, color: row.amount < 0 ? "#34C759" : "#FF3B30" }}>{signedAmount(row.amount, "spending").sign}{fmt(Math.abs(row.amount))}{curSym()}</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: row.amount < 0 ? "#34C759" : "#FF3B30" }}>{signedAmount(row.amount, "spending").sign}{money(Math.abs(row.amount))}</span>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
           </div>
         </div>
@@ -810,7 +814,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <span style={{ fontSize: 17, fontWeight: 700, color: row.amount < 0 ? "#FF3B30" : "#34C759" }}>{signedAmount(row.amount, "revenue").sign}{fmt(Math.abs(row.amount))}{curSym()}</span>
+            <span style={{ fontSize: 17, fontWeight: 700, color: row.amount < 0 ? "#FF3B30" : "#34C759" }}>{signedAmount(row.amount, "revenue").sign}{money(Math.abs(row.amount))}</span>
             <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</div>
           </div>
         </div>
@@ -926,19 +930,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div style={{ padding: "14px", background: "#FFEDED", borderRadius: 12 }}>
                 <div style={{ fontSize: 11, color: "#FF3B30", fontWeight: 700, marginBottom: 6 }}>{t("hist.expensesCaps")}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#FF3B30", lineHeight: 1 }}>{fmt(reportTotalSpendings)} {curSym()}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#FF3B30", lineHeight: 1 }}>{money(reportTotalSpendings)}</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{t("hist.transactions", { n: reportSpendings.length })}</div>
               </div>
               <div style={{ padding: "14px", background: "#E8FAF0", borderRadius: 12 }}>
                 <div style={{ fontSize: 11, color: "#34C759", fontWeight: 700, marginBottom: 6 }}>{t("hist.incomeCaps")}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#34C759", lineHeight: 1 }}>{fmt(reportTotalRevenues)} {curSym()}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#34C759", lineHeight: 1 }}>{money(reportTotalRevenues)}</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{t("hist.transactions", { n: reportRevenues.length })}</div>
               </div>
             </div>
             <div style={{ padding: "14px", background: balance >= 0 ? "#EAF3FF" : "#FFF5E6", borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 14, color: "var(--text-muted)", fontWeight: 500 }}>{t("hist.monthBalance")}</span>
               <span style={{ fontSize: 24, fontWeight: 800, color: balance >= 0 ? "#007AFF" : "#FF9500" }}>
-                {balance >= 0 ? "+" : ""}{fmt(balance)} {curSym()}
+                {balance >= 0 ? "+" : ""}{money(balance)}
               </span>
             </div>
           </div>
@@ -958,7 +962,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 14, fontWeight: 600 }}>{emoji} {jar}</span>
                       <div style={{ textAlign: "right" }}>
-                        <span style={{ fontSize: 15, fontWeight: 700 }}>{fmt(amount)} {curSym()}</span>
+                        <span style={{ fontSize: 15, fontWeight: 700 }}>{money(amount)}</span>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>{pct.toFixed(0)}%</span>
                       </div>
                     </div>
@@ -989,7 +993,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                   </span>
                   {/* Montant — toujours collé à droite, jamais tronqué */}
                   <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30", flexShrink: 0, whiteSpace: "nowrap", paddingLeft: 8 }}>
-                    {fmt(amount)} {curSym()}
+                    {money(amount)}
                   </span>
                 </div>
               ))}
@@ -1013,9 +1017,9 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                       <span style={{ fontSize: 15, flexShrink: 0, width: 20, textAlign: "center" }}>{tag.emoji}</span>
                       <span style={{ fontSize: 13, color: "var(--text-main)", flex: 1, fontWeight: 600 }}>{tag.tagName}</span>
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#FF3B30" }}>{fmt(tag.totalAmount)} {curSym()}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#FF3B30" }}>{money(tag.totalAmount)}</span>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
-                          ≈ {fmt(tag.avgPerDay, 1)} {curSym()}{t("life.perDayShort")}
+                          ≈ {money(tag.avgPerDay, 1)}{t("life.perDayShort")}
                         </span>
                       </div>
                     </div>
@@ -1042,7 +1046,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                       {sub.subscription} · {sub.jar}
                     </div>
                   </div>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30" }}>{fmt(sub.amount)} {curSym()}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "#FF3B30" }}>{money(sub.amount)}</span>
                 </div>
               ))}
             </div>
@@ -1257,7 +1261,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                   )}
                 </div>
                 <span style={{ fontSize: 17, fontWeight: 700, color: mode === "spending" ? "#FF3B30" : "#34C759" }}>
-                  {signedAmount(totalFiltered, mode).sign}{fmt(signedAmount(totalFiltered, mode).abs)} {curSym()}
+                  {signedAmount(totalFiltered, mode).sign}{money(signedAmount(totalFiltered, mode).abs)}
                 </span>
               </div>
               <button type="button" className="hist-export" onClick={exportCsv}>

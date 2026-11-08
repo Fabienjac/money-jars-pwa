@@ -13,7 +13,7 @@ import { getStreak, computeStreak, StreakState } from "../streakUtils";
 import LifestyleCard from "./LifestyleCard";
 import YearStartCard from "./YearStartCard";
 
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney as formatMoneyBase, formatPercent } from "../baseCurrency";
 import { t, useT, type TKey, localeTag, monthShort, monthLong, JAR_LABELS, JAR_EMPTY_COPY } from "../i18n";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
@@ -46,12 +46,8 @@ const TEXT_TONE: Record<string, string> = {
 };
 const textTone = (c: string): string => TEXT_TONE[c.toUpperCase()] ?? c;
 
-function formatMoney(value: number | null | undefined): string {
-  const v = typeof value === "number" && !isNaN(value) ? value : 0;
-  return v.toLocaleString(localeTag(), {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+function formatMoney(value: number | null | undefined, digits = 2): string {
+  return formatMoneyBase(typeof value === "number" && Number.isFinite(value) ? value : 0, undefined, digits);
 }
 
 function loadJarSplitFromSettings(): Record<JarKey, number> | null {
@@ -629,7 +625,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                   fontSize: "11px", marginTop: "5px", textAlign: "right", fontWeight: "600",
                   color: budgetPercent < 70 ? "var(--ok-text)" : budgetPercent < 90 ? "var(--warn-text)" : "var(--danger-text)",
                 }}>
-                  {budgetPercent.toFixed(0)}%{" "}
+                  {formatPercent(budgetPercent)}{" "}
                   {budgetPercent < 70 ? t("home.budgetGood") : budgetPercent < 90 ? t("home.budgetWarn") : t("home.budgetOver")}
                   {projectedMonthSpending != null && monthlyBudget && projectedMonthSpending > monthlyBudget && (
                     <span style={{ color: "var(--danger-text)", marginLeft: "6px" }}>
@@ -693,7 +689,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                             background: tag.color || "#007AFF",
                           }} />
                         </div>
-                        <span style={{ fontSize: "12px", color: "var(--text-muted)", flexShrink: 0, minWidth: "48px", textAlign: "right" }}>{formatMoney(tag.totalAmount)}&nbsp;{curSym()}</span>
+                        <span style={{ fontSize: "12px", color: "var(--text-muted)", flexShrink: 0, minWidth: "48px", textAlign: "right" }}>{formatMoney(tag.totalAmount)}</span>
                         {/* Bouton budget */}
                         {!isEditingThis && (
                           <button
@@ -738,7 +734,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                             fontSize: "10px", fontWeight: "700", flexShrink: 0,
                             color: textTone(barColor),
                           }}>
-                            {budgetPct.toFixed(0)}%
+                            {formatPercent(budgetPct)}
                             {budgetPct >= 100 && " 🚨"}
                           </span>
                         </div>
@@ -835,19 +831,19 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                       {spent > 0 ? (
                         <>
                           <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                            {formatMoney(spent)}&nbsp;{curSym()}
+                            {formatMoney(spent)}
                             {spentPct != null && (
-                              <span style={{ color: "var(--text-light)", fontSize: "10px" }}> ({spentPct.toFixed(0)}%)</span>
+                              <span style={{ color: "var(--text-light)", fontSize: "10px" }}> ({formatPercent(spentPct)})</span>
                             )}
                           </div>
                           {showProjection && (
                             <div style={{ fontSize: "11px", fontWeight: "700", color: textTone(barColor) }}>
-                              ≈ {formatMoney(projected)}&nbsp;{curSym()}
+                              ≈ {formatMoney(projected)}
                             </div>
                           )}
                         </>
                       ) : (
-                        <div style={{ fontSize: "10px", color: "var(--text-light)" }}>{formatMoney(0)}&nbsp;{curSym()}</div>
+                        <div style={{ fontSize: "10px", color: "var(--text-light)" }}>{formatMoney(0)}</div>
                       )}
                     </div>
                   </div>
@@ -863,7 +859,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                         {t("home.allocated", { amount: `${formatMoney(allocation)}\u00A0${curSym()}` })}
                       </span>
                       <span style={{ fontSize: "10px", fontWeight: "700", color: textTone(barColor) }}>
-                        {showProjection ? t("home.projShort") : t("home.spent")} {projPct!.toFixed(0)}%
+                        {showProjection ? t("home.projShort") : t("home.spent")} {formatPercent(projPct!)}
                         {projPct! >= 100 ? " 🚨" : projPct! >= 80 ? " ⚠️" : " ✓"}
                       </span>
                     </div>
@@ -931,19 +927,19 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                   const over = jar.net < -0.005;
                   const color = over ? "#FF3B30" : pct >= 80 ? "#FF9500" : JAR_COLORS[key];
                   const amount = (n: number) =>
-                    Math.abs(n) >= 10000 ? `${Math.round(n).toLocaleString(localeTag())}` : formatMoney(n);
+                    Math.abs(n) >= 10000 ? formatMoney(Math.round(n), 0) : formatMoney(n);
                   return (
                     <li key={key} className={`jars-bal-row${over ? " jars-bal-row--over" : ""}`}>
                       <div className="jars-bal-top">
                         <span className="jars-bal-name">
                           <span aria-hidden="true">{JAR_EMOJIS[key]}</span>
                           <span className="jars-bal-label">{JAR_LABELS[key]}</span>
-                          <span className="jars-bal-pct">{(split * 100).toFixed(0)} %</span>
+                          <span className="jars-bal-pct">{formatPercent(split * 100)}</span>
                         </span>
                         <span className="jars-bal-rest">
                           <span className="jars-bal-rest-label">{over ? t("home.overBy") : t("home.remaining")}</span>
                           <span className="jars-bal-rest-amount" style={over ? { color: "var(--danger-text)" } : undefined}>
-                            {amount(jar.net)}&nbsp;{curSym()}
+                            {amount(jar.net)}
                           </span>
                         </span>
                       </div>
@@ -953,7 +949,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                       <div className="jars-bal-meta">
                         <span>{t("home.received", { amount: `${amount(received)}\u00A0${curSym()}` })}</span>
                         <span style={over ? { color: "var(--danger-text)", fontWeight: 700 } : undefined}>
-                          {t("home.spentOf", { amount: `${amount(spent)}\u00A0${curSym()}`, pct: pct > 999 ? "999+" : pct.toFixed(0) })}
+                          {t("home.spentOf", { amount: `${amount(spent)}\u00A0${curSym()}`, pct: pct > 999 ? "999+" : formatPercent(pct).replace(/\s?%$/, "") })}
                         </span>
                       </div>
                     </li>

@@ -78,6 +78,16 @@ export function formatMoney(amount: number, code: string = getBaseCurrency(), di
   }
 }
 
+/** Pourcentage dans la langue courante : « 32 % » en français, « 32% » en anglais (valeur en pourcent : 32 = 32 %). */
+export function formatPercent(value: number, digits = 0): string {
+  const v = Number.isFinite(value) ? value : 0;
+  try {
+    return new Intl.NumberFormat(localeTag(), { style: "percent", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v / 100);
+  } catch {
+    return v.toFixed(digits) + " %";
+  }
+}
+
 // ── Champ « valeur » des revenus ───────────────────────────────────────────────
 // Anciens revenus : value = "USD" (montant saisi dans cette devise, converti ailleurs).
 // Nouveaux revenus : value = "1000 USD" (montant d'origine) et amount = montant déjà converti
