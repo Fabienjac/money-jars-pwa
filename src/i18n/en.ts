@@ -223,7 +223,7 @@ const en: Record<keyof typeof fr, string> = {
   "home.setBudget": "Set a budget",
   "home.budgetPlaceholder": "budget",
   "home.moreCategories": "+{n} more categories",
-  "home.allocated": "allocated {amount}",
+  "home.allocated": "received {amount}",
   "home.basedOn": "Based on {amount} of income this month",
   "home.jarsActivate": "🌱 Your jars activate with your first income",
   "home.jarsMonth": "🏺 Jars — {label}",
@@ -926,6 +926,9 @@ const en: Record<keyof typeof fr, string> = {
   "home.modeBalance": "Balances",
   "home.prevMonth": "Previous month",
   "home.nextMonth": "Next month",
+  "home.received": "received {amount}",
+  "home.spentOf": "spent {amount} · {pct}%",
+  "home.jarsLegend": "Received: your share of income deposited in the jar. Spent: what left it.",
 };
 
 export default en;

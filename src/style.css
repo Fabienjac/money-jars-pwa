@@ -3946,3 +3946,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .jars-v2-section--embedded .jars-v2-grid { padding: 0; }
 .subs-panel { padding-top: 4px; }
 .subs-empty { margin: 16px; font-size: 13px; color: var(--text-muted); text-align: center; }
+
+/* « Mes jarres » en vue Soldes : liste compacte, une ligne par jarre */
+.jars-legend { margin: 0 0 12px; font-size: 12px; line-height: 1.4; color: var(--text-muted); }
+.jars-bal-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.jars-bal-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--border-color); }
+.jars-bal-row:first-child { border-top: 0; padding-top: 0; }
+.jars-bal-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.jars-bal-name { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; font-size: 14px; font-weight: 600; color: var(--text-main); }
+.jars-bal-label { overflow-wrap: anywhere; }
+.jars-bal-pct { padding: 1px 7px; border-radius: 999px; background: var(--bg-body); font-size: 11px; font-weight: 600; color: var(--text-muted); }
+.jars-bal-rest { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.jars-bal-rest-label { font-size: 10px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-muted); }
+.jars-bal-rest-amount { font-size: 17px; font-weight: 700; color: var(--text-main); font-variant-numeric: tabular-nums; }
+.jars-bal-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }

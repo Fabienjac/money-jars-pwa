@@ -1,6 +1,6 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince} from "../api";
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
@@ -29,6 +29,7 @@ const JAR_COLORS: Record<JarKey, string> = {
 };
 
 const JAR_SETTINGS_STORAGE_KEY = "mjars:jarSettings";
+const JARS_MODE_KEY = "mjars:jarsMode";
 
 
 // Couleurs vives (barres, pastilles) → variante assez contrastée pour du texte (WCAG AA), définies dans style.css
@@ -223,7 +224,15 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   const [error, setError] = useState<string | null>(null);
   const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(null);
   // Bloc « Mes jarres » : vue du mois (avec sélecteur de mois) ou vue des soldes cumulés
-  const [jarsMode, setJarsMode] = useState<"month" | "balance">("month");
+  const [jarsMode, setJarsModeState] = useState<"month" | "balance">(() => {
+    try { return localStorage.getItem(JARS_MODE_KEY) === "balance" ? "balance" : "month"; } catch { return "month"; }
+  });
+  const jarsModeChosen = useRef<boolean>((() => { try { return localStorage.getItem(JARS_MODE_KEY) !== null; } catch { return false; } })());
+  const setJarsMode = (m: "month" | "balance") => {
+    jarsModeChosen.current = true;
+    setJarsModeState(m);
+    try { localStorage.setItem(JARS_MODE_KEY, m); } catch { /* sans importance */ }
+  };
   const [monthOffset, setMonthOffset] = useState(0); // 0 = mois en cours, -1 = mois précédent…
   const showJarsDetail = jarsMode === "balance";
 
@@ -351,6 +360,15 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   useEffect(() => {
     if (showJarsDetail && !totals && !loading) loadTotals();
   }, [showJarsDetail]); // soldes cumulés : chargés à la première ouverture
+
+  // Mois en cours sans aucun revenu (alors qu'il y en a eu avant) : la vue « Mois » n'a rien à comparer, on ouvre sur
+  // « Soldes ». Dès que l'utilisateur choisit lui-même une vue, son choix est mémorisé et prime.
+  useEffect(() => {
+    if (jarsModeChosen.current || !analytics) return;
+    const monthHasIncome = (analytics.trends?.revenues?.current ?? 0) > 0;
+    const everHadIncome = (analytics.monthlyData ?? []).some((m) => m.revenues > 0);
+    if (!monthHasIncome && everHadIncome) setJarsModeState("balance");
+  }, [analytics]);
 
   const totalRevenues = totals?.totalRevenues || 0;
   const totalSpendings = totals
@@ -1056,6 +1074,8 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
             </div>
           </div>
 
+          <p className="jars-legend">{t("home.jarsLegend")}</p>
+
           {jarsMode === "month" ? (
             <>
               <div className="jars-month-nav">
@@ -1187,92 +1207,48 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
 
               {totals && (
                 <>
-              <div className="jars-v2-section jars-v2-section--embedded">
-                <div className="jars-v2-grid">
-                  {jarKeys.map((key) => {
-                    const jar = totals.jars[key];
-                    const backendSplit = totals.split?.[key];
-                    const settingsSplit = customSplit?.[key];
-                    // settingsSplit est en fraction (0.55), backendSplit est en entier (55)
-                    const effectiveSplit =
-                      settingsSplit != null
-                        ? settingsSplit
-                        : backendSplit != null
-                        ? backendSplit / 100
-                        : 0;
-                    const allocated = jar.revenues || 0;
-                    const spent = jar.spendings || 0;
-                    const progressPercent = allocated > 0 ? (spent / allocated) * 100 : 0;
-                    const isOverspent = progressPercent > 100;
-                    return (
-                      <article
-                        key={key}
-                        className="jar-card-v2"
-                        style={isOverspent ? { borderColor: "#FF3B30", borderWidth: 2 } : undefined}
-                      >
-                        <div className="jar-card-header">
-                          <div className="jar-card-title">
-                            <span className="jar-emoji">{JAR_EMOJIS[key]}</span>
-                            <span className="jar-code">{key}</span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            {isOverspent && (
-                              <span
-                                style={{
-                                  fontSize: "11px",
-                                  fontWeight: "700",
-                                  color: "#fff",
-                                  backgroundColor: "#FF3B30",
-                                  borderRadius: "10px",
-                                  padding: "2px 7px",
-                                  animation: "pulse 1.5s ease-in-out infinite",
-                                }}
-                              >
-                                {t("home.over")}
-                              </span>
-                            )}
-                            <span
-                              className="jar-percent"
-                              style={{ "--c": isOverspent ? "#FF3B30" : JAR_COLORS[key] } as React.CSSProperties}
-                            >
-                              {(effectiveSplit * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                        </div>
-                        <p className="jar-label">{JAR_LABELS[key]}</p>
-                        <p className="jar-remaining-label" style={isOverspent ? { color: "var(--danger-text)" } : undefined}>
-                          {isOverspent || jar.net < 0 ? t("home.overBy") : t("home.remaining")}
-                        </p>
-                        <p className="jar-amount" style={isOverspent ? { color: "var(--danger-text)" } : undefined}>
-                          {Math.abs(jar.net) >= 10000 ? Math.round(jar.net).toLocaleString(localeTag()) : formatMoney(jar.net)}
-                          <span className="jar-currency">{curSym()}</span>
-                        </p>
-                        <div className="jar-progress-wrapper">
-                          <div className="jar-progress-info">
-                            <span className="jar-progress-label">{t("home.spent")}</span>
-                            <span
-                              className="jar-progress-value"
-                              style={isOverspent ? { color: "var(--danger-text)", fontWeight: "700" } : undefined}
-                            >
-                              {progressPercent.toFixed(0)}%
-                            </span>
-                          </div>
-                          <div className="jar-progress-bar">
-                            <div
-                              className="jar-progress-fill"
-                              style={{
-                                width: `${Math.min(progressPercent, 100)}%`,
-                                backgroundColor: isOverspent ? "#FF3B30" : JAR_COLORS[key],
-                              }}
-                            />
-                          </div>
-                          <p className="jar-spent-amount">{formatMoney(spent)}&nbsp;{curSym()}</p>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </div>
+              <ul className="jars-bal-list">
+                {jarKeys.map((key) => {
+                  const jar = totals.jars[key];
+                  const backendSplit = totals.split?.[key];
+                  const settingsSplit = customSplit?.[key];
+                  // settingsSplit est en fraction (0.55), backendSplit est en entier (55)
+                  const split = settingsSplit != null ? settingsSplit : backendSplit != null ? backendSplit / 100 : 0;
+                  const received = jar.revenues || 0; // déposé par les revenus (+ solde initial, transferts, déficits effacés)
+                  const spent = jar.spendings || 0; // prélevé par les dépenses
+                  const pct = received > 0 ? (spent / received) * 100 : 0;
+                  const over = jar.net < -0.005;
+                  const color = over ? "#FF3B30" : pct >= 80 ? "#FF9500" : JAR_COLORS[key];
+                  const amount = (n: number) =>
+                    Math.abs(n) >= 10000 ? `${Math.round(n).toLocaleString(localeTag())}` : formatMoney(n);
+                  return (
+                    <li key={key} className={`jars-bal-row${over ? " jars-bal-row--over" : ""}`}>
+                      <div className="jars-bal-top">
+                        <span className="jars-bal-name">
+                          <span aria-hidden="true">{JAR_EMOJIS[key]}</span>
+                          <span className="jars-bal-label">{JAR_LABELS[key]}</span>
+                          <span className="jars-bal-pct">{(split * 100).toFixed(0)} %</span>
+                        </span>
+                        <span className="jars-bal-rest">
+                          <span className="jars-bal-rest-label">{over ? t("home.overBy") : t("home.remaining")}</span>
+                          <span className="jars-bal-rest-amount" style={over ? { color: "var(--danger-text)" } : undefined}>
+                            {amount(jar.net)}&nbsp;{curSym()}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="jar-progress-bar" aria-hidden="true">
+                        <div className="jar-progress-fill" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }} />
+                      </div>
+                      <div className="jars-bal-meta">
+                        <span>{t("home.received", { amount: `${amount(received)}\u00A0${curSym()}` })}</span>
+                        <span style={over ? { color: "var(--danger-text)", fontWeight: 700 } : undefined}>
+                          {t("home.spentOf", { amount: `${amount(spent)}\u00A0${curSym()}`, pct: pct > 999 ? "999+" : pct.toFixed(0) })}
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
                 </>
               )}
             </>

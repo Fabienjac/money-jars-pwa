@@ -221,7 +221,7 @@ const fr = {
   "home.setBudget": "Fixer un budget",
   "home.budgetPlaceholder": "budget",
   "home.moreCategories": "+{n} autres catégories",
-  "home.allocated": "alloué {amount}",
+  "home.allocated": "reçu {amount}",
   "home.basedOn": "Basé sur {amount} de revenus ce mois",
   "home.jarsActivate": "🌱 Vos jarres s'activent dès votre premier revenu",
   "home.jarsMonth": "🏺 Jarres — {label}",
@@ -924,6 +924,9 @@ const fr = {
   "home.modeBalance": "Soldes",
   "home.prevMonth": "Mois précédent",
   "home.nextMonth": "Mois suivant",
+  "home.received": "reçu {amount}",
+  "home.spentOf": "dépensé {amount} · {pct} %",
+  "home.jarsLegend": "Reçu : la part de tes revenus déposée dans la jarre. Dépensé : ce qui en est sorti.",
 } as const;
 
 export default fr;
