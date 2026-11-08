@@ -28,6 +28,7 @@ import { loadAccounts, saveAccounts } from "../accountsUtils";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import CryptoSettings from "./CryptoSettings";
 import BaseCurrencySettings from "./BaseCurrencySettings";
+import DataAccountSection from "./DataAccountSection";
 import { loadTags, setCachedTags, Tag } from "../tagsUtils";
 import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi, fetchTagsFromSheet, saveTags as saveTagsApi, bulkRenameSpendingAccount, bulkRenameRevenueSource, fetchJarSettings, saveJarSettings } from "../api";
 import { ALL_CURRENCIES, loadPreferredCurrencies, savePreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
@@ -1235,6 +1236,7 @@ const SettingsView: React.FC = () => {
       <section className="settings-section">
         <h2 className="settings-section-title">{t("set.account")}</h2>
         <LogoutButton />
+        <DataAccountSection />
       </section>
 
     </main>

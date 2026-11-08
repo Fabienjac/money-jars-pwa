@@ -1,5 +1,6 @@
 // src/api.ts — backend Supabase
 import { supabase } from "./lib/supabase";
+import { EXPORT_TABLES, type ExportTables } from "./dataExport";
 import { cacheVersion, invalidateHistoryCache, readHistoryCache, writeHistoryCache, type HistoryKind } from "./historyCache";
 import { t } from "./i18n";
 import type {
@@ -349,6 +350,52 @@ export function fetchAllSpendingsCached(): Promise<SearchSpendingResult[]> {
 
 export function fetchAllRevenuesCached(): Promise<SearchRevenueResult[]> {
   return readAllCached<SearchRevenueResult>("revenue", () => fetchAllRevenues());
+}
+
+/**
+ * Toutes les données de l'utilisateur pour l'export (une lecture complète, page par page, de chaque table).
+ * Une table qui n'existe pas encore (SQL pas exécuté) compte pour vide : l'export reste possible.
+ */
+export async function fetchExportTables(): Promise<{ email: string | null; tables: ExportTables }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error(t("err.notLoggedIn"));
+  const tables: ExportTables = {};
+  for (const name of EXPORT_TABLES) {
+    try {
+      tables[name] = (await fetchAllPages((from, to) =>
+        supabase.from(name).select("*").eq("user_id", user.id).order("id", { ascending: true }).range(from, to)
+      )) as Array<Record<string, unknown>>;
+    } catch (e) {
+      if (e instanceof Error && /does not exist|schema cache|could not find the table/i.test(e.message)) tables[name] = [];
+      else throw e;
+    }
+  }
+  return { email: user.email ?? null, tables };
+}
+
+/**
+ * Supprime définitivement le compte connecté et toutes ses données (fonction serveur : le client n'a pas le droit de
+ * supprimer un utilisateur). `code` : "active_subscription" (abonnement payant à résilier d'abord) ou "confirm_mismatch".
+ */
+export async function deleteMyAccount(confirmEmail: string): Promise<{ ok: boolean; code?: string; error?: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { ok: false, error: t("err.notLoggedIn") };
+  try {
+    const res = await fetch("/.netlify/functions/deleteAccount", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({ confirmEmail }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && body.ok) {
+      invalidateHistoryCache();
+      return { ok: true };
+    }
+    const code = typeof body.error === "string" ? body.error : undefined;
+    return { ok: false, code, error: code ?? "HTTP " + res.status };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 export async function searchRevenues(q: string, max = 50): Promise<{ rows: SearchRevenueResult[] }> {

@@ -4164,3 +4164,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .wt-head span:nth-child(3) { grid-column: 5; text-align: right; }
   .wt-main { grid-template-columns: 30px minmax(0, 1.1fr) minmax(0, 1.6fr) 56px 110px; grid-template-areas: "emoji name bar pct amount"; }
 }
+
+/* ── Réglages > Compte : mes données, suppression ─────────────────────── */
+.data-account { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+.data-account-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--text-main); }
+.data-account-danger-title { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border-color); color: #FF3B30; }
+.data-account-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.data-account-note { margin: 0; font-size: 13px; color: var(--text-muted); }
+.data-account-note.is-error { color: #FF3B30; }
+.data-account-danger-open { align-self: flex-start; color: #FF3B30; border-color: #FF3B30; }
+.data-account-danger { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; border: 1.5px solid #FF3B30; background: #FF3B3010; font-size: 14px; line-height: 1.45; color: var(--text-main); }
+.data-account-danger p { margin: 0; }
+.data-account-confirm { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+.data-account-confirm input { padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--border-color); background: var(--bg-card); color: var(--text-main); font-family: inherit; font-size: 15px; }
+.data-account-delete { background: #FF3B30; border-color: #FF3B30; color: #fff; }
