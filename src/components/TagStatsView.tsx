@@ -19,6 +19,7 @@ import {
   toHistoryPreset, type AnalyticsFilters,
 } from "../analyticsFilters";
 import { OPEN_HISTORY_EVENT, savePreset } from "../historyPreset";
+import { loadFilters, saveFilters } from "../analyticsState";
 import { parseMinAmount } from "../historyFilters";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import type { PeriodFilter } from "../historyPeriod";
@@ -76,7 +77,9 @@ const TagStatsView: React.FC = () => {
   const [allTransactions, setAllTransactions] = useState<SearchSpendingResult[]>([]);
   const [allRevenues, setAllRevenues] = useState<SearchRevenueResult[]>([]);
   const [oneOffTags, setOneOffTags] = useState<string[]>([EXCEPTIONAL_TAG_ID]);
-  const [filters, setFilters] = useState<AnalyticsFilters>(DEFAULT_ANALYTICS_FILTERS);
+  // Les filtres sont conservés le temps de la session : on les retrouve en revenant d'un autre écran (Historique…)
+  const [filters, setFilters] = useState<AnalyticsFilters>(() => { try { return loadFilters(sessionStorage); } catch { return DEFAULT_ANALYTICS_FILTERS; } });
+  useEffect(() => { try { saveFilters(filters, sessionStorage); } catch { /* sans importance */ } }, [filters]);
   const [filtersOpen, setFiltersOpen] = useState(() => readFlag(FILTERS_OPEN_KEY, false));
   const [hideOneOff, setHideOneOff] = useState(() => readFlag(HIDE_ONEOFF_KEY, false));
   const [showAdvanced, setShowAdvanced] = useState(false);
