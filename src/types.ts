@@ -31,6 +31,8 @@ export interface JarTotals {
   spendings: number;
   net: number;
   revPct: number;
+  /** Solde net déplacé volontairement vers d'autres jarres (transferts) : ne compte pas dans le seuil d'alerte. */
+  transferOut?: number;
 }
 
 export interface TotalsResponse {

@@ -34,6 +34,7 @@ import { ALL_CURRENCIES, loadPreferredCurrencies, savePreferredCurrencies, getCu
 
 import { currencySymbol as curSym } from "../baseCurrency";
 import LanguageSettings from "./LanguageSettings";
+import JarTransfers from "./JarTransfers";
 import { useT, JAR_LABELS } from "../i18n";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
@@ -618,6 +619,9 @@ const SettingsView: React.FC = () => {
           </button>
         </div>
       </section>
+
+      {/* Section: Transferts entre jarres */}
+      <JarTransfers />
 
       {/* Section: Règles automatiques */}
       <section className="settings-section">

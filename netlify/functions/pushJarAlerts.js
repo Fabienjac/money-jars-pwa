@@ -30,9 +30,11 @@ function jarLevel(j) {
   const revenues = Number(j && j.revenues) || 0;
   const spent = Number(j && j.spendings) || 0;
   const net = revenues - spent;
-  if (net < -0.005) return { level: 2, percent: revenues > 0 ? (spent / revenues) * 100 : 100, net };
-  if (revenues > 0 && spent / revenues >= WARN_RATIO) return { level: 1, percent: (spent / revenues) * 100, net };
-  return { level: 0, percent: revenues > 0 ? (spent / revenues) * 100 : 0, net };
+  // Solde déplacé volontairement vers d'autres jarres : hors du plan pour le seuil de 80 % (port de src/jarAlerts.ts)
+  const base = revenues + Math.max(0, Number(j && j.transferOut) || 0);
+  if (net < -0.005) return { level: 2, percent: base > 0 ? (spent / base) * 100 : 100, net };
+  if (base > 0 && spent / base >= WARN_RATIO) return { level: 1, percent: (spent / base) * 100, net };
+  return { level: 0, percent: base > 0 ? (spent / base) * 100 : 0, net };
 }
 
 function computeAlerts(jars) {
@@ -141,9 +143,39 @@ async function readJarTotals(db, userId) {
     if (JAR_KEYS.includes(s.jar)) spent[s.jar] += Number(s.amount);
   });
 
+  const moved = await readTransferDeltas(db, userId);
+
   const jars = {};
-  for (const k of JAR_KEYS) jars[k] = { revenues: totalRevenues * (pct[k] / 100) + initial[k], spendings: spent[k] };
+  for (const k of JAR_KEYS) jars[k] = {
+    revenues: totalRevenues * (pct[k] / 100) + initial[k] + moved[k],
+    spendings: spent[k],
+    transferOut: Math.max(0, -moved[k]),
+  };
   return jars;
+}
+
+// Transferts entre jarres (port de transferDeltas dans src/jarTransfers.ts) : entrées moins sorties, au centime.
+// Table absente (SQL pas encore exécuté) : aucun transfert, comme dans l'app.
+async function readTransferDeltas(db, userId) {
+  const cents = { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 };
+  let rows = [];
+  try {
+    rows = await readAll((from, to) =>
+      db.from("jar_transfers").select("from_jar, to_jar, amount").eq("user_id", userId).order("id", { ascending: true }).range(from, to)
+    );
+  } catch (err) {
+    if (!/does not exist|schema cache|could not find the table/i.test(String((err && err.message) || ""))) throw err;
+  }
+  for (const r of rows) {
+    const c = Math.round(Number(r.amount) * 100);
+    if (!Number.isFinite(c) || c <= 0) continue;
+    if (!JAR_KEYS.includes(r.from_jar) || !JAR_KEYS.includes(r.to_jar) || r.from_jar === r.to_jar) continue;
+    cents[r.from_jar] -= c;
+    cents[r.to_jar] += c;
+  }
+  const out = {};
+  for (const k of JAR_KEYS) out[k] = cents[k] / 100;
+  return out;
 }
 
 // ── Envoi ───────────────────────────────────────────────────────────────────
@@ -276,4 +308,4 @@ async function handler(event, deps) {
 }
 
 exports.handler = (event) => handler(event);
-exports._test = { handler, jarLevel, computeAlerts, buildPayload, claimLevels };
+exports._test = { handler, jarLevel, computeAlerts, buildPayload, claimLevels, readTransferDeltas };

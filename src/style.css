@@ -3894,3 +3894,23 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .push-btn:disabled { opacity: 0.5; cursor: default; }
 .push-btn--quiet { border-color: var(--border-color); color: var(--text-muted); }
 .push-note { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+/* Transferts entre jarres (Réglages) */
+.jt-sub { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+.jt-h { margin: 20px 0 6px; font-size: 15px; font-weight: 600; color: var(--text-main); }
+.jt-list { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.jt-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 12px; font-size: 14px; color: var(--text-main); }
+.jt-row--history { flex-wrap: wrap; }
+.jt-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 160px; overflow-wrap: anywhere; }
+.jt-meta { font-size: 12px; color: var(--text-muted); }
+.jt-check { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.jt-check input { width: 18px; height: 18px; flex: none; }
+.jt-line { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; align-items: flex-end; }
+.jt-field { display: flex; flex-direction: column; gap: 4px; flex: 1 1 180px; min-width: 0; font-size: 12px; color: var(--text-muted); }
+.jt-amount { display: flex; gap: 8px; align-items: center; }
+.jt-amount .jar-input { min-width: 0; }
+.jt-form .settings-btn { width: 100%; }
+.jt-empty { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); }
+.jt-hint { margin: 0 0 10px; font-size: 13px; color: var(--text-muted); }
+.jt-warn { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--danger-text); }
+.jt-missing { margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; background: rgba(255, 149, 0, 0.12); border-left: 4px solid #FF9500; color: var(--text-main); }

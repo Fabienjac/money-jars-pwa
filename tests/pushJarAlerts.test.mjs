@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { loadTs } from "./_load.mjs";
 
 const require = createRequire(import.meta.url);
-const { handler, jarLevel, computeAlerts, buildPayload } = require("../netlify/functions/pushJarAlerts.js")._test;
+const { handler, jarLevel, computeAlerts, buildPayload, readTransferDeltas } = require("../netlify/functions/pushJarAlerts.js")._test;
 
 // ── Faux Supabase en mémoire : juste ce que la fonction utilise ──────────────
 class Q {
@@ -181,4 +181,50 @@ test("texte en anglais et assainissement des libellés envoyés par le client", 
   const en = buildPayload([{ jar: "PLAY", level: 2, percent: 120, net: -20 }], { lang: "en", currency: "$", labels: { PLAY: "Fun\nINJECT" } });
   assert.equal(en.title, "Jar alert");
   assert.equal(en.body, "🎮 Fun INJECT : over by 20.00 $");
+});
+
+test("transferts entre jarres : verser du reste vers l'épargne peut déclencher une alerte, combler un déficit l'évite", async () => {
+  // revenu 1000 → NEC 550 alloués ; 400 dépensés = 73 %, pas d'alerte
+  const a = setup({ spendings: [["NEC", 400]] });
+  assert.deepEqual((await a.call("jarAlerts")).json.alerts, []);
+  // on verse 100 de NEC vers l'épargne : choix volontaire, le seuil de 80 % reste calculé sur le plan d'origine → rien
+  a.tables.jar_transfers = [{ user_id: "u1", from_jar: "NEC", to_jar: "FFA", amount: "100.00" }];
+  assert.deepEqual((await a.call("jarAlerts")).json.alerts, []);
+  // mais une dépense qui dépasse le solde réel (450) reste signalée
+  a.tables.transactions_spending.push({ user_id: "u1", jar: "NEC", amount: 60 });
+  assert.deepEqual((await a.call("jarAlerts")).json.alerts, ["NEC"]);
+  assert.equal(a.sent.length, 1);
+  assert.match(a.sent[0].body, /Nécessités : dépassée de 10,00\s€/);
+
+  // NEC dépassée de 50 (600 / 550) ; 60 reçus de l'épargne → 610 alloués : plus dépassée, seulement presque épuisée
+  const b = setup({ spendings: [["NEC", 600]] });
+  b.tables.jar_transfers = [{ user_id: "u1", from_jar: "FFA", to_jar: "NEC", amount: 60 }];
+  const r = await b.call("jarAlerts");
+  assert.deepEqual(r.json.alerts, ["NEC"]);
+  assert.match(b.sent[0].body, /Nécessités : 98 % dépensé/);
+});
+
+test("transferts : mêmes soldes que l'app (src/jarTransfers.ts), lignes invalides ignorées, table absente tolérée", async () => {
+  const ts = await loadTs("src/jarTransfers.ts");
+  const rows = [
+    { from_jar: "PLAY", to_jar: "FFA", amount: "0.1" },
+    { from_jar: "PLAY", to_jar: "FFA", amount: "0.2" },
+    { from_jar: "NEC", to_jar: "NEC", amount: 50 },
+    { from_jar: "NEC", to_jar: "ZZZ", amount: 50 },
+    { from_jar: "EDUC", to_jar: "LTSS", amount: -4 },
+    { from_jar: "GIFT", to_jar: "LTSS", amount: 33.33 },
+  ];
+  const s = setup();
+  s.tables.jar_transfers = rows.map((r) => ({ user_id: "u1", ...r }));
+  assert.deepEqual(await readTransferDeltas(s.deps.createDb(), "u1"), ts.transferDeltas(rows));
+
+  const chain = { select: () => chain, eq: () => chain, order: () => chain, range: () => chain,
+    then: (res) => Promise.resolve({ data: null, error: { message: 'relation "jar_transfers" does not exist' } }).then(res) };
+  assert.deepEqual(
+    await readTransferDeltas({ from: () => chain }, "u1"),
+    { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 }
+  );
+  const boom = { select: () => boom, eq: () => boom, order: () => boom, range: () => boom,
+    then: (res) => Promise.resolve({ data: null, error: { message: "network down" } }).then(res) };
+  await assert.rejects(() => readTransferDeltas({ from: () => boom }, "u1"), /network down/);
 });

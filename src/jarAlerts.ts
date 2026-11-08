@@ -23,15 +23,18 @@ export interface JarAlert {
   net: number;
 }
 
-interface JarTotalsLike { revenues: number; spendings: number }
+// transferOut : solde déplacé volontairement vers d'autres jarres. Vider une jarre vers l'épargne est un choix, pas un
+// signal : cet argent compte comme « hors du plan » pour le seuil de 80 %, mais le solde réel (net) reste celui de la jarre.
+interface JarTotalsLike { revenues: number; spendings: number; transferOut?: number }
 
 export function jarAlertLevel(j: JarTotalsLike | undefined): { level: AlertLevel; percent: number; net: number } {
   const revenues = Number(j?.revenues) || 0;
   const spent = Number(j?.spendings) || 0;
   const net = revenues - spent;
-  if (net < -0.005) return { level: 2, percent: revenues > 0 ? (spent / revenues) * 100 : 100, net };
-  if (revenues > 0 && spent / revenues >= WARN_RATIO) return { level: 1, percent: (spent / revenues) * 100, net };
-  return { level: 0, percent: revenues > 0 ? (spent / revenues) * 100 : 0, net };
+  const base = revenues + Math.max(0, Number(j?.transferOut) || 0);
+  if (net < -0.005) return { level: 2, percent: base > 0 ? (spent / base) * 100 : 100, net };
+  if (base > 0 && spent / base >= WARN_RATIO) return { level: 1, percent: (spent / base) * 100, net };
+  return { level: 0, percent: base > 0 ? (spent / base) * 100 : 0, net };
 }
 
 /** Alertes en cours, les plus graves d'abord (dépassées avant épuisées, puis par % décroissant). */

@@ -15,6 +15,7 @@ import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
 import { fetchAllPages } from "./paginate";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
 import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
+import { isJarKey, round2, transferDeltas, type JarTransfer } from "./jarTransfers";
 
 // ── Helpers dates ──────────────────────────────────────────────────────────────
 // L'app utilise DD/MM/YYYY en interne ; Supabase stocke en YYYY-MM-DD (type date)
@@ -322,6 +323,9 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
       .range(from, to)
   );
 
+  // Transferts entre jarres : ils déplacent du solde d'une jarre à l'autre (ni revenu ni dépense)
+  const transferDelta = transferDeltas(await readTransferRows(user.id));
+
   const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
   const DEFAULT_PCT: Record<JarKey, number> = { NEC: 55, FFA: 10, LTSS: 10, PLAY: 10, EDUC: 10, GIFT: 5 };
 
@@ -352,19 +356,91 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
   const split = { ...jarPcts };
   const jarsResult = {} as TotalsResponse["jars"];
   JAR_KEYS.forEach(key => {
-    const jarRevenues = totalRevenues * (jarPcts[key] / 100) + jarInitial[key];
+    const jarRevenues = totalRevenues * (jarPcts[key] / 100) + jarInitial[key] + transferDelta[key];
     const jarSpendings = spendingByJar[key];
     jarsResult[key] = {
       revenues:  jarRevenues,
       spendings: jarSpendings,
       net:       jarRevenues - jarSpendings,
       revPct:    jarRevenues > 0 ? (jarSpendings / jarRevenues) * 100 : 0,
+      transferOut: Math.max(0, -transferDelta[key]),
     };
   });
 
   const result: TotalsResponse = { jars: jarsResult, totalRevenues, split };
   setCache(CACHE_KEY, result);
   return result;
+}
+
+// ── Transferts entre jarres ────────────────────────────────────────────────────
+
+const TABLE_MISSING = /does not exist|schema cache|could not find the table/i;
+
+async function readTransferRows(userId: string): Promise<Array<{ from_jar: string; to_jar: string; amount: number | string }>> {
+  try {
+    return await fetchAllPages((from, to) =>
+      supabase
+        .from("jar_transfers")
+        .select("from_jar, to_jar, amount")
+        .eq("user_id", userId)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    // Table pas encore créée (SQL non exécuté) : aucun transfert, l'app fonctionne comme avant
+    if (e instanceof Error && TABLE_MISSING.test(e.message)) return [];
+    throw e;
+  }
+}
+
+/** Transferts de l'utilisateur, du plus récent au plus ancien. null = table absente (SQL à exécuter). */
+export async function fetchJarTransfers(): Promise<JarTransfer[] | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("jar_transfers")
+    .select("id, from_jar, to_jar, amount, transfer_date, note, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    if (TABLE_MISSING.test(error.message)) return null;
+    throw new Error(error.message);
+  }
+  return (data ?? [])
+    .filter((r) => isJarKey(r.from_jar) && isJarKey(r.to_jar))
+    .map((r) => ({
+      id: String(r.id),
+      fromJar: r.from_jar as JarKey,
+      toJar: r.to_jar as JarKey,
+      amount: Number(r.amount),
+      date: String(r.transfer_date ?? ""),
+      note: String(r.note ?? ""),
+    }));
+}
+
+export async function addJarTransfer(input: { from: JarKey; to: JarKey; amount: number; note?: string }): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("jar_transfers").insert({
+    user_id: user.id,
+    from_jar: input.from,
+    to_jar: input.to,
+    amount: round2(input.amount),
+    note: (input.note ?? "").trim().slice(0, 200),
+  });
+  if (error) return { ok: false, error: error.message };
+  clearCache("mjars:cache:totals");
+  return { ok: true };
+}
+
+export async function deleteJarTransfer(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("jar_transfers").delete().eq("id", id).eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  clearCache("mjars:cache:totals");
+  return { ok: true };
 }
 
 function emptyTotals(): TotalsResponse {
