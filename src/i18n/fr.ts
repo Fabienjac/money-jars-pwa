@@ -983,6 +983,7 @@ const fr = {
   "hist.noDate": "Date inconnue",
   "hist.exportCsv": "⬇ Exporter en CSV ({n})",
   "hist.csvSubscription": "Abonnement",
+  "hist.avgPerDayOver": "Moyenne par jour sur {n} jours",
 } as const;
 
 export default fr;

@@ -1008,7 +1008,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                 {t("hist.byTag")}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 14 }}>
-                Moyenne / jour sur {reportDaysInMonth} jours
+                {t("hist.avgPerDayOver", { n: reportDaysInMonth })}
               </div>
               {reportTagStats.map(tag => {
                 const barMax = reportTagStats[0]?.totalAmount || 1;
@@ -1020,7 +1020,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                       <div style={{ textAlign: "right", flexShrink: 0 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: "#FF3B30" }}>{fmt(tag.totalAmount)} {curSym()}</span>
                         <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}>
-                          ≈ {fmt(tag.avgPerDay, 1)} {curSym()}/j
+                          ≈ {fmt(tag.avgPerDay, 1)} {curSym()}{t("life.perDayShort")}
                         </span>
                       </div>
                     </div>
