@@ -3,7 +3,8 @@
 // dans le panneau de réglage (voyage, gros achat…). Calcul : src/lifestyle.ts.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs, fetchExceptionalDismissed, saveExceptionalDismissed, markSpendingExceptional, type SpendingLite } from "../api";
-import { computeLifestyle, lifestyleFetchFrom, tagTotalsThisYear } from "../lifestyle";
+import { computeLifestyle, lifestyleFetchFrom, rollingAverageSeries, tagTotalsThisYear } from "../lifestyle";
+import DailyAverageChart from "./DailyAverageChart";
 import { suggestExceptional } from "../exceptional";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import { loadTags } from "../tagsUtils";
@@ -33,7 +34,14 @@ const cardStyle: React.CSSProperties = {
   boxShadow: "var(--shadow-md)",
 };
 
-const LifestyleCard: React.FC = () => {
+/** Date AAAA-MM-JJ située `days` jours avant le 1er janvier de l'année de `today`. */
+function beforeJan1(today: string, days: number): string {
+  const d = new Date(Number(today.slice(0, 4)), 0, 1);
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel }) => {
   useT(); // re-rendu au changement de langue
   const [rows, setRows] = useState<SpendingLite[] | null>(null);
   const [dismissed, setDismissed] = useState<string[]>([]);
@@ -46,8 +54,12 @@ const LifestyleCard: React.FC = () => {
 
   const load = useCallback(async () => {
     try {
-      const from = lifestyleFetchFrom(todayISO());
-      if (!from) return;
+      const today = todayISO();
+      const base = lifestyleFetchFrom(today);
+      if (!base) return;
+      // La courbe a besoin des 30 jours qui précèdent le 7 janvier pour que ses premiers points soient justes
+      const chartFrom = beforeJan1(today, 30);
+      const from = base < chartFrom ? base : chartFrom;
       const [data, prefs, dismissedIds] = await Promise.all([fetchSpendingsSince(from), fetchLifestylePrefs(), fetchExceptionalDismissed()]);
       setRows(data);
       setExtraTags(prefs.extraordinaryTags);
@@ -78,6 +90,10 @@ const LifestyleCard: React.FC = () => {
   const today = todayISO();
   const stats = useMemo(() => (rows ? computeLifestyle(rows, extraSet, today) : null), [rows, extraSet, today]);
   const tagTotals = useMemo(() => (rows ? tagTotalsThisYear(rows, today) : {}), [rows, today]);
+  // Courbe hors dépenses extraordinaires (et alimentation par-dessus)
+  const chartPoints = useMemo(() => (rows ? rollingAverageSeries(rows, extraSet, today) : []), [rows, extraSet, today]);
+  const foodPoints = useMemo(() => (rows ? rollingAverageSeries(rows, extraSet, today, "alimentaire") : []), [rows, extraSet, today]);
+  const foodNow = foodPoints.length > 0 ? foodPoints[foodPoints.length - 1].avg : 0;
 
   // Grosses dépenses pas encore étiquetées : on propose de les marquer « Exceptionnel »
   const suggestions = useMemo(
@@ -152,6 +168,28 @@ const LifestyleCard: React.FC = () => {
         </div>
         <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>{t("life.subtitle")}</div>
 
+        {rows === null && !error && <div className="skeleton" style={{ width: "100%", height: "110px", borderRadius: 12, marginBottom: 12 }} />}
+        {chartPoints.length >= 2 && (
+          <div className="life-chart">
+            <DailyAverageChart points={chartPoints} overlay={foodPoints} />
+            <div className="life-chart-legend">
+              <span className="life-chart-key">
+                <span className="life-chart-swatch" aria-hidden="true" />
+                {t("life.chartTotal")}
+              </span>
+              {foodNow > 0 && (
+                <span className="life-chart-key life-chart-key--food">
+                  <svg width="16" height="6" aria-hidden="true" style={{ overflow: "visible" }}>
+                    <line x1="0" y1="3" x2="16" y2="3" stroke="#84CC16" strokeWidth="2" strokeDasharray="4 2" />
+                  </svg>
+                  🥗 {money(foodNow, 2)}{t("life.perDayShort")}
+                </span>
+              )}
+              <span className="life-chart-note">{t("home.avg30week")}</span>
+            </div>
+          </div>
+        )}
+
         {rows === null && !error && (
           <div style={{ display: "flex", gap: "12px" }}>
             <div className="skeleton skeleton-amount" style={{ flex: 1 }} />
@@ -225,6 +263,10 @@ const LifestyleCard: React.FC = () => {
                   : t("life.noneTagged", { name: tagChoices.find((c) => c.id === extraTags[0])?.name ?? extraTags[0] })}
             </div>
           </>
+        )}
+
+        {lastImportLabel && (
+          <div className="life-import">🔄 {t("life.lastImport", { when: lastImportLabel })}</div>
         )}
 
         {suggestions.length > 0 && (

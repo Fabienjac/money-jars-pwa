@@ -100,3 +100,34 @@ test("tagTotalsThisYear : cumul par étiquette sur l'année en cours", () => {
   ];
   assert.deepEqual(tagTotalsThisYear(rows, "2026-03-01"), { voyage: 100, loisirs: 120 });
 });
+
+test("courbe : moyenne glissante sur 30 jours, hors extraordinaires, un point par semaine + aujourd'hui", async () => {
+  const { rollingAverageSeries } = await import("../src/lifestyle.ts");
+  // 30 € par jour du 1er au 30 janvier, plus 3 000 € de voyage le 10 janvier
+  const rows = Array.from({ length: 30 }, (_, i) => ({ date: `2026-01-${String(i + 1).padStart(2, "0")}`, amount: 30, tags: "" }));
+  rows.push({ date: "2026-01-10", amount: 3000, tags: "voyage" });
+  const s = rollingAverageSeries(rows, voyage, "2026-01-30");
+  assert.deepEqual(s.map((p) => p.date), ["2026-01-07", "2026-01-14", "2026-01-21", "2026-01-28", "2026-01-30"]);
+  // au 30 janvier : 30 jours × 30 € / 30 = 30 €/jour (le voyage n'y compte pas)
+  assert.equal(s[s.length - 1].avg, 30);
+  // au 7 janvier : 7 jours de dépenses sur une fenêtre de 30
+  assert.equal(s[0].avg, (7 * 30) / 30);
+  // avec les extraordinaires comptés, la courbe monte
+  const all = rollingAverageSeries(rows, none, "2026-01-30");
+  assert.equal(all[all.length - 1].avg, 30 + 3000 / 30);
+});
+
+test("courbe : filtre par étiquette, fenêtre qui chevauche l'année précédente, trop tôt dans l'année", async () => {
+  const { rollingAverageSeries } = await import("../src/lifestyle.ts");
+  const rows = [
+    { date: "2025-12-20", amount: 300, tags: "alimentaire" },
+    { date: "2026-01-08", amount: 60, tags: "alimentaire" },
+    { date: "2026-01-09", amount: 90, tags: "loisirs" },
+  ];
+  const food = rollingAverageSeries(rows, none, "2026-01-14", "alimentaire");
+  assert.deepEqual(food.map((p) => p.date), ["2026-01-07", "2026-01-14"]);
+  assert.equal(food[0].avg, 300 / 30); // décembre compte dans la fenêtre du 7 janvier
+  assert.equal(food[1].avg, (300 + 60) / 30);
+  assert.deepEqual(rollingAverageSeries(rows, none, "2026-01-05"), []); // avant le 7 janvier
+  assert.deepEqual(rollingAverageSeries(rows, none, "pas une date"), []);
+});

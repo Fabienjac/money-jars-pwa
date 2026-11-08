@@ -113,6 +113,155 @@ function longestRun(monthIdx: number[]): number {
   return best;
 }
 
+// ── Règles de la détection automatique (partagées avec le diagnostic « pourquoi il manque ? ») ──
+
+export type ExplainReason =
+  | { code: "detected" }
+  | { code: "manual"; stopped: boolean }
+  | { code: "dismissed" }
+  | { code: "tooOld"; monthsAgo: number }
+  | { code: "everyday" }
+  | { code: "oneMonth" }
+  | { code: "several" }
+  | { code: "stopped" }
+  | { code: "notConsecutive" }
+  | { code: "zeroAmount" }
+  | { code: "dateSpread"; spread: number; max: number }
+  | { code: "variable"; run: number };
+
+type AutoVerdict = { ok: true; item: RecurringItem } | { ok: false; reason: ExplainReason };
+
+/** Applique les règles de détection automatique à un libellé (ses prélèvements des 6 derniers mois). */
+function evaluateAuto(key: string, txns: SearchSpendingResult[], nowIdx: number): AutoVerdict {
+  // Dépenses du quotidien : exclues d'office
+  const everyday = txns.filter((t) => (t.tags || "").split(",").some((x) => EVERYDAY_TAGS.has(x.trim()))).length;
+  if (everyday * 2 >= txns.length) return { ok: false, reason: { code: "everyday" } };
+
+  const parsed = txns.map((t) => parseDate(t.date)).filter((p): p is YMD => p !== null);
+  const monthsIdx = parsed.map(monthIndex);
+  const months = new Set(monthsIdx);
+  if (months.size < 2) return { ok: false, reason: { code: "oneMonth" } };
+
+  // Un abonnement se prélève une fois par mois : si le libellé revient souvent deux fois dans un même mois,
+  // c'est un commerce fréquenté (supermarché, boulangerie, station-service…).
+  const perMonth = new Map<number, number>();
+  for (const m of monthsIdx) perMonth.set(m, (perMonth.get(m) ?? 0) + 1);
+  const multi = [...perMonth.values()].filter((c) => c >= 2).length;
+  if (multi / months.size > 0.25) return { ok: false, reason: { code: "several" } };
+
+  // Toujours actif : prélevé ce mois-ci ou le mois dernier
+  if (Math.max(...months) < nowIdx - 1) return { ok: false, reason: { code: "stopped" } };
+
+  const run = longestRun(monthsIdx);
+  if (run < 2) return { ok: false, reason: { code: "notConsecutive" } };
+
+  const { avg, isFixed } = stats(amountsOf(txns));
+  if (avg <= 0) return { ok: false, reason: { code: "zeroAmount" } };
+
+  // Régularité de la date de prélèvement ; un montant variable exige en plus 3 mois de suite
+  const days = parsed.map((p) => p.d);
+  const daySpread = Math.max(...days) - Math.min(...days);
+  const maxSpread = isFixed ? 10 : 7;
+  if (daySpread > maxSpread) return { ok: false, reason: { code: "dateSpread", spread: daySpread, max: maxSpread } };
+  if (!isFixed && run < 3) return { ok: false, reason: { code: "variable", run } };
+
+  const last = [...txns].sort(byRecentFirst)[0];
+  return {
+    ok: true,
+    item: {
+      key,
+      description: last.description || "",
+      avgAmount: avg,
+      monthlyAmount: avg,
+      lastAmount: Math.abs(last.amount || avg),
+      occurrences: txns.length,
+      uniqueMonths: months.size,
+      isFixed,
+      account: last.account || "",
+      lastDate: last.date || "",
+    },
+  };
+}
+
+export interface ExplainResult {
+  key: string;
+  label: string;
+  /** Nombre de dépenses portant ce libellé (toutes dates). */
+  count: number;
+  /** Dates (JJ/MM/AAAA) des prélèvements des 6 derniers mois, du plus récent au plus ancien. */
+  recentDates: string[];
+  lastDate: string;
+  reason: ExplainReason;
+  /** La dernière dépense de ce libellé : celle qu'on marquerait comme abonnement. */
+  latest: SearchSpendingResult;
+}
+
+/**
+ * Pourquoi un libellé n'apparaît pas (ou apparaît) dans les abonnements ? `query` : un morceau de libellé
+ * (« free », « mammouth »). Une entrée par libellé normalisé qui le contient, la plus récente d'abord.
+ */
+export function explainRecurring(
+  transactions: SearchSpendingResult[],
+  query: string,
+  now: Date = new Date(),
+  dismissed: ReadonlySet<string> = new Set(),
+): ExplainResult[] {
+  const q = normalizeLabel(query);
+  if (q.length < 2) return [];
+  const nowIdx = now.getFullYear() * 12 + now.getMonth();
+
+  const byKey = new Map<string, SearchSpendingResult[]>();
+  for (const t of transactions) {
+    const key = normalizeLabel(t.description || "");
+    if (!isUsableKey(key) || !key.includes(q)) continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(t);
+  }
+
+  const results: ExplainResult[] = [];
+  byKey.forEach((all, key) => {
+    const sorted = [...all].sort(byRecentFirst);
+    const latest = sorted[0];
+
+    const recent = all.filter((t) => {
+      const p = parseDate(t.date);
+      return p && monthIndex(p) >= nowIdx - 5 && monthIndex(p) <= nowIdx;
+    });
+
+    let reason: ExplainReason;
+    const flagged = all.filter((t) => {
+      const f = (t.subscription || "").trim().toLowerCase();
+      return f && f in FREQ_DIVISOR;
+    });
+    if (flagged.length > 0) {
+      const freq = (flagged.sort(byRecentFirst)[0].subscription || "mensuel").trim().toLowerCase() as SubscriptionFreq;
+      const lastP = parseDate(sorted[0].date);
+      const stopped = lastP ? nowIdx - monthIndex(lastP) > MANUAL_GRACE_MONTHS[freq] : false;
+      reason = { code: "manual", stopped };
+    } else if (dismissed.has(key)) {
+      reason = { code: "dismissed" };
+    } else if (recent.length === 0) {
+      const lastP = parseDate(latest.date);
+      reason = { code: "tooOld", monthsAgo: lastP ? Math.max(0, nowIdx - monthIndex(lastP)) : 0 };
+    } else {
+      const v = evaluateAuto(key, recent, nowIdx);
+      reason = v.ok ? { code: "detected" } : v.reason;
+    }
+
+    results.push({
+      key,
+      label: latest.description || key,
+      count: all.length,
+      recentDates: [...recent].sort(byRecentFirst).map((t) => t.date),
+      lastDate: latest.date,
+      reason,
+      latest,
+    });
+  });
+
+  return results.sort((a, b) => byRecentFirst({ date: a.lastDate } as SearchSpendingResult, { date: b.lastDate } as SearchSpendingResult)).slice(0, 5);
+}
+
 // ── Détection ────────────────────────────────────────────────────────────────
 
 /**
@@ -190,51 +339,9 @@ export function detectRecurring(
   }
 
   const autoItems: RecurringItem[] = [];
-
   groups.forEach((txns, key) => {
-    // Dépenses du quotidien : exclues d'office
-    const everyday = txns.filter((t) => (t.tags || "").split(",").some((x) => EVERYDAY_TAGS.has(x.trim()))).length;
-    if (everyday * 2 >= txns.length) return;
-
-    const parsed = txns.map((t) => parseDate(t.date)).filter((p): p is YMD => p !== null);
-    const monthsIdx = parsed.map(monthIndex);
-    const months = new Set(monthsIdx);
-    if (months.size < 2) return;
-
-    // Un abonnement se prélève une fois par mois : si le libellé revient souvent deux fois dans un même mois,
-    // c'est un commerce fréquenté (supermarché, boulangerie, station-service…).
-    const perMonth = new Map<number, number>();
-    for (const m of monthsIdx) perMonth.set(m, (perMonth.get(m) ?? 0) + 1);
-    const multi = [...perMonth.values()].filter((c) => c >= 2).length;
-    if (multi / months.size > 0.25) return;
-
-    // Toujours actif : prélevé ce mois-ci ou le mois dernier
-    if (Math.max(...months) < nowIdx - 1) return;
-
-    const run = longestRun(monthsIdx);
-    if (run < 2) return;
-
-    const { avg, isFixed } = stats(amountsOf(txns));
-    if (avg <= 0) return;
-
-    // Régularité de la date de prélèvement ; un montant variable exige en plus 3 mois de suite
-    const days = parsed.map((p) => p.d);
-    const daySpread = Math.max(...days) - Math.min(...days);
-    if (isFixed ? daySpread > 10 : daySpread > 7 || run < 3) return;
-
-    const last = [...txns].sort(byRecentFirst)[0];
-    autoItems.push({
-      key,
-      description: last.description || "",
-      avgAmount: avg,
-      monthlyAmount: avg,
-      lastAmount: Math.abs(last.amount || avg),
-      occurrences: txns.length,
-      uniqueMonths: months.size,
-      isFixed,
-      account: last.account || "",
-      lastDate: last.date || "",
-    });
+    const verdict = evaluateAuto(key, txns, nowIdx);
+    if (verdict.ok) autoItems.push(verdict.item);
   });
 
   // ── 3. Fusion : manuels en tête, puis auto ─────────────────────────────────

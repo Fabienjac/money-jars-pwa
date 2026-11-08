@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectRecurring, normalizeLabel } from "../src/subscriptions.ts";
+import { detectRecurring, explainRecurring, normalizeLabel } from "../src/subscriptions.ts";
 import type { SearchSpendingResult } from "../src/types.ts";
 
 const now = new Date(2026, 10, 7); // 7 novembre 2026
@@ -97,4 +97,60 @@ test("« pas un abonnement » : un libellé écarté n'est plus proposé, mais u
   assert.deepEqual(detectRecurring(auto, now, new Set([item.key])), []);
   const manual = [row("05/11/2026", "Spotify", 10.99, { subscription: "mensuel" })];
   assert.equal(detectRecurring(manual, now, new Set(["spotify"])).length, 1);
+});
+
+// ── Diagnostic « pourquoi il manque ? » ─────────────────────────────────────
+
+const why = (txns: SearchSpendingResult[], q: string, dismissed: string[] = []) =>
+  explainRecurring(txns, q, now, new Set(dismissed)).map((r) => r.reason);
+
+test("explication : détecté, ou la règle précise qui l'écarte", () => {
+  // détecté
+  assert.deepEqual(why([row("05/09/2026", "Netflix", 13.49), row("05/10/2026", "Netflix", 13.49), row("05/11/2026", "Netflix", 13.49)], "netflix"), [{ code: "detected" }]);
+
+  // dates trop dispersées (montant fixe : 10 jours maximum)
+  const spread = [row("02/09/2026", "Free Mobile", 19.99), row("20/10/2026", "Free Mobile", 19.99), row("05/11/2026", "Free Mobile", 19.99)];
+  assert.deepEqual(why(spread, "free"), [{ code: "dateSpread", spread: 18, max: 10 }]);
+
+  // montant variable : 3 mois de suite exigés
+  const variable = [row("05/10/2026", "Mammouth", 9.5), row("05/11/2026", "Mammouth", 12.3)];
+  assert.deepEqual(why(variable, "mammouth"), [{ code: "variable", run: 2 }]);
+
+  // un seul mois dans les 6 derniers
+  assert.deepEqual(why([row("05/11/2026", "MWR", 30)], "mwr"), [{ code: "oneMonth" }]);
+
+  // plus de prélèvement récent
+  assert.deepEqual(why([row("05/07/2026", "Spotify", 10), row("05/08/2026", "Spotify", 10)], "spotify"), [{ code: "stopped" }]);
+
+  // rien depuis plus de 6 mois
+  assert.deepEqual(why([row("05/01/2026", "Deezer", 10)], "deezer"), [{ code: "tooOld", monthsAgo: 10 }]);
+
+  // plusieurs fois par mois
+  const often = [row("02/10/2026", "Boulangerie", 4), row("09/10/2026", "Boulangerie", 4), row("03/11/2026", "Boulangerie", 4), row("07/11/2026", "Boulangerie", 4)];
+  assert.deepEqual(why(often, "boulangerie"), [{ code: "several" }]);
+});
+
+test("explication : écarté, du quotidien, marqué à la main (actif ou arrêté)", () => {
+  const nf = [row("05/10/2026", "Netflix", 13.49), row("05/11/2026", "Netflix", 13.49)];
+  assert.deepEqual(why(nf, "netflix", ["netflix"]), [{ code: "dismissed" }]);
+
+  const food = [row("05/10/2026", "Panier bio", 30, { tags: "alimentaire" }), row("05/11/2026", "Panier bio", 30, { tags: "alimentaire" })];
+  assert.deepEqual(why(food, "panier"), [{ code: "everyday" }]);
+
+  assert.deepEqual(why([row("05/03/2026", "Assurance auto", 600, { subscription: "annuel" })], "assurance"), [{ code: "manual", stopped: false }]);
+  assert.deepEqual(why([row("05/03/2024", "Vieux contrat", 100, { subscription: "mensuel" })], "contrat"), [{ code: "manual", stopped: true }]);
+});
+
+test("explication : requête partielle, une entrée par libellé, requête trop courte vide, derniers paiements listés", () => {
+  const txns = [
+    row("05/10/2026", "Free Mobile", 19.99), row("05/11/2026", "Free Mobile", 19.99),
+    row("12/11/2026", "Freebox", 29.99),
+  ];
+  const res = explainRecurring(txns, "free", now);
+  assert.deepEqual(res.map((r) => r.key).sort(), ["free mobile", "freebox"]);
+  assert.deepEqual(explainRecurring(txns, "f", now), []);
+  const fm = res.find((r) => r.key === "free mobile")!;
+  assert.equal(fm.count, 2);
+  assert.deepEqual(fm.recentDates, ["05/11/2026", "05/10/2026"]);
+  assert.equal(fm.latest.date, "05/11/2026");
 });

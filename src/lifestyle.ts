@@ -149,3 +149,50 @@ export function tagTotalsThisYear(rows: readonly LifestyleRow[], today: string):
   }
   return out;
 }
+
+// ── Courbe « dépense moyenne par jour » ───────────────────────────────────────
+
+export interface RollingPoint {
+  /** AAAA-MM-JJ */
+  date: string;
+  /** Dépense moyenne par jour sur les 30 jours se terminant à cette date. */
+  avg: number;
+}
+
+/**
+ * Moyenne glissante sur 30 jours, un point par semaine depuis le 7 janvier, plus un point pour aujourd'hui.
+ * Les dépenses extraordinaires sont exclues ; avec `tagId`, seules les dépenses portant cette étiquette comptent.
+ * Il faut les dépenses des 30 jours qui précèdent le 7 janvier pour que les premiers points soient justes.
+ */
+export function rollingAverageSeries(
+  rows: readonly LifestyleRow[],
+  extraordinaryTags: ReadonlySet<string>,
+  today: string,
+  tagId?: string
+): RollingPoint[] {
+  const t = dayNumber(today);
+  if (t == null) return [];
+  const start = dayNumber(`${today.slice(0, 4)}-01-07`)!;
+  if (t < start) return [];
+
+  const daily = new Map<number, number>();
+  for (const r of rows) {
+    const d = dayNumber(r.date);
+    const amount = Number(r.amount);
+    if (d == null || d > t || !Number.isFinite(amount)) continue;
+    if (isExtraordinary(r.tags, extraordinaryTags)) continue;
+    if (tagId && !splitTags(r.tags).includes(tagId)) continue;
+    daily.set(d, (daily.get(d) ?? 0) + amount);
+  }
+
+  const average = (end: number) => {
+    let sum = 0;
+    for (let i = 0; i < 30; i++) sum += daily.get(end - i) ?? 0;
+    return sum / 30;
+  };
+
+  const days: number[] = [];
+  for (let d = start; d <= t; d += 7) days.push(d);
+  if (days[days.length - 1] !== t) days.push(t);
+  return days.map((d) => ({ date: isoFromDayNumber(d), avg: average(d) }));
+}

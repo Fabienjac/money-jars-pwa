@@ -1,8 +1,8 @@
 // Abonnements récurrents détectés dans les dépenses (onglet « Abonnements » de l'écran Analyses).
 // Détection : src/subscriptions.ts. L'utilisateur peut écarter un faux positif (« ce n'est pas un abonnement »).
 import React, { useEffect, useMemo, useState } from "react";
-import { fetchDismissedSubscriptions, fetchSpendingRowsSince, saveDismissedSubscriptions } from "../api";
-import { detectRecurring, type RecurringItem, type SubscriptionFreq } from "../subscriptions";
+import { fetchDismissedSubscriptions, fetchSpendingRowsSince, saveDismissedSubscriptions, updateSpending } from "../api";
+import { detectRecurring, explainRecurring, type ExplainReason, type ExplainResult, type RecurringItem, type SubscriptionFreq } from "../subscriptions";
 import type { SearchSpendingResult } from "../types";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { t, useT, type TKey, localeTag } from "../i18n";
@@ -17,26 +17,85 @@ for (const k of ["mensuel", "trimestriel", "semestriel", "annuel"] as Subscripti
   Object.defineProperty(FREQ_LABEL, k, { get: () => t(`freq.${k}` as TKey), enumerable: true });
 }
 
+/** Phrase qui explique pourquoi un libellé est (ou n'est pas) dans la liste. */
+function reasonText(r: ExplainReason): string {
+  switch (r.code) {
+    case "detected": return t("subs.why.detected");
+    case "manual": return r.stopped ? t("subs.why.manualStopped") : t("subs.why.manual");
+    case "dismissed": return t("subs.why.dismissed");
+    case "tooOld": return t("subs.why.tooOld", { n: r.monthsAgo });
+    case "everyday": return t("subs.why.everyday");
+    case "oneMonth": return t("subs.why.oneMonth");
+    case "several": return t("subs.why.several");
+    case "stopped": return t("subs.why.stopped");
+    case "notConsecutive": return t("subs.why.notConsecutive");
+    case "zeroAmount": return t("subs.why.zeroAmount");
+    case "dateSpread": return t("subs.why.dateSpread", { spread: r.spread, max: r.max });
+    case "variable": return t("subs.why.variable", { run: r.run });
+  }
+}
+
+/** Un libellé déjà dans la liste n'a rien à ajouter. */
+const canAdd = (r: ExplainResult) => !(r.reason.code === "detected" || (r.reason.code === "manual" && !r.reason.stopped));
+
 const SubscriptionsPanel: React.FC = () => {
   useT(); // re-rendu au changement de langue
   const [transactions, setTransactions] = useState<SearchSpendingResult[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [dismissedSubs, setDismissedSubs] = useState<string[]>([]);
   const [showSubscriptions, setShowSubscriptions] = useState(true);
+  const [query, setQuery] = useState("");
+  const [freqPick, setFreqPick] = useState<Record<string, SubscriptionFreq>>({});
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = () => {
     // 14 mois de dépenses, lus en entier : les abonnements annuels et la détection sur 6 mois en ont besoin
     const since = new Date();
     since.setMonth(since.getMonth() - 14, 1);
     const from = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-01`;
-    Promise.all([fetchSpendingRowsSince(from), fetchDismissedSubscriptions()])
+    return Promise.all([fetchSpendingRowsSince(from), fetchDismissedSubscriptions()])
       .then(([rows, dismissed]) => {
         setTransactions(rows);
         setDismissedSubs(dismissed);
       })
       .catch(() => {})
       .finally(() => setLoaded(true));
-  }, []);
+  };
+  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Diagnostic : pourquoi les libellés contenant la recherche sont (ou non) dans la liste */
+  const found = useMemo<ExplainResult[]>(
+    () => explainRecurring(transactions, query, new Date(), new Set(dismissedSubs)),
+    [transactions, query, dismissedSubs],
+  );
+
+  const flash = (m: string) => { setNote(m); setTimeout(() => setNote(null), 3500); };
+
+  /** Marque la dernière dépense du libellé comme abonnement : il entre alors dans la liste « à la main ». */
+  const addAsSubscription = async (r: ExplainResult) => {
+    const row = r.latest;
+    if (busy || row.rowIndex == null) return;
+    setBusy(true);
+    try {
+      const res = await updateSpending(row.rowIndex, {
+        date: row.date,
+        jar: row.jar,
+        account: row.account,
+        amount: row.amount,
+        description: row.description,
+        tags: row.tags,
+        subscription: freqPick[r.key] ?? "mensuel",
+      });
+      if (!res.ok) throw new Error(res.error);
+      await load();
+      flash(t("subs.added"));
+    } catch {
+      flash("⚠️ " + t("xfer.err.generic"));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   /** Abonnements détectés (recalculés quand l'utilisateur en écarte un) */
   const subscriptions = useMemo<RecurringItem[]>(
@@ -265,6 +324,59 @@ const SubscriptionsPanel: React.FC = () => {
       {loaded && subscriptions.length === 0 && dismissedSubs.length === 0 && (
         <p className="subs-empty">{t("subs.none")}</p>
       )}
+
+      <section className="subs-find">
+        <h4 className="subs-find-title">{t("subs.findTitle")}</h4>
+        <p className="subs-find-hint">{t("subs.findHint")}</p>
+        <input
+          type="search"
+          className="jar-input subs-find-input"
+          value={query}
+          placeholder={t("subs.findPlaceholder")}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label={t("subs.findTitle")}
+        />
+        {note && <p className="subs-find-note" role="status">{note}</p>}
+        {query.trim().length >= 2 && found.length === 0 && loaded && <p className="subs-find-none">{t("subs.findNone")}</p>}
+        <ul className="subs-find-list">
+          {found.map((r) => (
+            <li key={r.key} className="subs-find-row">
+              <div className="subs-find-head">
+                <strong className="subs-find-name">{r.label}</strong>
+                <span className="subs-find-meta">{t("subs.findCount", { n: r.count })} · {t("subs.findLast", { date: r.lastDate })}</span>
+              </div>
+              <p className="subs-find-why">{reasonText(r.reason)}</p>
+              {r.recentDates.length > 0 && <p className="subs-find-dates">{r.recentDates.slice(0, 6).join(" · ")}</p>}
+              {(canAdd(r) || r.reason.code === "dismissed") && (
+                <div className="subs-find-actions">
+                  {r.reason.code === "dismissed" && (
+                    <button type="button" className="push-btn push-btn--quiet" disabled={busy} onClick={() => updateDismissed(dismissedSubs.filter((k) => k !== r.key))}>
+                      {t("subs.undismiss")}
+                    </button>
+                  )}
+                  {canAdd(r) && (
+                    <>
+                      <select
+                        className="jar-input subs-find-select"
+                        aria-label={t("subs.freqLabel")}
+                        value={freqPick[r.key] ?? "mensuel"}
+                        onChange={(e) => setFreqPick((p) => ({ ...p, [r.key]: e.target.value as SubscriptionFreq }))}
+                      >
+                        {(["mensuel", "trimestriel", "semestriel", "annuel"] as SubscriptionFreq[]).map((f) => (
+                          <option key={f} value={f}>{FREQ_LABEL[f]}</option>
+                        ))}
+                      </select>
+                      <button type="button" className="push-btn" disabled={busy} onClick={() => addAsSubscription(r)}>
+                        {t("subs.add")}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
 };
