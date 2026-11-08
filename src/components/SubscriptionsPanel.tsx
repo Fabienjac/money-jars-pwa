@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { fetchDismissedSubscriptions, fetchSpendingRowsSince, saveDismissedSubscriptions, updateSpending } from "../api";
 import { detectRecurring, explainRecurring, type ExplainReason, type ExplainResult, type RecurringItem, type SubscriptionFreq } from "../subscriptions";
 import type { SearchSpendingResult } from "../types";
+import { totalUpcoming, upcomingCharges } from "../upcomingCharges";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { t, useT, type TKey, localeTag } from "../i18n";
 
@@ -103,6 +104,12 @@ const SubscriptionsPanel: React.FC = () => {
     [transactions, dismissedSubs],
   );
 
+  /** Prélèvements attendus dans les 30 prochains jours (estimés d'après le dernier prélèvement de chaque abonnement) */
+  const upcoming = useMemo(() => upcomingCharges(subscriptions, new Date(), 30), [subscriptions]);
+
+  const dueText = (inDays: number) =>
+    inDays <= 0 ? t("subs.upToday") : inDays === 1 ? t("subs.upTomorrow") : t("subs.upIn", { n: inDays });
+
   const updateDismissed = (next: string[]) => {
     setDismissedSubs(next);
     saveDismissedSubscriptions(next).catch(() => {});
@@ -115,6 +122,42 @@ const SubscriptionsPanel: React.FC = () => {
           <button type="button" className="sub-dismiss" onClick={() => updateDismissed([])}>
             {t("home.dismissedCount", { n: dismissedSubs.length })} · {t("home.restoreAll")}
           </button>
+        </section>
+      )}
+      {/* Ce qui va sortir dans les 30 prochains jours */}
+      {subscriptions.length > 0 && (
+        <section style={{ padding: "0 16px 12px" }}>
+          <div className="subs-upcoming">
+            <div className="subs-upcoming-head">
+              <div>
+                <div className="subs-upcoming-title">{t("subs.upTitle")}</div>
+                <div className="subs-upcoming-sub">{t("subs.upHorizon")}</div>
+              </div>
+              {upcoming.length > 0 && (
+                <div className="subs-upcoming-total">{formatMoney(totalUpcoming(upcoming))}&nbsp;{curSym()}</div>
+              )}
+            </div>
+            {upcoming.length === 0 ? (
+              <p className="subs-upcoming-none">{t("subs.upNone")}</p>
+            ) : (
+              <ul className="subs-upcoming-list">
+                {upcoming.map((c) => (
+                  <li key={c.key} className="subs-upcoming-row">
+                    <div className="subs-upcoming-when">
+                      <span className="subs-upcoming-date">{c.date.toLocaleDateString(localeTag(), { weekday: "short", day: "numeric", month: "short" })}</span>
+                      <span className="subs-upcoming-in">{dueText(c.inDays)}</span>
+                    </div>
+                    <div className="subs-upcoming-what">
+                      <span className="subs-upcoming-name">{c.description}</span>
+                      {c.account && <span className="subs-upcoming-account">{c.account}</span>}
+                    </div>
+                    <div className="subs-upcoming-amount">{c.approximate ? "≈ " : ""}{formatMoney(c.amount)}&nbsp;{curSym()}</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {upcoming.length > 0 && <p className="subs-upcoming-hint">{t("subs.upHint")}</p>}
+          </div>
         </section>
       )}
       {subscriptions.length > 0 && (
