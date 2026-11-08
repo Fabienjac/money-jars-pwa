@@ -25,6 +25,7 @@ import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
 import { updateStreak } from "./streakUtils";
 import { saveImportedTransactions } from "./importSave";
+import { OPEN_HISTORY_EVENT } from "./historyPreset";
 import "./style.css";
 
 // Lazy-loaded heavy views
@@ -87,6 +88,13 @@ function App() {
   useEffect(() => {
     if (section === "more") markJarAlertsSeen();
   }, [section, markJarAlertsSeen]);
+
+  // « Voir dans l'Historique » depuis un autre écran (Analyses) : ouvre l'Historique, qui lit le préréglage de filtres
+  useEffect(() => {
+    const open = () => setSection("history");
+    window.addEventListener(OPEN_HISTORY_EVENT, open);
+    return () => window.removeEventListener(OPEN_HISTORY_EVENT, open);
+  }, []);
 
   // Un clic sur une notification d'alerte ouvre l'app sur « Plus » (adresse /#alerts)
   useEffect(() => {

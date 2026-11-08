@@ -4043,3 +4043,61 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* Analyses : notes sous le graphique par étiquette */
 .stats-overlap-note { margin: 12px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); text-align: center; }
+
+.analytics-tab { white-space: nowrap; min-width: 0; padding-inline: 2px; font-size: clamp(11px, 3.2vw, 14px); }
+
+/* ── Analyses > Par tag ───────────────────────────────────────────────── */
+.stats-page { max-width: 600px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 32px; }
+.stats-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.stats-head h2 { margin: 0; font-size: 18px; min-width: 0; flex: 1 1 auto; }
+.stats-summary { display: flex; flex-direction: column; gap: 4px; padding: 16px; border-radius: 16px; background: var(--bg-card); box-shadow: var(--shadow-sm); }
+.stats-summary-period { font-size: 12px; font-weight: 600; letter-spacing: 0.4px; color: var(--text-muted); }
+.stats-summary-period::first-letter { text-transform: uppercase; }
+.stats-summary-total { font-size: 34px; font-weight: 800; line-height: 1.1; color: #FF3B30; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stats-summary-meta { font-size: 13px; color: var(--text-muted); }
+.stats-switch { display: flex; align-items: center; gap: 12px; margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px solid var(--border-color); background: none; font-family: inherit; text-align: left; cursor: pointer; color: var(--text-main); }
+.stats-switch-track { position: relative; flex-shrink: 0; width: 42px; height: 24px; border-radius: 999px; background: var(--border-color); transition: background .2s; }
+.stats-switch-thumb { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .2s; }
+.stats-switch.is-on .stats-switch-track { background: #34C759; }
+.stats-switch.is-on .stats-switch-thumb { transform: translateX(18px); }
+.stats-switch-text { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+.stats-switch-text small { font-size: 12px; color: var(--text-muted); }
+.stats-field { display: flex; flex-direction: column; gap: 6px; }
+.stats-field-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+.stats-pill { padding: 6px 14px; border-radius: 20px; border: 1.5px solid var(--border-color); background: var(--bg-card); color: var(--text-muted); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.stats-pill.is-active { border-color: #007AFF; background: #007AFF18; color: #007AFF; font-weight: 600; }
+.stats-card { padding: 16px; border-radius: 16px; background: var(--bg-card); box-shadow: var(--shadow-sm); }
+.stats-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.stats-card-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text-main); }
+.stats-hint { margin: 6px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.stats-link { padding: 4px 0; border: 0; background: none; color: #007AFF; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.stats-empty { padding: 28px 16px; text-align: center; color: var(--text-muted); font-size: 14px; }
+.stats-tags { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.stats-tag { display: flex; flex-direction: column; border-radius: 12px; border: 1.5px solid transparent; }
+.stats-tag.is-active { border-color: #007AFF; background: #007AFF0F; }
+.stats-tag-main { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 10px; border: 0; background: none; font-family: inherit; text-align: left; color: var(--text-main); cursor: pointer; }
+.stats-tag-emoji { font-size: 24px; flex-shrink: 0; }
+.stats-tag-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.stats-tag-line { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.stats-tag-name { font-size: 15px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.stats-tag-amount { flex-shrink: 0; font-size: 15px; font-weight: 700; color: #FF3B30; font-variant-numeric: tabular-nums; }
+.stats-tag-bar { display: block; height: 6px; border-radius: 3px; background: var(--border-color); overflow: hidden; }
+.stats-tag-bar > span { display: block; height: 100%; border-radius: 3px; }
+.stats-tag-meta { font-size: 12px; color: var(--text-muted); }
+.stats-tag-open { align-self: flex-end; margin: -6px 10px 6px 0; padding: 4px 6px; border: 0; background: none; color: #007AFF; font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.stats-details > summary { cursor: pointer; font-size: 16px; font-weight: 700; color: var(--text-main); }
+.stats-accounts { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.stats-account { padding: 12px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-body); display: flex; flex-direction: column; gap: 8px; }
+.stats-account-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.stats-account-name { font-size: 16px; font-weight: 700; color: var(--text-main); min-width: 0; overflow-wrap: anywhere; }
+.stats-account-balance { display: flex; flex-direction: column; align-items: flex-end; font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stats-account-balance small, .stats-account-flows small { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.is-pos { color: #34C759; }
+.is-neg { color: #FF3B30; }
+.stats-account-flows { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px; font-variant-numeric: tabular-nums; }
+.stats-account-flows b { font-weight: 700; }
+.stats-account-tags > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+.stats-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.stats-chip { padding: 5px 9px; border-radius: 8px; border: 1px solid; font-size: 12px; font-weight: 600; }
+.stats-open-history { width: 100%; }
+.stats-adv-toggle { align-self: center; }

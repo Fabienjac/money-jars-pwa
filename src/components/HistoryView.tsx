@@ -13,10 +13,11 @@ import { getAccounts } from "../api";
 import { Account } from "../types";
 
 import { supabase } from "../lib/supabase";
+import { clearPreset, peekPreset } from "../historyPreset";
 import { cacheVersion, invalidateHistoryCache, readHistoryCache, rememberHistoryRows, writeHistoryCache } from "../historyCache";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { useT, t as tr, localeTag } from "../i18n";
-import { inBounds, periodBounds, type PeriodFilter } from "../historyPeriod";
+import { inBounds, parseAppDate, periodBounds, type PeriodFilter } from "../historyPeriod";
 import {
   NO_TAG, csvNumber, dayKey, dayTotals, matchesSearch, matchesTag, parseMinAmount, passesMinAmount, sortRows, toCsv,
   type SortKey,
@@ -72,16 +73,7 @@ const signedAmount = (amount: number, kind: Mode): { sign: "+" | "-"; abs: numbe
   return { sign: spending !== neg ? "-" : "+", abs: Math.abs(amount || 0), refund: neg };
 };
 
-const parseDate = (v: string): Date | null => {
-  if (!v) return null;
-  // DD/MM/YYYY → forcer l'interprétation correcte
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
-    const [d, m, y] = v.split("/");
-    return new Date(`${y}-${m}-${d}T00:00:00`);
-  }
-  const d = new Date(v.includes("T") ? v : v + "T00:00:00");
-  return isNaN(d.getTime()) ? null : d;
-};
+const parseDate = parseAppDate;
 
 const fmtDate = (v: string): string => {
   const d = parseDate(v);
@@ -118,19 +110,22 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const [revenues, setRevenues] = useState<SearchRevenueResult[]>([]);
 
   // ── Filters ───────────────────────────────────────────────────────
-  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
-  const [customFrom, setCustomFrom] = useState(""); // AAAA-MM-JJ (période personnalisée)
-  const [customTo, setCustomTo] = useState("");
+  // Filtres venus d'un autre écran (« Voir dans l'Historique » depuis Analyses) : appliqués une seule fois à l'ouverture
+  const [preset] = useState(() => { try { return peekPreset(sessionStorage); } catch { return null; } });
+  useEffect(() => { try { clearPreset(sessionStorage); } catch { /* sans importance */ } }, []);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>(preset && (preset.from || preset.to) ? "custom" : "all");
+  const [customFrom, setCustomFrom] = useState(preset?.from ?? ""); // AAAA-MM-JJ (période personnalisée)
+  const [customTo, setCustomTo] = useState(preset?.to ?? "");
   const [visibleCount, setVisibleCount] = useState(PAGE);
   const [filtersOpen, setFiltersOpen] = useState<boolean>(() => {
     try { return localStorage.getItem(FILTERS_OPEN_KEY) !== "0"; } catch { return true; }
   });
-  const [jarFilter, setJarFilter] = useState("all");
+  const [jarFilter, setJarFilter] = useState(preset?.jar ?? "all");
   const [accountFilter, setAccountFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [destinationFilter, setDestinationFilter] = useState("all");
-  const [tagFilter, setTagFilter] = useState("all");
-  const [minAmountRaw, setMinAmountRaw] = useState(""); // montant minimum saisi (« 100 »)
+  const [tagFilter, setTagFilter] = useState(preset?.tag ?? "all");
+  const [minAmountRaw, setMinAmountRaw] = useState(preset?.minAmount ?? ""); // montant minimum saisi (« 100 »)
   const [sort, setSort] = useState<SortKey>("dateDesc");
 
   // ── Card & edit state ─────────────────────────────────────────────
@@ -565,7 +560,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     const out: string[] = [];
     if (periodFilter !== "all" && !(periodFilter === "custom" && !customFrom && !customTo)) {
       const names: Record<PeriodFilter, string> = {
-        all: t("hist.pAll"), month: t("hist.pMonth"), prevmonth: t("hist.pPrev"), "90d": t("hist.p90"), year: t("hist.pYear"), custom: periodLabel || t("hist.pCustom"),
+        all: t("hist.pAll"), month: t("hist.pMonth"), prevmonth: t("hist.pPrev"), "30d": t("stats.p30"), "6m": t("stats.p6m"), "90d": t("hist.p90"), year: t("hist.pYear"), custom: periodLabel || t("hist.pCustom"),
       };
       out.push(names[periodFilter]);
     }

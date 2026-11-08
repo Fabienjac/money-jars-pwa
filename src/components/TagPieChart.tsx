@@ -3,14 +3,16 @@ import React from "react";
 import { TagStat } from "../types";
 import { t as tr, useLang } from "../i18n";
 
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, formatMoney } from "../baseCurrency";
 interface TagPieChartProps {
   stats: TagStat[];
   /** Total réellement dépensé (chaque dépense une seule fois). Sans lui, la somme des étiquettes, qui peut être plus grande. */
   totalSpent?: number;
+  /** Légende sous le graphique (par défaut oui). L'écran Par tag la remplace par sa propre liste. */
+  showLegend?: boolean;
 }
 
-export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent }) => {
+export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent, showLegend = true }) => {
   useLang();
   if (stats.length === 0) {
     return (
@@ -190,13 +192,13 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent }) =
               fill: "var(--text-main)",
             }}
           >
-            {total.toFixed(0)}{curSym()}
+            {formatMoney(total, undefined, 0)}
           </text>
         </svg>
       </div>
 
       {/* Légende - VISIBLE dans l'app */}
-      <div
+      {showLegend && <div
         id="tag-legend"
         style={{
           marginTop: "30px",
@@ -266,7 +268,7 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent }) =
             </div>
           </div>
         ))}
-      </div>
+      </div>}
     </div>
   );
 };
