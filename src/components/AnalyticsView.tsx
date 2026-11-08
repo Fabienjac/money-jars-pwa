@@ -4,8 +4,10 @@ import React, { useState, lazy, Suspense } from "react";
 import { useT } from "../i18n";
 const HistoryView = lazy(() => import("./HistoryView"));
 const TagStatsView = lazy(() => import("./TagStatsView"));
+const SubscriptionsPanel = lazy(() => import("./SubscriptionsPanel"));
+import GlobalSummary from "./GlobalSummary";
 
-type AnalyticsTab = "report" | "tags";
+type AnalyticsTab = "report" | "tags" | "subs";
 
 const Fallback = () => {
   const t = useT();
@@ -43,10 +45,28 @@ const AnalyticsView: React.FC = () => {
           >
             {t("analytics.byTag")}
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "subs"}
+            className={`analytics-tab${tab === "subs" ? " analytics-tab--active" : ""}`}
+            onClick={() => setTab("subs")}
+          >
+            {t("analytics.subscriptions")}
+          </button>
         </div>
       </div>
       <Suspense fallback={<Fallback />}>
-        {tab === "report" ? <HistoryView view="report" /> : <TagStatsView />}
+        {tab === "report" ? (
+          <>
+            <GlobalSummary />
+            <HistoryView view="report" />
+          </>
+        ) : tab === "tags" ? (
+          <TagStatsView />
+        ) : (
+          <SubscriptionsPanel />
+        )}
       </Suspense>
     </div>
   );

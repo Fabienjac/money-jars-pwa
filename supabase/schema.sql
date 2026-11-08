@@ -24,7 +24,7 @@ create table if not exists subscriptions (
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- JAR SETTINGS
--- Allocation % et solde initial pour chacun des 6 bocaux
+-- Allocation % et solde initial pour chacun des 6 jarres
 -- ─────────────────────────────────────────────────────────────────────────────
 create table if not exists jar_settings (
   id              uuid primary key default uuid_generate_v4(),

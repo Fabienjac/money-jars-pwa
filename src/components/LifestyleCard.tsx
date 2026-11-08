@@ -2,8 +2,10 @@
 // comparée aux 30 derniers jours. Les dépenses extraordinaires sont celles portant une étiquette cochée
 // dans le panneau de réglage (voyage, gros achat…). Calcul : src/lifestyle.ts.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs } from "../api";
-import { computeLifestyle, lifestyleFetchFrom, tagTotalsThisYear, type LifestyleRow } from "../lifestyle";
+import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs, fetchExceptionalDismissed, saveExceptionalDismissed, markSpendingExceptional, type SpendingLite } from "../api";
+import { computeLifestyle, lifestyleFetchFrom, tagTotalsThisYear } from "../lifestyle";
+import { suggestExceptional } from "../exceptional";
+import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import { loadTags } from "../tagsUtils";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { t, useT, localeTag } from "../i18n";
@@ -33,7 +35,10 @@ const cardStyle: React.CSSProperties = {
 
 const LifestyleCard: React.FC = () => {
   useT(); // re-rendu au changement de langue
-  const [rows, setRows] = useState<LifestyleRow[] | null>(null);
+  const [rows, setRows] = useState<SpendingLite[] | null>(null);
+  const [dismissed, setDismissed] = useState<string[]>([]);
+  const [suggestBusy, setSuggestBusy] = useState(false);
+  const [suggestError, setSuggestError] = useState(false);
   const [error, setError] = useState(false);
   const [extraTags, setExtraTags] = useState<string[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -43,9 +48,10 @@ const LifestyleCard: React.FC = () => {
     try {
       const from = lifestyleFetchFrom(todayISO());
       if (!from) return;
-      const [data, prefs] = await Promise.all([fetchSpendingsSince(from), fetchLifestylePrefs()]);
+      const [data, prefs, dismissedIds] = await Promise.all([fetchSpendingsSince(from), fetchLifestylePrefs(), fetchExceptionalDismissed()]);
       setRows(data);
       setExtraTags(prefs.extraordinaryTags);
+      setDismissed(dismissedIds);
       setError(false);
     } catch {
       setError(true);
@@ -72,6 +78,41 @@ const LifestyleCard: React.FC = () => {
   const today = todayISO();
   const stats = useMemo(() => (rows ? computeLifestyle(rows, extraSet, today) : null), [rows, extraSet, today]);
   const tagTotals = useMemo(() => (rows ? tagTotalsThisYear(rows, today) : {}), [rows, today]);
+
+  // Grosses dépenses pas encore étiquetées : on propose de les marquer « Exceptionnel »
+  const suggestions = useMemo(
+    () => (rows ? suggestExceptional({ rows, extraordinaryTags: extraSet, dismissed: new Set(dismissed), today }) : []),
+    [rows, extraSet, dismissed, today]
+  );
+  const exceptionalName = useMemo(
+    () => loadTags().find((tg) => tg.id === EXCEPTIONAL_TAG_ID)?.name ?? t("default.tag.exceptionnel"),
+    [tagsVersion] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const markSuggestion = async (id: string) => {
+    const row = rows?.find((r) => String(r.id) === id);
+    if (!row || suggestBusy) return;
+    setSuggestBusy(true);
+    setSuggestError(false);
+    try {
+      const res = await markSpendingExceptional(row, extraTags);
+      if (!res.ok) throw new Error(res.error);
+      if (res.extraordinary) setExtraTags(res.extraordinary);
+      // Affichage immédiat ; la carte se recharge ensuite depuis le cloud
+      setRows((prev) => prev && prev.map((r) => (String(r.id) === id ? { ...r, tags: r.tags ? `${r.tags},${EXCEPTIONAL_TAG_ID}` : EXCEPTIONAL_TAG_ID } : r)));
+      window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
+    } catch {
+      setSuggestError(true);
+    } finally {
+      setSuggestBusy(false);
+    }
+  };
+
+  const dismissSuggestion = (id: string) => {
+    const next = [...dismissed, id];
+    setDismissed(next); // immédiat ; l'enregistrement cloud se fait en arrière-plan
+    saveExceptionalDismissed(next).catch(() => {});
+  };
 
   const toggleTag = (id: string) => {
     const next = extraSet.has(id) ? extraTags.filter((x) => x !== id) : [...extraTags, id];
@@ -184,6 +225,34 @@ const LifestyleCard: React.FC = () => {
                   : t("life.noneTagged", { name: tagChoices.find((c) => c.id === extraTags[0])?.name ?? extraTags[0] })}
             </div>
           </>
+        )}
+
+        {suggestions.length > 0 && (
+          <div className="life-suggest" role="group" aria-label={t("life.suggestTitle", { tag: exceptionalName })}>
+            <div className="life-suggest-title">💡 {t("life.suggestTitle", { tag: exceptionalName })}</div>
+            <p className="life-suggest-help">{t("life.suggestHelp")}</p>
+            <ul className="life-suggest-list">
+              {suggestions.map((sg) => (
+                <li key={sg.id} className="life-suggest-row">
+                  <span className="life-suggest-what">
+                    <span className="life-suggest-name">{sg.description || t("life.suggestUnnamed")}</span>
+                    <span className="life-suggest-meta">
+                      {shortDate(sg.date)} · {money(sg.amount, 0)}{sg.times >= 2 ? ` · ${t("life.suggestTimes", { n: sg.times })}` : ""}
+                    </span>
+                  </span>
+                  <span className="life-suggest-actions">
+                    <button type="button" className="push-btn" disabled={suggestBusy} onClick={() => markSuggestion(sg.id)}>
+                      {t("life.suggestMark")}
+                    </button>
+                    <button type="button" className="push-btn push-btn--quiet" disabled={suggestBusy} onClick={() => dismissSuggestion(sg.id)}>
+                      {t("life.suggestNo")}
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {suggestError && <p className="life-suggest-error" role="alert">{t("life.suggestError")}</p>}
+          </div>
         )}
 
         {panelOpen && (

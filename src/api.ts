@@ -15,6 +15,7 @@ import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
 import { fetchAllPages } from "./paginate";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
 import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
+import { addTagTo } from "./exceptional";
 import { adjustmentTotals, isJarKey, round2, transferDeltas, type JarAdjustment, type JarTransfer } from "./jarTransfers";
 
 // ── Helpers dates ──────────────────────────────────────────────────────────────
@@ -296,7 +297,7 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
   const now = new Date();
   const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
-  // Récupérer les paramètres des bocaux
+  // Récupérer les paramètres des jarres
   const { data: jarRows } = await supabase
     .from("jar_settings")
     .select("jar_key, percent, initial_balance")
@@ -337,7 +338,7 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
     return sum + amount;
   }, 0);
 
-  // Paramètres bocaux
+  // Paramètres jarres
   const jarPcts: Record<JarKey, number> = { ...DEFAULT_PCT };
   const jarInitial: Record<JarKey, number> = { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 };
   (jarRows ?? []).forEach(r => {
@@ -347,7 +348,7 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
     }
   });
 
-  // Totaux dépenses par bocal
+  // Totaux dépenses par jarre
   const spendingByJar: Record<JarKey, number> = { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 };
   (spendings ?? []).forEach(s => {
     if (JAR_KEYS.includes(s.jar as JarKey)) {
@@ -963,21 +964,42 @@ export async function sendFeedback(input: {
  * Dépenses (date ISO, montant, étiquettes) depuis une date. Lues par pages de 1000 :
  * Supabase plafonne chaque requête, et la moyenne annuelle doit porter sur toutes les lignes.
  */
-export async function fetchSpendingsSince(fromISO: string): Promise<Array<{ date: string; amount: number; tags: string }>> {
+/** Dépense lue pour le train de vie : assez de champs pour pouvoir la modifier (ex. la marquer « Exceptionnel »). */
+export interface SpendingLite {
+  id: number;
+  date: string; // AAAA-MM-JJ
+  amount: number;
+  tags: string;
+  description: string;
+  jar: string;
+  account: string;
+  subscription: string;
+}
+
+export async function fetchSpendingsSince(fromISO: string): Promise<SpendingLite[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
   const data = await fetchAllPages((rangeFrom, rangeTo) =>
     supabase
       .from("transactions_spending")
-      .select("date, amount, tags")
+      .select("id, date, amount, tags, description, jar, account, subscription")
       .eq("user_id", user.id)
       .gte("date", fromISO)
       .order("date", { ascending: true })
       .order("id", { ascending: true })
       .range(rangeFrom, rangeTo)
   );
-  return data.map((r) => ({ date: String(r.date), amount: Number(r.amount), tags: r.tags ?? "" }));
+  return data.map((r) => ({
+    id: r.id,
+    date: String(r.date),
+    amount: Number(r.amount),
+    tags: r.tags ?? "",
+    description: r.description ?? "",
+    jar: r.jar ?? "",
+    account: r.account ?? "",
+    subscription: r.subscription ?? "",
+  }));
 }
 
 /** Dépenses complètes (mêmes champs que searchSpendings) depuis une date, lues en entier par pages. */
@@ -1095,6 +1117,67 @@ async function seedExceptionalTag(tags: Tag[]): Promise<Tag[] | null> {
   }
   await saveColumnMappingToSheet(LIFESTYLE_SEEDED_KEY, { done: true });
   return nextTags;
+}
+
+// ── Grosses dépenses proposées en « Exceptionnel » ────────────────────────────
+const EXCEPTIONAL_DISMISSED_KEY = "exceptional_dismissed";
+const EXCEPTIONAL_DISMISSED_MAX = 300;
+
+/** Dépenses que l'utilisateur a écartées (« non, c'est normal »). */
+export async function fetchExceptionalDismissed(): Promise<string[]> {
+  try {
+    const mappings = await fetchColumnMappings();
+    const v = mappings[EXCEPTIONAL_DISMISSED_KEY] as { ids?: unknown } | undefined;
+    return Array.isArray(v?.ids) ? v!.ids.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveExceptionalDismissed(ids: string[]): Promise<void> {
+  await saveColumnMappingToSheet(EXCEPTIONAL_DISMISSED_KEY, { ids: ids.slice(-EXCEPTIONAL_DISMISSED_MAX) });
+}
+
+/**
+ * Marque une dépense « Exceptionnel » : ajoute l'étiquette à la dépense, la crée si l'utilisateur l'a supprimée, et la
+ * coche pour le train de vie si elle ne l'est plus. `currentExtraordinary` = étiquettes déjà cochées (lues dans le
+ * cloud par l'appelant : on n'écrase jamais un choix sur une lecture ratée). Renvoie la liste cochée si elle a changé.
+ */
+export async function markSpendingExceptional(
+  row: SpendingLite,
+  currentExtraordinary: string[]
+): Promise<{ ok: boolean; error?: string; extraordinary?: string[] }> {
+  const res = await updateSpending(row.id, {
+    date: row.date,
+    jar: row.jar,
+    account: row.account,
+    amount: row.amount,
+    description: row.description,
+    tags: addTagTo(row.tags, EXCEPTIONAL_TAG_ID),
+    subscription: row.subscription,
+  });
+  if (!res.ok) return res;
+
+  try {
+    const known = await fetchTagsFromSheet();
+    if (known.length > 0 && !known.some((tg) => tg.id === EXCEPTIONAL_TAG_ID)) {
+      const def = getDefaultTags().find((tg) => tg.id === EXCEPTIONAL_TAG_ID);
+      if (def) {
+        await saveTags([def]);
+        setCachedTags([...known, def]);
+      }
+    }
+  } catch { /* la dépense est marquée ; l'étiquette se recrée à la prochaine occasion */ }
+
+  if (currentExtraordinary.includes(EXCEPTIONAL_TAG_ID)) return { ok: true };
+  const next = [...currentExtraordinary, EXCEPTIONAL_TAG_ID];
+  try {
+    await saveLifestylePrefs({ extraordinaryTags: next });
+    window.dispatchEvent(new CustomEvent("mjars:lifestylePrefsChanged", { detail: { extraordinaryTags: next } }));
+    return { ok: true, extraordinary: next };
+  } catch {
+    return { ok: true };
+  }
 }
 
 // ── Abonnements que l'utilisateur a écartés (« ce n'est pas un abonnement ») ──

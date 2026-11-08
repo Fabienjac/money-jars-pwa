@@ -3920,3 +3920,29 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .yearstart-title { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--text-main); }
 .yearstart-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
 .yearstart-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Grosses dépenses proposées en « Exceptionnel » (carte train de vie) */
+.life-suggest { margin-top: 14px; padding: 12px; border-radius: 12px; background: rgba(255, 149, 0, 0.1); border-left: 4px solid #FF9500; }
+.life-suggest-title { font-size: 13px; font-weight: 700; color: var(--text-main); }
+.life-suggest-help { margin: 4px 0 8px; font-size: 12px; color: var(--text-muted); }
+.life-suggest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.life-suggest-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.life-suggest-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 140px; }
+.life-suggest-name { font-size: 14px; font-weight: 600; color: var(--text-main); overflow-wrap: anywhere; }
+.life-suggest-meta { font-size: 12px; color: var(--text-muted); }
+.life-suggest-actions { display: flex; gap: 8px; }
+.life-suggest-error { margin: 8px 0 0; font-size: 12px; font-weight: 600; color: var(--danger-text); }
+
+/* Bloc « Mes jarres » fusionné : en-tête, bascule Mois / Soldes, sélecteur de mois */
+.jars-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.jars-head-title { font-size: 15px; font-weight: 700; color: var(--text-main); }
+.jars-seg { display: inline-flex; padding: 2px; border-radius: 999px; background: var(--bg-body); border: 1px solid var(--border-color); }
+.jars-seg-btn { min-height: 32px; padding: 4px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--text-muted); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.jars-seg-btn--on { background: var(--bg-card); color: var(--text-main); box-shadow: var(--shadow-sm); }
+.jars-month-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
+.jars-month-label { font-size: 13px; font-weight: 600; color: var(--text-main); text-transform: capitalize; }
+.jars-month-btn { width: 36px; height: 36px; border: 1px solid var(--border-color); border-radius: 50%; background: transparent; color: var(--text-main); font-size: 20px; line-height: 1; cursor: pointer; }
+.jars-month-btn:disabled { opacity: 0.35; cursor: default; }
+.jars-v2-section--embedded .jars-v2-grid { padding: 0; }
+.subs-panel { padding-top: 4px; }
+.subs-empty { margin: 16px; font-size: 13px; color: var(--text-muted); text-align: center; }

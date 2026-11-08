@@ -1,11 +1,10 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo } from "react";
-import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince, fetchDismissedSubscriptions, saveDismissedSubscriptions } from "../api";
+import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince} from "../api";
 import { TotalsResponse, JarKey } from "../types";
 import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, computeStreak, StreakState } from "../streakUtils";
-import { detectRecurring, type RecurringItem, type SubscriptionFreq } from "../subscriptions";
 import LifestyleCard from "./LifestyleCard";
 import YearStartCard from "./YearStartCard";
 
@@ -84,13 +83,6 @@ function normalizeMonth(m: string): string | null {
   }
   if (/^\d{4}-\d{2}$/.test(m)) return m;
   return null;
-}
-
-// ── Détection des abonnements récurrents ─────────────────────────────────────
-
-const FREQ_LABEL = {} as Record<SubscriptionFreq, string>;
-for (const k of ["mensuel", "trimestriel", "semestriel", "annuel"] as SubscriptionFreq[]) {
-  Object.defineProperty(FREQ_LABEL, k, { get: () => t(`freq.${k}` as TKey), enumerable: true });
 }
 
 // ── Budget mensuel (localStorage) ────────────────────────────────────────────
@@ -230,7 +222,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customSplit, setCustomSplit] = useState<Record<JarKey, number> | null>(null);
-  const [showJarsDetail, setShowJarsDetail] = useState(false);
+  // Bloc « Mes jarres » : vue du mois (avec sélecteur de mois) ou vue des soldes cumulés
+  const [jarsMode, setJarsMode] = useState<"month" | "balance">("month");
+  const [monthOffset, setMonthOffset] = useState(0); // 0 = mois en cours, -1 = mois précédent…
+  const showJarsDetail = jarsMode === "balance";
 
   // Budget mensuel
   const [monthlyBudget, setMonthlyBudget] = useState<number | null>(loadMonthlyBudget);
@@ -240,10 +235,6 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   // Tag stats mois en cours
   const [monthlyTagStats, setMonthlyTagStats] = useState<TagStat[]>([]);
   const [tagStatsLoading, setTagStatsLoading] = useState(false);
-
-  // Abonnements récurrents
-  const [dismissedSubs, setDismissedSubs] = useState<string[]>([]);
-  const [showSubscriptions, setShowSubscriptions] = useState(false);
 
   // Budget par tag
   const [tagBudgets, setTagBudgets] = useState<Record<string, number>>(loadTagBudgets);
@@ -284,7 +275,6 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   useEffect(() => {
     setCustomSplit(loadJarSplitFromSettings());
     loadAnalytics();
-    fetchDismissedSubscriptions().then(setDismissedSubs).catch(() => {});
 
     // Charger les préférences budget depuis Supabase (cross-device)
     fetchUserBudgetPrefs().then(prefs => {
@@ -360,7 +350,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
 
   useEffect(() => {
     if (showJarsDetail && !totals && !loading) loadTotals();
-  }, [showJarsDetail]);
+  }, [showJarsDetail]); // soldes cumulés : chargés à la première ouverture
 
   const totalRevenues = totals?.totalRevenues || 0;
   const totalSpendings = totals
@@ -404,17 +394,6 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
 
   /** Transactions "toutes" (pour l'overlay de tag sur le graphique) */
   const [allTransactionsForChart, setAllTransactionsForChart] = useState<import("../types").SearchSpendingResult[]>([]);
-
-  /** Abonnements détectés (recalculés quand l'utilisateur en écarte un) */
-  const subscriptions = useMemo<RecurringItem[]>(
-    () => detectRecurring(allTransactionsForChart, new Date(), new Set(dismissedSubs)),
-    [allTransactionsForChart, dismissedSubs],
-  );
-
-  const updateDismissed = (next: string[]) => {
-    setDismissedSubs(next);
-    saveDismissedSubscriptions(next).catch(() => {});
-  };
 
   /** Points overlay du tag sélectionné — recalculé depuis allTransactionsForChart */
   const tagOverlayPoints = useMemo((): { label: string; avg: number; date: Date }[] => {
@@ -496,13 +475,24 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   /** Top 5 tags du mois */
   const topTags = useMemo(() => monthlyTagStats.slice(0, 5), [monthlyTagStats]);
 
-  /** Dépenses par jar pour le mois courant + projection fin de mois */
+  /** Mois affiché dans le bloc « Mes jarres » (0 = mois en cours, jusqu'à 11 mois en arrière) */
+  const MAX_MONTHS_BACK = 11;
+  const viewDate = useMemo(() => {
+    const n = new Date();
+    return new Date(n.getFullYear(), n.getMonth() + monthOffset, 1);
+  }, [monthOffset]);
+  const isCurrentView = monthOffset === 0;
+  const viewMonthLabel = `${monthLong(viewDate.getMonth())} ${viewDate.getFullYear()}`;
+  /** La projection de fin de mois n'a de sens que pour le mois en cours, et pas avant le 10 */
+  const showProjection = isCurrentView && projectionReady;
+
+  /** Dépenses par jar pour le mois affiché (+ projection fin de mois si c'est le mois en cours) */
   const jarMonthlyProjections = useMemo(() => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const daysElapsed = now.getDate();
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth() + 1;
     const daysInMonth = new Date(year, month, 0).getDate();
+    const daysElapsed = isCurrentView ? now.getDate() : daysInMonth;
     const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
     const result: Partial<Record<JarKey, { spent: number; projected: number }>> = {};
     for (const jarKey of JAR_KEYS) {
@@ -520,23 +510,29 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
         return false;
       });
       const spent = jarTxns.reduce((sum, t) => sum + Math.abs(t.amount || 0), 0);
-      const projected = daysElapsed > 0 ? (spent / daysElapsed) * daysInMonth : 0;
+      const projected = isCurrentView && daysElapsed > 0 ? (spent / daysElapsed) * daysInMonth : spent;
       result[jarKey] = { spent, projected };
     }
     return result;
-  }, [allTransactionsForChart]);
+  }, [allTransactionsForChart, viewDate, isCurrentView]);
+
+  /** Revenu du mois affiché (le mois en cours vient des tendances, les autres de l'historique mensuel) */
+  const viewMonthRevenue = useMemo(() => {
+    if (isCurrentView) return analytics?.trends?.revenues?.current ?? 0;
+    const key = `${viewDate.getFullYear()}-${String(viewDate.getMonth() + 1).padStart(2, "0")}`;
+    return (analytics?.monthlyData ?? []).find((m) => normalizeMonth(m.month) === key)?.revenues ?? 0;
+  }, [analytics, viewDate, isCurrentView]);
 
   /** Allocation mensuelle par jar = revenu du mois × % jar (méthode Harv Eker) */
   const jarMonthlyAllocations = useMemo(() => {
-    const monthlyRevenue = analytics?.trends?.revenues?.current ?? 0;
-    if (monthlyRevenue <= 0 || !customSplit) return null;
+    if (viewMonthRevenue <= 0 || !customSplit) return null;
     const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
     const result: Partial<Record<JarKey, number>> = {};
     for (const jarKey of JAR_KEYS) {
-      result[jarKey] = monthlyRevenue * (customSplit[jarKey] ?? 0);
+      result[jarKey] = viewMonthRevenue * (customSplit[jarKey] ?? 0);
     }
     return result;
-  }, [analytics, customSplit]);
+  }, [viewMonthRevenue, customSplit]);
 
   /** Sauvegarde du budget par tag */
   const handleSaveTagBudget = (tagId: string) => {
@@ -1039,19 +1035,34 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
         </section>
       )}
 
-      {/* 🏺 Projection par jar — mois en cours */}
-      {allTransactionsForChart.length > 0 && (
-        <section style={{ padding: "0 16px 12px" }}>
-          <div style={{
-            background: "var(--bg-card)",
-            borderRadius: "16px",
-            padding: "16px",
-            border: "1px solid var(--border-color)",
-            boxShadow: "var(--shadow-md)",
-          }}>
-            <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "14px" }}>
-              {t("home.jarsMonth", { label: currentMonthLabel })}
+      {/* 🏺 Mes jarres — le mois (avec sélecteur) ou les soldes cumulés */}
+      <section style={{ padding: "0 16px 12px" }}>
+        <div style={{
+          background: "var(--bg-card)",
+          borderRadius: "16px",
+          padding: "16px",
+          border: "1px solid var(--border-color)",
+          boxShadow: "var(--shadow-md)",
+        }}>
+          <div className="jars-head">
+            <div className="jars-head-title">{t("home.myJars")}</div>
+            <div className="jars-seg" role="tablist" aria-label={t("home.myJars")}>
+              <button type="button" role="tab" aria-selected={jarsMode === "month"} className={`jars-seg-btn${jarsMode === "month" ? " jars-seg-btn--on" : ""}`} onClick={() => setJarsMode("month")}>
+                {t("home.modeMonth")}
+              </button>
+              <button type="button" role="tab" aria-selected={jarsMode === "balance"} className={`jars-seg-btn${jarsMode === "balance" ? " jars-seg-btn--on" : ""}`} onClick={() => setJarsMode("balance")}>
+                {t("home.modeBalance")}
+              </button>
             </div>
+          </div>
+
+          {jarsMode === "month" ? (
+            <>
+              <div className="jars-month-nav">
+                <button type="button" className="jars-month-btn" aria-label={t("home.prevMonth")} disabled={monthOffset <= -MAX_MONTHS_BACK} onClick={() => setMonthOffset((o) => Math.max(-MAX_MONTHS_BACK, o - 1))}>‹</button>
+                <span className="jars-month-label">{viewMonthLabel}</span>
+                <button type="button" className="jars-month-btn" aria-label={t("home.nextMonth")} disabled={isCurrentView} onClick={() => setMonthOffset((o) => Math.min(0, o + 1))}>›</button>
+              </div>
 
             {(["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"] as JarKey[]).map(jarKey => {
               const data = jarMonthlyProjections[jarKey];
@@ -1060,7 +1071,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
               // Allocation = revenu du mois × % jar (méthode Harv Eker)
               const allocation = jarMonthlyAllocations?.[jarKey] ?? null;
               // Avant le 10 du mois on compare à ce qui est déjà dépensé, pas à une extrapolation
-              const basis = projectionReady ? projected : spent;
+              const basis = showProjection ? projected : spent;
               const projPct = allocation ? (basis / allocation) * 100 : null;
               const spentPct = allocation ? (spent / allocation) * 100 : null;
               const barColor = projPct == null
@@ -1098,7 +1109,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                               <span style={{ color: "var(--text-light)", fontSize: "10px" }}> ({spentPct.toFixed(0)}%)</span>
                             )}
                           </div>
-                          {projectionReady && (
+                          {showProjection && (
                             <div style={{ fontSize: "11px", fontWeight: "700", color: textTone(barColor) }}>
                               ≈ {formatMoney(projected)}&nbsp;{curSym()}
                             </div>
@@ -1121,7 +1132,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                         {t("home.allocated", { amount: `${formatMoney(allocation)}\u00A0${curSym()}` })}
                       </span>
                       <span style={{ fontSize: "10px", fontWeight: "700", color: textTone(barColor) }}>
-                        {projectionReady ? t("home.projShort") : t("home.spent")} {projPct!.toFixed(0)}%
+                        {showProjection ? t("home.projShort") : t("home.spent")} {projPct!.toFixed(0)}%
                         {projPct! >= 100 ? " 🚨" : projPct! >= 80 ? " ⚠️" : " ✓"}
                       </span>
                     </div>
@@ -1134,12 +1145,12 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
             <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "10px", marginTop: "4px" }}>
               {jarMonthlyAllocations ? (
                 <div style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center" }}>
-                  {t("home.basedOn", { amount: `${formatMoney(analytics?.trends?.revenues?.current ?? 0)}\u00A0${curSym()}` })}
+                  {t("home.basedOn", { amount: `${formatMoney(viewMonthRevenue)}\u00A0${curSym()}` })}
                 </div>
               ) : (
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
-                    {hasRevenueHistory ? t("home.noIncomeMonth", { label: currentMonthLabel }) : t("home.jarsActivate")}
+                    {hasRevenueHistory ? t("home.noIncomeMonth", { label: viewMonthLabel }) : t("home.jarsActivate")}
                   </div>
                   <button
                     type="button"
@@ -1155,9 +1166,119 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                 </div>
               )}
             </div>
-          </div>
-        </section>
-      )}
+            </>
+          ) : (
+            <>
+          {loading && !totals && (
+            <div className="jars-v2-loading-inline">
+              <div className="spinner"></div>
+              <p>{t("home.loadingData")}</p>
+            </div>
+          )}
+
+          {error && !totals && (
+            <div className="jars-v2-error-inline">
+              <p>❌ {error}</p>
+              <button onClick={loadTotals} className="btn-retry">
+                {t("home.retry")}
+              </button>
+            </div>
+          )}
+
+              {totals && (
+                <>
+              <div className="jars-v2-section jars-v2-section--embedded">
+                <div className="jars-v2-grid">
+                  {jarKeys.map((key) => {
+                    const jar = totals.jars[key];
+                    const backendSplit = totals.split?.[key];
+                    const settingsSplit = customSplit?.[key];
+                    // settingsSplit est en fraction (0.55), backendSplit est en entier (55)
+                    const effectiveSplit =
+                      settingsSplit != null
+                        ? settingsSplit
+                        : backendSplit != null
+                        ? backendSplit / 100
+                        : 0;
+                    const allocated = jar.revenues || 0;
+                    const spent = jar.spendings || 0;
+                    const progressPercent = allocated > 0 ? (spent / allocated) * 100 : 0;
+                    const isOverspent = progressPercent > 100;
+                    return (
+                      <article
+                        key={key}
+                        className="jar-card-v2"
+                        style={isOverspent ? { borderColor: "#FF3B30", borderWidth: 2 } : undefined}
+                      >
+                        <div className="jar-card-header">
+                          <div className="jar-card-title">
+                            <span className="jar-emoji">{JAR_EMOJIS[key]}</span>
+                            <span className="jar-code">{key}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            {isOverspent && (
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: "700",
+                                  color: "#fff",
+                                  backgroundColor: "#FF3B30",
+                                  borderRadius: "10px",
+                                  padding: "2px 7px",
+                                  animation: "pulse 1.5s ease-in-out infinite",
+                                }}
+                              >
+                                {t("home.over")}
+                              </span>
+                            )}
+                            <span
+                              className="jar-percent"
+                              style={{ "--c": isOverspent ? "#FF3B30" : JAR_COLORS[key] } as React.CSSProperties}
+                            >
+                              {(effectiveSplit * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                        <p className="jar-label">{JAR_LABELS[key]}</p>
+                        <p className="jar-remaining-label" style={isOverspent ? { color: "var(--danger-text)" } : undefined}>
+                          {isOverspent || jar.net < 0 ? t("home.overBy") : t("home.remaining")}
+                        </p>
+                        <p className="jar-amount" style={isOverspent ? { color: "var(--danger-text)" } : undefined}>
+                          {Math.abs(jar.net) >= 10000 ? Math.round(jar.net).toLocaleString(localeTag()) : formatMoney(jar.net)}
+                          <span className="jar-currency">{curSym()}</span>
+                        </p>
+                        <div className="jar-progress-wrapper">
+                          <div className="jar-progress-info">
+                            <span className="jar-progress-label">{t("home.spent")}</span>
+                            <span
+                              className="jar-progress-value"
+                              style={isOverspent ? { color: "var(--danger-text)", fontWeight: "700" } : undefined}
+                            >
+                              {progressPercent.toFixed(0)}%
+                            </span>
+                          </div>
+                          <div className="jar-progress-bar">
+                            <div
+                              className="jar-progress-fill"
+                              style={{
+                                width: `${Math.min(progressPercent, 100)}%`,
+                                backgroundColor: isOverspent ? "#FF3B30" : JAR_COLORS[key],
+                              }}
+                            />
+                          </div>
+                          <p className="jar-spent-amount">{formatMoney(spent)}&nbsp;{curSym()}</p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </section>
 
       {/* 📉 Widget dépenses / jour — toujours visible */}
       <section style={{ padding: "0 16px 12px" }}>
@@ -1286,364 +1407,6 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
         </div>
       </section>
 
-      {/* 🔁 Panneau abonnements récurrents */}
-      {subscriptions.length === 0 && dismissedSubs.length > 0 && (
-        <section style={{ padding: "0 16px 12px", textAlign: "center" }}>
-          <button type="button" className="sub-dismiss" onClick={() => updateDismissed([])}>
-            {t("home.dismissedCount", { n: dismissedSubs.length })} · {t("home.restoreAll")}
-          </button>
-        </section>
-      )}
-      {subscriptions.length > 0 && (
-        <section style={{ padding: "0 16px 12px" }}>
-          <div style={{
-            background: "var(--bg-card)",
-            borderRadius: "16px",
-            border: "1px solid var(--border-color)",
-            boxShadow: "var(--shadow-md)",
-            overflow: "hidden",
-          }}>
-            {/* Header cliquable */}
-            <button
-              onClick={() => setShowSubscriptions(v => !v)}
-              style={{
-                width: "100%", background: "none", border: "none", cursor: "pointer",
-                padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                  {t("home.subscriptions")}
-                </span>
-                <span style={{
-                  fontSize: "11px", fontWeight: "700", color: "#fff",
-                  background: "#FF9500", borderRadius: "9px", padding: "1px 7px",
-                }}>
-                  {subscriptions.length}
-                </span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                {/* Total fixes (équivalent mensuel) */}
-                {(() => {
-                  const fixedTotal = subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0);
-                  return fixedTotal > 0 ? (
-                    <span style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)" }}>
-                      {formatMoney(fixedTotal)}&nbsp;{curSym()}{t("home.perMonth")}
-                    </span>
-                  ) : null;
-                })()}
-                <span style={{ fontSize: "16px", color: "var(--text-light)", transform: showSubscriptions ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
-                  ▾
-                </span>
-              </div>
-            </button>
-
-            {/* Corps dépliable */}
-            {showSubscriptions && (
-              <div style={{ padding: "0 16px 16px" }}>
-                {/* Section Fixes */}
-                {subscriptions.some(s => s.isFixed) && (
-                  <>
-                    <div style={{ fontSize: "10px", color: "var(--text-light)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px" }}>
-                      {t("home.fixed")}
-                    </div>
-                    {subscriptions.filter(s => s.isFixed).map((sub, i) => (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "center", gap: "8px",
-                        padding: "7px 0",
-                        borderBottom: "1px solid var(--border-color)",
-                      }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {sub.description}
-                          </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
-                            {sub.account}
-                            {sub.freq ? (
-                              <span style={{ background: "#007AFF18", color: "#007AFF", borderRadius: "6px", padding: "1px 5px", fontWeight: "600" }}>
-                                {FREQ_LABEL[sub.freq]}
-                              </span>
-                            ) : (
-                              <span>{t("home.months", { n: sub.uniqueMonths })}</span>
-                            )}
-                            {!sub.freq && (
-                              <button type="button" className="sub-dismiss" onClick={() => updateDismissed([...dismissedSubs, sub.key])}>
-                                {t("home.notSub")}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {/* Pastilles mois */}
-                        <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
-                          {Array.from({ length: 6 }).map((_, k) => {
-                            const filled = k >= (6 - sub.uniqueMonths);
-                            return (
-                              <div key={k} style={{
-                                width: "7px", height: "7px", borderRadius: "50%",
-                                background: filled ? "#34C759" : "var(--border-color)",
-                              }} />
-                            );
-                          })}
-                        </div>
-                        <div style={{ textAlign: "right", flexShrink: 0, minWidth: "80px" }}>
-                          {sub.freq && sub.freq !== "mensuel" ? (
-                            <>
-                              <div style={{ fontSize: "12px", fontWeight: "800", color: "var(--text-main)" }}>
-                                {formatMoney(sub.monthlyAmount)}&nbsp;{curSym()}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
-                              </div>
-                              <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
-                                {formatMoney(sub.avgAmount)}&nbsp;{curSym()}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-main)" }}>
-                              {formatMoney(sub.avgAmount)}&nbsp;{curSym()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {/* Section Variables */}
-                {subscriptions.some(s => !s.isFixed) && (
-                  <>
-                    <div style={{ fontSize: "10px", color: "var(--text-light)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "8px", marginTop: subscriptions.some(s => s.isFixed) ? "14px" : "0" }}>
-                      {t("home.variable")}
-                    </div>
-                    {subscriptions.filter(s => !s.isFixed).map((sub, i) => (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "center", gap: "8px",
-                        padding: "7px 0",
-                        borderBottom: "1px solid var(--border-color)",
-                      }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {sub.description}
-                          </div>
-                          <div style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "1px", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px" }}>
-                            {sub.account}
-                            {sub.freq ? (
-                              <span style={{ background: "#FF950018", color: "var(--warn-text)", borderRadius: "6px", padding: "1px 5px", fontWeight: "600" }}>
-                                {FREQ_LABEL[sub.freq]}
-                              </span>
-                            ) : (
-                              <span>{t("home.months", { n: sub.uniqueMonths })}</span>
-                            )}
-                            {!sub.freq && (
-                              <button type="button" className="sub-dismiss" onClick={() => updateDismissed([...dismissedSubs, sub.key])}>
-                                {t("home.notSub")}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: "3px", flexShrink: 0 }}>
-                          {Array.from({ length: 6 }).map((_, k) => {
-                            const filled = k >= (6 - sub.uniqueMonths);
-                            return (
-                              <div key={k} style={{
-                                width: "7px", height: "7px", borderRadius: "50%",
-                                background: filled ? "#FF9500" : "var(--border-color)",
-                              }} />
-                            );
-                          })}
-                        </div>
-                        <div style={{ textAlign: "right", flexShrink: 0, minWidth: "80px" }}>
-                          {sub.freq && sub.freq !== "mensuel" ? (
-                            <>
-                              <div style={{ fontSize: "12px", fontWeight: "800", color: "var(--warn-text)" }}>
-                                ~{formatMoney(sub.monthlyAmount)}&nbsp;{curSym()}<span style={{ fontSize: "9px", color: "var(--text-muted)", fontWeight: "500" }}>{t("home.perMonth")}</span>
-                              </div>
-                              <div style={{ fontSize: "10px", color: "var(--text-light)" }}>
-                                {formatMoney(sub.avgAmount)}&nbsp;{curSym()}/{sub.freq === "annuel" ? t("home.perYear") : sub.freq === "semestriel" ? t("home.perHalf") : t("home.perQuarter")}
-                              </div>
-                            </>
-                          ) : (
-                            <div style={{ fontSize: "14px", fontWeight: "700", color: "var(--warn-text)" }}>
-                              ~{formatMoney(sub.avgAmount)}&nbsp;{curSym()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {dismissedSubs.length > 0 && (
-                  <div style={{ marginTop: "10px", textAlign: "center" }}>
-                    <button type="button" className="sub-dismiss" onClick={() => updateDismissed([])}>
-                      {t("home.dismissedCount", { n: dismissedSubs.length })} · {t("home.restoreAll")}
-                    </button>
-                  </div>
-                )}
-
-                {/* Récap total */}
-                <div style={{ marginTop: "12px", padding: "10px", background: "var(--bg-body)", borderRadius: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("home.totalFixed")}</div>
-                    <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--text-main)" }}>
-                      {formatMoney(subscriptions.filter(s => s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))}&nbsp;{curSym()}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "11px", color: "var(--text-muted)" }}>{t("home.totalVariable")}</div>
-                    <div style={{ fontSize: "16px", fontWeight: "800", color: "var(--warn-text)" }}>
-                      ~{formatMoney(subscriptions.filter(s => !s.isFixed).reduce((sum, s) => sum + s.monthlyAmount, 0))}&nbsp;{curSym()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* Lien pour afficher le détail des jarres à la demande */}
-      {!showJarsDetail ? (
-        <section className="jars-v2-detail-link">
-          <button
-            type="button"
-            className="jars-v2-detail-btn"
-            onClick={() => setShowJarsDetail(true)}
-          >
-            {t("home.seeDetails")}
-          </button>
-        </section>
-      ) : (
-        <>
-          {loading && !totals && (
-            <div className="jars-v2-loading-inline">
-              <div className="spinner"></div>
-              <p>{t("home.loadingData")}</p>
-            </div>
-          )}
-
-          {error && !totals && (
-            <div className="jars-v2-error-inline">
-              <p>❌ {error}</p>
-              <button onClick={loadTotals} className="btn-retry">
-                {t("home.retry")}
-              </button>
-            </div>
-          )}
-
-          {totals && (
-            <>
-              <section className="jars-v2-summary">
-                <h3 className="jars-v2-summary-title">{t("home.quickSummary")}</h3>
-                <p className="jars-v2-summary-scope">{t("home.summaryScope")}</p>
-                <div className="jars-v2-summary-grid">
-                  <div className="summary-item summary-revenues">
-                    <span className="summary-label">{t("home.income")}</span>
-                    <span className="summary-value">{formatMoney(totalRevenues)}&nbsp;{curSym()}</span>
-                  </div>
-                  <div className="summary-item summary-spendings">
-                    <span className="summary-label">{t("home.spending")}</span>
-                    <span className="summary-value">{formatMoney(totalSpendings)}&nbsp;{curSym()}</span>
-                  </div>
-                  <div className="summary-item summary-balance" style={{ gridColumn: "1 / -1" }}>
-                    <span className="summary-label">{t("home.balance")}</span>
-                    <span className="summary-value summary-value--highlight">
-                      {formatMoney(totalBalance)}&nbsp;{curSym()}
-                    </span>
-                  </div>
-                </div>
-              </section>
-
-              <section className="jars-v2-section">
-                <div className="jars-v2-section-header">
-                  <h2 className="jars-v2-section-title">{t("home.myJars")}</h2>
-                </div>
-                <div className="jars-v2-grid">
-                  {jarKeys.map((key) => {
-                    const jar = totals.jars[key];
-                    const backendSplit = totals.split?.[key];
-                    const settingsSplit = customSplit?.[key];
-                    // settingsSplit est en fraction (0.55), backendSplit est en entier (55)
-                    const effectiveSplit =
-                      settingsSplit != null
-                        ? settingsSplit
-                        : backendSplit != null
-                        ? backendSplit / 100
-                        : 0;
-                    const allocated = jar.revenues || 0;
-                    const spent = jar.spendings || 0;
-                    const progressPercent = allocated > 0 ? (spent / allocated) * 100 : 0;
-                    const isOverspent = progressPercent > 100;
-                    return (
-                      <article
-                        key={key}
-                        className="jar-card-v2"
-                        style={isOverspent ? { borderColor: "#FF3B30", borderWidth: 2 } : undefined}
-                      >
-                        <div className="jar-card-header">
-                          <div className="jar-card-title">
-                            <span className="jar-emoji">{JAR_EMOJIS[key]}</span>
-                            <span className="jar-code">{key}</span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                            {isOverspent && (
-                              <span
-                                style={{
-                                  fontSize: "11px",
-                                  fontWeight: "700",
-                                  color: "#fff",
-                                  backgroundColor: "#FF3B30",
-                                  borderRadius: "10px",
-                                  padding: "2px 7px",
-                                  animation: "pulse 1.5s ease-in-out infinite",
-                                }}
-                              >
-                                {t("home.over")}
-                              </span>
-                            )}
-                            <span
-                              className="jar-percent"
-                              style={{ "--c": isOverspent ? "#FF3B30" : JAR_COLORS[key] } as React.CSSProperties}
-                            >
-                              {(effectiveSplit * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                        </div>
-                        <p className="jar-label">{JAR_LABELS[key]}</p>
-                        <p className="jar-remaining-label" style={isOverspent ? { color: "var(--danger-text)" } : undefined}>
-                          {isOverspent || jar.net < 0 ? t("home.overBy") : t("home.remaining")}
-                        </p>
-                        <p className="jar-amount" style={isOverspent ? { color: "var(--danger-text)" } : undefined}>
-                          {Math.abs(jar.net) >= 10000 ? Math.round(jar.net).toLocaleString(localeTag()) : formatMoney(jar.net)}
-                          <span className="jar-currency">{curSym()}</span>
-                        </p>
-                        <div className="jar-progress-wrapper">
-                          <div className="jar-progress-info">
-                            <span className="jar-progress-label">{t("home.spent")}</span>
-                            <span
-                              className="jar-progress-value"
-                              style={isOverspent ? { color: "var(--danger-text)", fontWeight: "700" } : undefined}
-                            >
-                              {progressPercent.toFixed(0)}%
-                            </span>
-                          </div>
-                          <div className="jar-progress-bar">
-                            <div
-                              className="jar-progress-fill"
-                              style={{
-                                width: `${Math.min(progressPercent, 100)}%`,
-                                backgroundColor: isOverspent ? "#FF3B30" : JAR_COLORS[key],
-                              }}
-                            />
-                          </div>
-                          <p className="jar-spent-amount">{formatMoney(spent)}&nbsp;{curSym()}</p>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
-            </>
-          )}
-        </>
-      )}
     </main>
   );
 };

@@ -166,7 +166,7 @@ const en: Record<keyof typeof fr, string> = {
   "cur.none": "No currency found",
   "rev.cryptoQtyPlaceholder": "e.g. 0.05",
   "rev.addressPlaceholder": "e.g. 0x...",
-  // Accueil / bocaux
+  // Home / jars
   "jar.NEC": "Necessities",
   "jar.FFA": "Financial Freedom",
   "jar.LTSS": "Long-Term Savings",
@@ -913,6 +913,19 @@ const en: Record<keyof typeof fr, string> = {
   "yearstart.deficit": "{jars}: deficit to clear or cover.",
   "yearstart.open": "Open",
   "yearstart.later": "Later",
+  "life.suggestTitle": "Big expenses: mark them \"{tag}\"?",
+  "life.suggestHelp": "They weigh on your daily average. Once marked, they no longer count in it.",
+  "life.suggestTimes": "{n}× a usual expense",
+  "life.suggestMark": "Mark",
+  "life.suggestNo": "No, it's normal",
+  "life.suggestUnnamed": "No label",
+  "life.suggestError": "Couldn't mark this expense. Try again later.",
+  "analytics.subscriptions": "🔁 Subscriptions",
+  "subs.none": "No subscription detected yet.",
+  "home.modeMonth": "Month",
+  "home.modeBalance": "Balances",
+  "home.prevMonth": "Previous month",
+  "home.nextMonth": "Next month",
 };
 
 export default en;

@@ -122,9 +122,9 @@ export function monthLong(i: number): string {
 type JarKeyLocal = "NEC" | "FFA" | "LTSS" | "PLAY" | "EDUC" | "GIFT";
 const JAR_KEYS_LOCAL: JarKeyLocal[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
 
-/** Noms des bocaux dans la langue courante : JAR_LABELS.NEC, JAR_LABELS[key]… */
+/** Noms des jarres dans la langue courante : JAR_LABELS.NEC, JAR_LABELS[key]… */
 export const JAR_LABELS = {} as Record<JarKeyLocal, string>;
-/** Phrases d'encouragement des bocaux vides. */
+/** Phrases d'encouragement des jarres vides. */
 export const JAR_EMPTY_COPY = {} as Record<JarKeyLocal, string>;
 for (const k of JAR_KEYS_LOCAL) {
   Object.defineProperty(JAR_LABELS, k, { get: () => t(`jar.${k}` as TKey), enumerable: true });
