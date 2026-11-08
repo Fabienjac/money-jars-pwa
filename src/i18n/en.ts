@@ -963,6 +963,16 @@ const en: Record<keyof typeof fr, string> = {
   "life.trendNoRef": "No reference average yet.",
   "life.monthsNote": "Daily average, month by month · dashed: average since the start of the year ({avg}) · * current month",
   "life.chartNote": "Lines: average of the last 30 days, one point per week",
+  "hist.pCustom": "Custom",
+  "hist.from": "From",
+  "hist.to": "To",
+  "hist.rangeBoth": "{from} to {to}",
+  "hist.rangeFrom": "since {from}",
+  "hist.rangeTo": "until {to}",
+  "hist.filters": "Filters",
+  "hist.resetFilters": "Reset filters",
+  "hist.shownOf": "{n} shown",
+  "hist.showMore": "Show {n} more ({left} left)",
 };
 
 export default en;

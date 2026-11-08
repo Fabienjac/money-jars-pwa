@@ -961,6 +961,16 @@ const fr = {
   "life.trendNoRef": "Pas encore de moyenne de référence.",
   "life.monthsNote": "Moyenne par jour, mois par mois · pointillé : moyenne depuis le début de l'année ({avg}) · * mois en cours",
   "life.chartNote": "Courbes : moyenne des 30 derniers jours, un point par semaine",
+  "hist.pCustom": "Perso",
+  "hist.from": "Du",
+  "hist.to": "Au",
+  "hist.rangeBoth": "du {from} au {to}",
+  "hist.rangeFrom": "depuis le {from}",
+  "hist.rangeTo": "jusqu'au {to}",
+  "hist.filters": "Filtres",
+  "hist.resetFilters": "Réinitialiser les filtres",
+  "hist.shownOf": "{n} affichées",
+  "hist.showMore": "Afficher {n} de plus ({left} restantes)",
 } as const;
 
 export default fr;

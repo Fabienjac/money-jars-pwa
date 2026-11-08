@@ -1,7 +1,7 @@
 // src/components/HistoryView.tsx - VERSION REFACTORISÉE (Features 4 & 5)
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
-  searchSpendings, searchRevenues,
+  fetchAllSpendings, fetchAllRevenues,
   updateSpending, updateRevenue,
   deleteSpending, deleteRevenue,
 } from "../api";
@@ -14,6 +14,7 @@ import { Account } from "../types";
 
 import { currencySymbol as curSym } from "../baseCurrency";
 import { useT, t as tr, localeTag } from "../i18n";
+import { inBounds, periodBounds, type PeriodFilter } from "../historyPeriod";
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
@@ -31,7 +32,9 @@ const JAR_EMOJI: Record<JarKey, string> = {
 
 type Mode = "spending" | "revenue";
 type MainTab = "history" | "report";
-type PeriodFilter = "all" | "month" | "prevmonth" | "90d" | "year";
+/** Nombre de lignes affichées d'un coup ; le reste s'ouvre par « Afficher plus » (les totaux portent sur tout). */
+const PAGE = 50;
+const FILTERS_OPEN_KEY = "mjars:historyFiltersOpen";
 
 export type HistoryUseEntry =
   | { kind: "spending"; row: SearchSpendingResult }
@@ -97,6 +100,12 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
   // ── Filters ───────────────────────────────────────────────────────
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
+  const [customFrom, setCustomFrom] = useState(""); // AAAA-MM-JJ (période personnalisée)
+  const [customTo, setCustomTo] = useState("");
+  const [visibleCount, setVisibleCount] = useState(PAGE);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem(FILTERS_OPEN_KEY) !== "0"; } catch { return true; }
+  });
   const [jarFilter, setJarFilter] = useState("all");
   const [accountFilter, setAccountFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -128,12 +137,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     setError(null);
     try {
       if (m === "spending") {
-        const res = await searchSpendings(q, 300);
-        setSpendings(res.rows || []);
+        // Tout l'historique (lecture par pages) : une limite fixe tronquait en silence les totaux et les périodes
+        setSpendings(await fetchAllSpendings(q));
         setRevenues([]);
       } else {
-        const res = await searchRevenues(q, 300);
-        setRevenues(res.rows || []);
+        setRevenues(await fetchAllRevenues(q));
         setSpendings([]);
       }
     } catch (e: any) {
@@ -158,31 +166,17 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   }, [mode, query, doSearch]);
 
   // ── Computed filters ──────────────────────────────────────────────
-  const periodRange = useMemo((): { start: Date; end: Date } | null => {
-    const now = new Date();
-    if (periodFilter === "all") return null;
-    if (periodFilter === "month") {
-      return { start: new Date(now.getFullYear(), now.getMonth(), 1), end: now };
-    }
-    if (periodFilter === "prevmonth") {
-      return {
-        start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-        end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
-      };
-    }
-    if (periodFilter === "90d") {
-      const s = new Date(now); s.setDate(s.getDate() - 90);
-      return { start: s, end: now };
-    }
-    // year
-    const s = new Date(now); s.setMonth(s.getMonth() - 12);
-    return { start: s, end: now };
-  }, [periodFilter]);
+  const periodRange = useMemo(() => periodBounds(periodFilter, new Date(), customFrom, customTo), [periodFilter, customFrom, customTo]);
 
   // Label lisible pour la période active
   const periodLabel = useMemo(() => {
     if (!periodRange) return null;
     const now = new Date();
+    if (periodFilter === "custom") {
+      const f = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(localeTag(), { day: "numeric", month: "short", year: "numeric" });
+      if (customFrom && customTo) return tr("hist.rangeBoth", { from: f(customFrom), to: f(customTo) });
+      return customFrom ? tr("hist.rangeFrom", { from: f(customFrom) }) : tr("hist.rangeTo", { to: f(customTo) });
+    }
     if (periodFilter === "month")
       return now.toLocaleDateString(localeTag(), { month: "long", year: "numeric" });
     if (periodFilter === "prevmonth") {
@@ -190,14 +184,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
       return prev.toLocaleDateString(localeTag(), { month: "long", year: "numeric" });
     }
     return null;
-  }, [periodFilter, periodRange]);
+  }, [periodFilter, periodRange, customFrom, customTo]);
 
   const filteredSpendings = useMemo(() =>
     spendings.filter(s => {
-      if (periodRange) {
-        const dt = parseDate(s.date);
-        if (!dt || dt < periodRange.start || dt > periodRange.end) return false;
-      }
+      if (!inBounds(parseDate(s.date), periodRange)) return false;
       if (jarFilter !== "all" && s.jar !== jarFilter) return false;
       if (accountFilter !== "all" && s.account !== accountFilter) return false;
       return true;
@@ -207,10 +198,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
   const filteredRevenues = useMemo(() =>
     revenues.filter(r => {
-      if (periodRange) {
-        const dt = parseDate(r.date);
-        if (!dt || dt < periodRange.start || dt > periodRange.end) return false;
-      }
+      if (!inBounds(parseDate(r.date), periodRange)) return false;
       if (typeFilter !== "all" && r.incomeType !== typeFilter) return false;
       if (destinationFilter !== "all" && r.destination !== destinationFilter) return false;
       return true;
@@ -235,6 +223,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
       : filteredRevenues.reduce((s, r) => s + (r.amount || 0), 0),
     [mode, filteredSpendings, filteredRevenues]
   );
+
+  // Un nouveau filtre ou une nouvelle recherche repart de la première page
+  useEffect(() => {
+    setVisibleCount(PAGE);
+  }, [mode, query, periodFilter, customFrom, customTo, jarFilter, accountFilter, typeFilter, destinationFilter]);
 
   // ── Edit helpers ──────────────────────────────────────────────────
   const isSpendingRow = (row: any): row is SearchSpendingResult => "jar" in row;
@@ -309,11 +302,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     setReportLoading(true);
     try {
       const [spRes, revRes] = await Promise.all([
-        searchSpendings("", 500),
-        searchRevenues("", 300),
+        fetchAllSpendings(),
+        fetchAllRevenues(),
       ]);
-      setReportSpendings((spRes.rows || []).filter(s => getYearMonth(s.date) === reportMonth));
-      setReportRevenues((revRes.rows || []).filter(r => getYearMonth(r.date) === reportMonth));
+      setReportSpendings(spRes.filter(s => getYearMonth(s.date) === reportMonth));
+      setReportRevenues(revRes.filter(r => getYearMonth(r.date) === reportMonth));
       setReportGenerated(true);
     } catch (e: any) {
       alert(t("hist.reportError", { msg: e.message }));
@@ -406,12 +399,44 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
   // ── Render helpers ────────────────────────────────────────────────
 
+  const toggleFilters = () => {
+    setFiltersOpen((v) => {
+      try { localStorage.setItem(FILTERS_OPEN_KEY, v ? "0" : "1"); } catch { /* sans importance */ }
+      return !v;
+    });
+  };
+
+  const resetFilters = () => {
+    setPeriodFilter("all"); setCustomFrom(""); setCustomTo("");
+    setJarFilter("all"); setAccountFilter("all"); setTypeFilter("all"); setDestinationFilter("all");
+  };
+
+  // Résumé des filtres actifs (la recherche n'en fait pas partie : elle a son propre champ)
+  const activeFilters = useMemo(() => {
+    const out: string[] = [];
+    if (periodFilter !== "all" && !(periodFilter === "custom" && !customFrom && !customTo)) {
+      const names: Record<PeriodFilter, string> = {
+        all: t("hist.pAll"), month: t("hist.pMonth"), prevmonth: t("hist.pPrev"), "90d": t("hist.p90"), year: t("hist.pYear"), custom: periodLabel || t("hist.pCustom"),
+      };
+      out.push(names[periodFilter]);
+    }
+    if (mode === "spending") {
+      if (jarFilter !== "all") out.push(`${JAR_EMOJI[jarFilter as JarKey] ?? ""} ${jarFilter}`.trim());
+      if (accountFilter !== "all") out.push(accountFilter);
+    } else {
+      if (typeFilter !== "all") out.push(typeFilter);
+      if (destinationFilter !== "all") out.push(destinationFilter);
+    }
+    return out;
+  }, [periodFilter, customFrom, customTo, periodLabel, mode, jarFilter, accountFilter, typeFilter, destinationFilter, t]);
+
   const renderPills = (
     items: { label: string; value: string }[],
     current: string,
     onChange: (v: string) => void,
     color = "#007AFF",
-    sectionLabel?: string
+    sectionLabel?: string,
+    wrap = false
   ) => (
     <div>
       {sectionLabel && (
@@ -420,7 +445,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
         </div>
       )}
       {/* pills-scroll: classe CSS pour le scroll horizontal cross-platform */}
-      <div className="pills-scroll">
+      <div className={wrap ? "pills-wrap" : "pills-scroll"}>
         {items.map(item => (
           <button key={item.value} style={pillStyle(current === item.value, color)} onClick={() => onChange(item.value)}>
             {item.label}
@@ -915,13 +940,13 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             <div style={tabBarStyle}>
               <button
                 style={tabBtnStyle(mode === "spending", "#FF3B30")}
-                onClick={() => { setMode("spending"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setJarFilter("all"); setAccountFilter("all"); }}
+                onClick={() => { setMode("spending"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setCustomFrom(""); setCustomTo(""); setJarFilter("all"); setAccountFilter("all"); }}
               >
                 {t("hist.spendings")}
               </button>
               <button
                 style={tabBtnStyle(mode === "revenue", "#34C759")}
-                onClick={() => { setMode("revenue"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setTypeFilter("all"); setDestinationFilter("all"); }}
+                onClick={() => { setMode("revenue"); setQuery(""); setExpandedCard(null); cancelEdit(); setPeriodFilter("all"); setCustomFrom(""); setCustomTo(""); setTypeFilter("all"); setDestinationFilter("all"); }}
               >
                 {t("hist.revenues")}
               </button>
@@ -943,35 +968,69 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
               )}
             </div>
 
-            {/* Period pills */}
-            {renderPills(
-              [
-                { label: t("hist.pAll"), value: "all" },
-                { label: t("hist.pMonth"), value: "month" },
-                { label: t("hist.pPrev"), value: "prevmonth" },
-                { label: t("hist.p90"), value: "90d" },
-                { label: t("hist.pYear"), value: "year" },
-              ],
-              periodFilter, (v) => setPeriodFilter(v as PeriodFilter), "#007AFF", t("hist.period")
-            )}
+            {/* Filtres : repliables, résumé des filtres actifs quand c'est replié */}
+            <div className="hist-filters">
+              <button type="button" className="hist-filters-toggle" aria-expanded={filtersOpen} onClick={toggleFilters}>
+                <span className="hist-filters-title">
+                  {t("hist.filters")}
+                  {activeFilters.length > 0 && <span className="hist-filters-badge">{activeFilters.length}</span>}
+                </span>
+                <span aria-hidden="true">{filtersOpen ? "▴" : "▾"}</span>
+              </button>
+              {!filtersOpen && activeFilters.length > 0 && (
+                <div className="hist-filters-summary">{activeFilters.join(" · ")}</div>
+              )}
 
-            {/* Contextual filter pills — on affiche toujours les 6 jarres */}
-            {mode === "spending" && renderPills(
-              [{ label: t("hist.allF"), value: "all" }, ...JAR_KEYS.map(j => ({ label: `${JAR_EMOJI[j]} ${j}`, value: j }))],
-              jarFilter, setJarFilter, "#007AFF", t("hist.jarLabel")
-            )}
-            {mode === "spending" && uniqueAccounts.length > 1 && renderPills(
-              [{ label: t("hist.allM"), value: "all" }, ...uniqueAccounts.map(a => ({ label: a, value: a }))],
-              accountFilter, setAccountFilter, "#34C759", t("hist.accountLabel")
-            )}
-            {mode === "revenue" && uniqueTypes.length > 1 && renderPills(
-              [{ label: t("hist.allM"), value: "all" }, ...uniqueTypes.map(t => ({ label: t, value: t }))],
-              typeFilter, setTypeFilter, "#34C759", t("hist.revType")
-            )}
-            {mode === "revenue" && uniqueDestinations.length > 1 && renderPills(
-              [{ label: t("hist.allF"), value: "all" }, ...uniqueDestinations.map(d => ({ label: d, value: d }))],
-              destinationFilter, setDestinationFilter, "#FF9500", t("hist.destLabel")
-            )}
+              {filtersOpen && (
+                <div className="hist-filters-body">
+                  {renderPills(
+                    [
+                      { label: t("hist.pAll"), value: "all" },
+                      { label: t("hist.pMonth"), value: "month" },
+                      { label: t("hist.pPrev"), value: "prevmonth" },
+                      { label: t("hist.p90"), value: "90d" },
+                      { label: t("hist.pYear"), value: "year" },
+                      { label: t("hist.pCustom"), value: "custom" },
+                    ],
+                    periodFilter, (v) => setPeriodFilter(v as PeriodFilter), "#007AFF", t("hist.period"), true
+                  )}
+                  {periodFilter === "custom" && (
+                    <div className="hist-range">
+                      <label className="hist-range-field">
+                        <span>{t("hist.from")}</span>
+                        <input type="date" value={customFrom} max={customTo || undefined} onChange={(e) => setCustomFrom(e.target.value)} />
+                      </label>
+                      <label className="hist-range-field">
+                        <span>{t("hist.to")}</span>
+                        <input type="date" value={customTo} min={customFrom || undefined} onChange={(e) => setCustomTo(e.target.value)} />
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Les 6 jarres, toutes visibles (les pastilles passent à la ligne au lieu de défiler) */}
+                  {mode === "spending" && renderPills(
+                    [{ label: t("hist.allF"), value: "all" }, ...JAR_KEYS.map(j => ({ label: `${JAR_EMOJI[j]} ${j}`, value: j }))],
+                    jarFilter, setJarFilter, "#007AFF", t("hist.jarLabel"), true
+                  )}
+                  {mode === "spending" && uniqueAccounts.length > 1 && renderPills(
+                    [{ label: t("hist.allM"), value: "all" }, ...uniqueAccounts.map(a => ({ label: a, value: a }))],
+                    accountFilter, setAccountFilter, "#34C759", t("hist.accountLabel"), true
+                  )}
+                  {mode === "revenue" && uniqueTypes.length > 1 && renderPills(
+                    [{ label: t("hist.allM"), value: "all" }, ...uniqueTypes.map(t => ({ label: t, value: t }))],
+                    typeFilter, setTypeFilter, "#34C759", t("hist.revType"), true
+                  )}
+                  {mode === "revenue" && uniqueDestinations.length > 1 && renderPills(
+                    [{ label: t("hist.allF"), value: "all" }, ...uniqueDestinations.map(d => ({ label: d, value: d }))],
+                    destinationFilter, setDestinationFilter, "#FF9500", t("hist.destLabel"), true
+                  )}
+                </div>
+              )}
+
+              {activeFilters.length > 0 && (
+                <button type="button" className="hist-filters-reset" onClick={resetFilters}>{t("hist.resetFilters")}</button>
+              )}
+            </div>
           </div>
 
           {/* Summary bar */}
@@ -982,6 +1041,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
                   <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
                     {t((mode === "spending" ? filteredSpendings.length : filteredRevenues.length) === 1 ? "hist.countOne" : "hist.countMany", { n: (mode === "spending" ? filteredSpendings.length : filteredRevenues.length) })}
                   </span>
+                  {(mode === "spending" ? filteredSpendings.length : filteredRevenues.length) > visibleCount && (
+                    <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 6 }}>
+                      · {t("hist.shownOf", { n: visibleCount })}
+                    </span>
+                  )}
                   {periodLabel && (
                     <span style={{ fontSize: 12, color: "var(--text-muted)", marginLeft: 6, fontStyle: "italic" }}>
                       · {periodLabel}
@@ -1004,8 +1068,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
           {/* Cards */}
           <div style={{ padding: "0 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-            {mode === "spending" && filteredSpendings.map((row, i) => renderSpendingCard(row, i))}
-            {mode === "revenue" && filteredRevenues.map((row, i) => renderRevenueCard(row, i))}
+            {mode === "spending" && filteredSpendings.slice(0, visibleCount).map((row, i) => renderSpendingCard(row, i))}
+            {mode === "revenue" && filteredRevenues.slice(0, visibleCount).map((row, i) => renderRevenueCard(row, i))}
+
+            {(() => {
+              const total = mode === "spending" ? filteredSpendings.length : filteredRevenues.length;
+              const remaining = total - visibleCount;
+              return remaining > 0 ? (
+                <button type="button" className="hist-more" onClick={() => setVisibleCount((c) => c + PAGE)}>
+                  {t("hist.showMore", { n: Math.min(PAGE, remaining), left: remaining })}
+                </button>
+              ) : null;
+            })()}
 
             {/* Empty state */}
             {!loading && !error && (mode === "spending" ? filteredSpendings : filteredRevenues).length === 0 && (

@@ -135,6 +135,42 @@ export async function bulkRenameSpendingAccount(
   return { ok: true, count: data?.length ?? 0 };
 }
 
+type SpendingDbRow = { id: number; date: string; jar: string; account: string; amount: number | string; description: string; tags: string | null; subscription: string | null };
+
+function mapSpendingRow(r: SpendingDbRow): SearchSpendingResult {
+  return {
+    rowIndex:     r.id,
+    date:         toDDMMYYYY(r.date),
+    jar:          r.jar as JarKey,
+    account:      r.account,
+    amount:       Number(r.amount),
+    description:  r.description,
+    tags:         r.tags ?? undefined,
+    subscription: r.subscription ?? undefined,
+  };
+}
+
+/**
+ * Toutes les dépenses (filtrées par libellé si `q`), lues page par page : Supabase tronque en silence à 1000 lignes
+ * par requête. Du plus récent au plus ancien ; l'ordre sur `id` rend les pages stables.
+ */
+export async function fetchAllSpendings(q = ""): Promise<SearchSpendingResult[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const rows = await fetchAllPages((from, to) => {
+    let query = supabase
+      .from("transactions_spending")
+      .select("id, date, jar, account, amount, description, tags, subscription")
+      .eq("user_id", user.id);
+    if (q.trim()) query = query.ilike("description", `%${q.trim()}%`);
+    return query
+      .order("date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to);
+  });
+  return rows.map((r) => mapSpendingRow(r as SpendingDbRow));
+}
+
 export async function searchSpendings(q: string, max = 50): Promise<{ rows: SearchSpendingResult[] }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { rows: [] };
@@ -240,6 +276,47 @@ export async function bulkRenameRevenueSource(
   if (error) return { ok: false, count: 0, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
   return { ok: true, count: data?.length ?? 0 };
+}
+
+type RevenueDbRow = {
+  id: number; date: string; source: string; amount: number | string | null; value: string | null;
+  crypto_quantity: number | string | null; method: string | null; rate: number | string | null;
+  crypto_address: string | null; destination: string | null; income_type: string | null; tags: string | null;
+};
+
+function mapRevenueRow(r: RevenueDbRow): SearchRevenueResult {
+  return {
+    rowIndex:     r.id,
+    date:         toDDMMYYYY(r.date),
+    source:       r.source,
+    amount:       Number(r.amount ?? 0),
+    value:        r.value ?? "",
+    cryptoQuantity: Number(r.crypto_quantity ?? 0),
+    method:       r.method ?? "",
+    rate:         Number(r.rate ?? 0),
+    cryptoAddress: r.crypto_address ?? "",
+    destination:  r.destination ?? "",
+    incomeType:   r.income_type ?? "",
+    tags:         r.tags ?? undefined,
+  };
+}
+
+/** Tous les revenus (filtrés par source si `q`), lus page par page (voir fetchAllSpendings). */
+export async function fetchAllRevenues(q = ""): Promise<SearchRevenueResult[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const rows = await fetchAllPages((from, to) => {
+    let query = supabase
+      .from("transactions_revenue")
+      .select("id, date, source, amount, value, crypto_quantity, method, rate, crypto_address, destination, income_type, tags")
+      .eq("user_id", user.id);
+    if (q.trim()) query = query.ilike("source", `%${q.trim()}%`);
+    return query
+      .order("date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to);
+  });
+  return rows.map((r) => mapRevenueRow(r as RevenueDbRow));
 }
 
 export async function searchRevenues(q: string, max = 50): Promise<{ rows: SearchRevenueResult[] }> {
