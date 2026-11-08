@@ -332,6 +332,7 @@ function App() {
             <>
               <JarsViewV2
                 onOpenRevenue={() => setShowQuickRevenue(true)}
+                onOpenSettings={() => setSection("settings")}
               />
             </>
           )}

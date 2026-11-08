@@ -15,7 +15,7 @@ import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
 import { fetchAllPages } from "./paginate";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
 import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
-import { isJarKey, round2, transferDeltas, type JarTransfer } from "./jarTransfers";
+import { adjustmentTotals, isJarKey, round2, transferDeltas, type JarAdjustment, type JarTransfer } from "./jarTransfers";
 
 // ── Helpers dates ──────────────────────────────────────────────────────────────
 // L'app utilise DD/MM/YYYY en interne ; Supabase stocke en YYYY-MM-DD (type date)
@@ -325,6 +325,8 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
 
   // Transferts entre jarres : ils déplacent du solde d'une jarre à l'autre (ni revenu ni dépense)
   const transferDelta = transferDeltas(await readTransferRows(user.id));
+  // Déficits effacés (« repartir de zéro ») : ajoutés au solde, comptés comme dépense pardonnée pour les alertes
+  const settledByJar = adjustmentTotals(await readAdjustmentRows(user.id));
 
   const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
   const DEFAULT_PCT: Record<JarKey, number> = { NEC: 55, FFA: 10, LTSS: 10, PLAY: 10, EDUC: 10, GIFT: 5 };
@@ -356,7 +358,7 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
   const split = { ...jarPcts };
   const jarsResult = {} as TotalsResponse["jars"];
   JAR_KEYS.forEach(key => {
-    const jarRevenues = totalRevenues * (jarPcts[key] / 100) + jarInitial[key] + transferDelta[key];
+    const jarRevenues = totalRevenues * (jarPcts[key] / 100) + jarInitial[key] + transferDelta[key] + settledByJar[key];
     const jarSpendings = spendingByJar[key];
     jarsResult[key] = {
       revenues:  jarRevenues,
@@ -364,6 +366,7 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
       net:       jarRevenues - jarSpendings,
       revPct:    jarRevenues > 0 ? (jarSpendings / jarRevenues) * 100 : 0,
       transferOut: Math.max(0, -transferDelta[key]),
+      settled: settledByJar[key],
     };
   });
 
@@ -391,6 +394,71 @@ async function readTransferRows(userId: string): Promise<Array<{ from_jar: strin
     if (e instanceof Error && TABLE_MISSING.test(e.message)) return [];
     throw e;
   }
+}
+
+async function readAdjustmentRows(userId: string): Promise<Array<{ jar: string; amount: number | string }>> {
+  try {
+    return await fetchAllPages((from, to) =>
+      supabase
+        .from("jar_adjustments")
+        .select("jar, amount")
+        .eq("user_id", userId)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    if (e instanceof Error && TABLE_MISSING.test(e.message)) return [];
+    throw e;
+  }
+}
+
+/** Déficits effacés, du plus récent au plus ancien. null = table absente (SQL à exécuter). */
+export async function fetchJarAdjustments(): Promise<JarAdjustment[] | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  const { data, error } = await supabase
+    .from("jar_adjustments")
+    .select("id, jar, amount, note, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) {
+    if (TABLE_MISSING.test(error.message)) return null;
+    throw new Error(error.message);
+  }
+  return (data ?? [])
+    .filter((r) => isJarKey(r.jar))
+    .map((r) => ({
+      id: String(r.id),
+      jar: r.jar as JarKey,
+      amount: Number(r.amount),
+      date: String(r.created_at ?? "").slice(0, 10),
+      note: String(r.note ?? ""),
+    }));
+}
+
+/** Efface le déficit d'une jarre : ajoute `amount` à son solde (l'historique des dépenses n'est pas touché). */
+export async function addJarAdjustment(input: { jar: JarKey; amount: number; note?: string }): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("jar_adjustments").insert({
+    user_id: user.id,
+    jar: input.jar,
+    amount: round2(input.amount),
+    note: (input.note ?? "").trim().slice(0, 200),
+  });
+  if (error) return { ok: false, error: error.message };
+  clearCache("mjars:cache:totals");
+  return { ok: true };
+}
+
+export async function deleteJarAdjustment(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("jar_adjustments").delete().eq("id", id).eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
+  clearCache("mjars:cache:totals");
+  return { ok: true };
 }
 
 /** Transferts de l'utilisateur, du plus récent au plus ancien. null = table absente (SQL à exécuter). */

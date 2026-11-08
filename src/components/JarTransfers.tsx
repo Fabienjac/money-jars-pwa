@@ -1,7 +1,7 @@
 // Réglages : transferts entre jarres (verser le non-dépensé vers l'épargne, combler un déficit…).
 // Un transfert n'est ni un revenu ni une dépense : il ne change que le solde des deux jarres.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { addJarTransfer, deleteJarTransfer, fetchJarTransfers, fetchTotals } from "../api";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { addJarAdjustment, addJarTransfer, deleteJarAdjustment, deleteJarTransfer, fetchJarAdjustments, fetchJarTransfers, fetchTotals } from "../api";
 import { currencySymbol as curSym, formatMoney } from "../baseCurrency";
 import { JAR_LABELS, useT } from "../i18n";
 import {
@@ -9,9 +9,11 @@ import {
   SAVINGS_JARS,
   availableToTransfer,
   checkTransfer,
+  deficitToForgive,
   isSavingsJar,
   leftoverSuggestions,
   round2,
+  type JarAdjustment,
   type JarTransfer,
 } from "../jarTransfers";
 import { JAR_ALERT_EMOJIS } from "../jarAlerts";
@@ -23,7 +25,9 @@ const JarTransfers: React.FC = () => {
   const t = useT();
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [transfers, setTransfers] = useState<JarTransfer[] | null | undefined>(undefined); // undefined = chargement, null = table absente
+  const [adjustments, setAdjustments] = useState<JarAdjustment[] | null | undefined>(undefined);
   const [message, setMessage] = useState<string | null>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Reste non dépensé : jarres cochées et épargne de destination
@@ -38,14 +42,27 @@ const JarTransfers: React.FC = () => {
 
   const load = useCallback(async () => {
     try {
-      const [tot, list] = await Promise.all([fetchTotals(true), fetchJarTransfers()]);
+      const [tot, list, adj] = await Promise.all([fetchTotals(true), fetchJarTransfers(), fetchJarAdjustments()]);
       setTotals(tot);
       setTransfers(list);
+      setAdjustments(adj);
     } catch {
       setTransfers(null);
+      setAdjustments(null);
     }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  // Arrivée depuis le rappel de janvier de l'accueil : on amène la section à l'écran une fois chargée
+  useEffect(() => {
+    if (transfers === undefined) return;
+    try {
+      if (sessionStorage.getItem("mjars:scrollToTransfers")) {
+        sessionStorage.removeItem("mjars:scrollToTransfers");
+        rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    } catch { /* sans importance */ }
+  }, [transfers]);
 
   const net = (k: JarKey) => (totals ? totals.jars[k].revenues - totals.jars[k].spendings : 0);
   const leftovers = useMemo(() => leftoverSuggestions(totals?.jars), [totals]);
@@ -137,12 +154,47 @@ const JarTransfers: React.FC = () => {
     }
   };
 
+  const deficits = useMemo(
+    () => JAR_KEYS_ALL.map((k) => ({ jar: k, amount: deficitToForgive(net(k)) })).filter((d) => d.amount > 0),
+    [totals] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  const onForgive = async (jar: JarKey, amount: number) => {
+    if (busy) return;
+    if (!confirm(t("xfer.confirmForgive", { jar: JAR_LABELS[jar], amount: money(amount) }))) return;
+    setBusy(true);
+    try {
+      const r = await addJarAdjustment({ jar, amount });
+      if (!r.ok) throw new Error(r.error);
+      await done(t("xfer.forgiven"));
+    } catch {
+      flash("⚠️ " + t("xfer.err.generic"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onUndoForgive = async (a: JarAdjustment) => {
+    if (busy) return;
+    if (!confirm(t("xfer.confirmUndoForgive", { jar: JAR_LABELS[a.jar], amount: money(a.amount) }))) return;
+    setBusy(true);
+    try {
+      const r = await deleteJarAdjustment(a.id);
+      if (!r.ok) throw new Error(r.error);
+      await done(t("xfer.forgiveUndone"));
+    } catch {
+      flash("⚠️ " + t("xfer.err.generic"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const label = (k: JarKey) => `${JAR_ALERT_EMOJIS[k]} ${JAR_LABELS[k]}`;
   const afterFrom = from ? round2(net(from) - (Number.isFinite(parsed) && parsed > 0 ? parsed : 0)) : 0;
   const afterTo = round2(net(to) + (Number.isFinite(parsed) && parsed > 0 ? parsed : 0));
 
   return (
-    <section className="settings-section jt">
+    <section className="settings-section jt" ref={rootRef}>
       <h3 className="settings-section-title">{t("xfer.title")}</h3>
       <p className="jt-sub">{t("xfer.subtitle")}</p>
 
@@ -150,9 +202,9 @@ const JarTransfers: React.FC = () => {
         <div className={`settings-message ${message.includes("✅") ? "success" : "error"}`}>{message}</div>
       )}
 
-      {transfers === null && <p className="jt-missing" role="alert">{t("xfer.missing")}</p>}
+      {(transfers === null || adjustments === null) && <p className="jt-missing" role="alert">{t("xfer.missing")}</p>}
 
-      {transfers !== null && totals && (
+      {transfers !== null && adjustments !== null && totals && (
         <>
           {/* Reste non dépensé → épargne */}
           <h4 className="jt-h">{t("xfer.leftoverTitle")}</h4>
@@ -265,6 +317,43 @@ const JarTransfers: React.FC = () => {
                 {t("xfer.submit")}
               </button>
             </form>
+          )}
+
+          {/* Repartir de zéro */}
+          <h4 className="jt-h">{t("xfer.forgiveTitle")}</h4>
+          <p className="jt-sub">{t("xfer.forgiveHint")}</p>
+          {deficits.length === 0 ? (
+            <p className="jt-empty">{t("xfer.forgiveNone")}</p>
+          ) : (
+            <ul className="jt-list">
+              {deficits.map((d) => (
+                <li key={d.jar} className="jt-row jt-row--history">
+                  <span className="jt-what">
+                    <span>{label(d.jar)}</span>
+                    <span className="jt-meta">{t("xfer.deficit", { amount: money(d.amount) })}</span>
+                  </span>
+                  <button type="button" className="push-btn" disabled={busy} onClick={() => onForgive(d.jar, d.amount)}>
+                    {t("xfer.forgive")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {adjustments && adjustments.length > 0 && (
+            <ul className="jt-list">
+              {adjustments.map((a) => (
+                <li key={a.id} className="jt-row jt-row--history">
+                  <span className="jt-what">
+                    <span>{label(a.jar)}</span>
+                    <span className="jt-meta">{t("xfer.forgivenOn", { date: a.date })}</span>
+                  </span>
+                  <strong>{money(a.amount)}</strong>
+                  <button type="button" className="push-btn push-btn--quiet" disabled={busy} onClick={() => onUndoForgive(a)}>
+                    {t("xfer.undo")}
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
 
           {/* Historique */}

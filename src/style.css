@@ -3914,3 +3914,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .jt-hint { margin: 0 0 10px; font-size: 13px; color: var(--text-muted); }
 .jt-warn { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--danger-text); }
 .jt-missing { margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; background: rgba(255, 149, 0, 0.12); border-left: 4px solid #FF9500; color: var(--text-main); }
+
+/* Rappel de début d'année (accueil) */
+.yearstart { margin: 0 16px 12px; padding: 14px 16px; border-radius: 16px; background: var(--bg-card); box-shadow: var(--shadow-sm); border-left: 4px solid var(--jar-nec); }
+.yearstart-title { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--text-main); }
+.yearstart-list { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+.yearstart-actions { display: flex; flex-wrap: wrap; gap: 8px; }

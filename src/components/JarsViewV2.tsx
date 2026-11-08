@@ -7,6 +7,7 @@ import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, computeStreak, StreakState } from "../streakUtils";
 import { detectRecurring, type RecurringItem, type SubscriptionFreq } from "../subscriptions";
 import LifestyleCard from "./LifestyleCard";
+import YearStartCard from "./YearStartCard";
 
 import { currencySymbol as curSym } from "../baseCurrency";
 import { t, useT, type TKey, localeTag, monthShort, monthLong, JAR_LABELS, JAR_EMPTY_COPY } from "../i18n";
@@ -219,9 +220,11 @@ function computeWeeklyRolling30dAvg(
 
 interface JarsViewV2Props {
   onOpenRevenue: () => void;
+  /** Ouvre les Réglages (rappel de début d'année → transferts entre jarres). */
+  onOpenSettings?: () => void;
 }
 
-const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
+const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }) => {
   const [totals, setTotals] = useState<TotalsResponse | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -814,6 +817,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue }) => {
       </div>
 
       {/* 🧭 Train de vie : dépense / jour hors dépenses extraordinaires */}
+      {onOpenSettings && <YearStartCard onOpen={onOpenSettings} />}
       <LifestyleCard />
 
       {/* 📅 Card "Ce mois" — projection + budget + tags */}

@@ -81,3 +81,73 @@ export function leftoverSuggestions(
 export function isSavingsJar(jar: JarKey): boolean {
   return SAVINGS_JARS.includes(jar);
 }
+
+// ── « Repartir de zéro » : effacer le déficit d'une jarre ─────────────────────
+// Un effacement ajoute au solde de la jarre exactement ce qui lui manque pour revenir à zéro. Les dépenses restent
+// dans l'historique ; l'effacement est une ligne à part, annulable. Il compte comme « dépense pardonnée » pour le
+// seuil d'alerte : une jarre remise à zéro n'est pas « épuisée », elle repart.
+
+export interface JarAdjustment {
+  id: string;
+  jar: JarKey;
+  amount: number;
+  /** AAAA-MM-JJ */
+  date: string;
+  note: string;
+}
+
+interface AdjustmentRowLike { jar: string; amount: number | string }
+
+/** Total effacé par jarre, au centime. */
+export function adjustmentTotals(rows: AdjustmentRowLike[] | null | undefined): Record<JarKey, number> {
+  const cents: Record<JarKey, number> = { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 };
+  for (const r of rows ?? []) {
+    const c = toCents(Number(r.amount));
+    if (!Number.isFinite(c) || c <= 0 || !isJarKey(r.jar)) continue;
+    cents[r.jar] += c;
+  }
+  const out = {} as Record<JarKey, number>;
+  for (const k of JAR_KEYS_ALL) out[k] = cents[k] / 100;
+  return out;
+}
+
+/** Montant à ajouter pour ramener une jarre en déficit à zéro (arrondi au centime supérieur) ; 0 si elle n'est pas en déficit. */
+export function deficitToForgive(net: number): number {
+  if (!Number.isFinite(net) || net >= -0.005) return 0;
+  return Math.ceil(-net * 100 - 1e-6) / 100;
+}
+
+// ── Rappel de janvier ─────────────────────────────────────────────────────────
+
+export interface YearStartPrompt {
+  /** Total non dépensé des jarres de dépense, à proposer en versement vers l'épargne. */
+  leftover: number;
+  /** Jarres en déficit, avec le montant qui manque. */
+  deficits: Array<{ jar: JarKey; amount: number }>;
+}
+
+/**
+ * Rappel de début d'année : en janvier, une fois par an (tant qu'il n'est pas écarté), s'il y a du non-dépensé à
+ * verser à l'épargne ou un déficit à solder. null = rien à afficher.
+ */
+export function yearStartPrompt(input: {
+  now: Date;
+  jars: Partial<Record<JarKey, { revenues: number; spendings: number }>> | null | undefined;
+  /** Dernière année pour laquelle le rappel a été écarté. */
+  dismissedYear?: number | null;
+}): YearStartPrompt | null {
+  const { now, jars } = input;
+  if (now.getMonth() !== 0) return null;
+  if (input.dismissedYear === now.getFullYear()) return null;
+  if (!jars) return null;
+  const leftover = round2(leftoverSuggestions(jars).reduce((s, l) => s + l.amount, 0));
+  const deficits: Array<{ jar: JarKey; amount: number }> = [];
+  for (const jar of JAR_KEYS_ALL) {
+    const j = jars[jar];
+    if (!j) continue;
+    const amount = deficitToForgive((Number(j.revenues) || 0) - (Number(j.spendings) || 0));
+    if (amount > 0) deficits.push({ jar, amount });
+  }
+  if (leftover <= 0 && deficits.length === 0) return null;
+  return { leftover, deficits };
+}

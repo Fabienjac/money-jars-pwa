@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { loadTs } from "./_load.mjs";
 
 const require = createRequire(import.meta.url);
-const { handler, jarLevel, computeAlerts, buildPayload, readTransferDeltas } = require("../netlify/functions/pushJarAlerts.js")._test;
+const { handler, jarLevel, computeAlerts, buildPayload, readTransferDeltas, readAdjustmentTotals } = require("../netlify/functions/pushJarAlerts.js")._test;
 
 // ── Faux Supabase en mémoire : juste ce que la fonction utilise ──────────────
 class Q {
@@ -227,4 +227,44 @@ test("transferts : mêmes soldes que l'app (src/jarTransfers.ts), lignes invalid
   const boom = { select: () => boom, eq: () => boom, order: () => boom, range: () => boom,
     then: (res) => Promise.resolve({ data: null, error: { message: "network down" } }).then(res) };
   await assert.rejects(() => readTransferDeltas({ from: () => boom }, "u1"), /network down/);
+});
+
+test("repartir de zéro : le déficit effacé n'alerte plus, une nouvelle dépense en trop si ; mêmes totaux que l'app", async () => {
+  // PLAY : 100 alloués, 300 dépensés → dépassée de 200
+  const s = setup({ spendings: [["PLAY", 300]] });
+  assert.deepEqual((await s.call("jarAlerts")).json.alerts, ["PLAY"]);
+  // déficit effacé : plus d'alerte (la jarre repart, elle n'est pas « épuisée »)
+  s.tables.jar_adjustments = [{ user_id: "u1", jar: "PLAY", amount: "200.00" }];
+  assert.equal((await s.call("jarAlerts")).json.sent, 0);
+  assert.equal(s.tables.jar_alert_notified.find((r) => r.jar_key === "PLAY").level, 0);
+  // 20 de plus : solde réel négatif → dépassée, notifiée
+  s.tables.transactions_spending.push({ user_id: "u1", jar: "PLAY", amount: 20 });
+  assert.deepEqual((await s.call("jarAlerts")).json.alerts, ["PLAY"]);
+  assert.match(s.sent[s.sent.length - 1].body, /Fun \/ Play : dépassée de 20,00\s€/);
+
+  const ts = await loadTs("src/jarTransfers.ts");
+  const rows = [{ jar: "PLAY", amount: "0.1" }, { jar: "PLAY", amount: "0.2" }, { jar: "NEC", amount: 50 }, { jar: "ZZZ", amount: 9 }, { jar: "GIFT", amount: -3 }];
+  const t = setup();
+  t.tables.jar_adjustments = rows.map((r) => ({ user_id: "u1", ...r }));
+  assert.deepEqual(await readAdjustmentTotals(t.deps.createDb(), "u1"), ts.adjustmentTotals(rows));
+  // table absente : aucun ajustement
+  const missing = { select: () => missing, eq: () => missing, order: () => missing, range: () => missing,
+    then: (res) => Promise.resolve({ data: null, error: { message: 'relation "jar_adjustments" does not exist' } }).then(res) };
+  assert.deepEqual(await readAdjustmentTotals({ from: () => missing }, "u1"), { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 });
+});
+
+test("le niveau serveur tient compte des transferts sortants et des déficits effacés comme l'app", async () => {
+  const ts = await loadTs("src/jarAlerts.ts");
+  for (const j of [
+    { revenues: 400, spendings: 400, transferOut: 150 },
+    { revenues: 300, spendings: 300, settled: 200 },
+    { revenues: 300, spendings: 320, settled: 200 },
+    { revenues: 400, spendings: 390, settled: 200 },
+    { revenues: 400, spendings: 400, settled: 50 },
+    { revenues: 450, spendings: 400, transferOut: 100, settled: 0 },
+  ]) {
+    const a = jarLevel(j);
+    const b = ts.jarAlertLevel(j);
+    assert.deepEqual([a.level, a.net, Math.round(a.percent * 1e6)], [b.level, b.net, Math.round(b.percent * 1e6)], JSON.stringify(j));
+  }
 });

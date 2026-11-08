@@ -897,6 +897,21 @@ const en: Record<keyof typeof fr, string> = {
   "xfer.historyEmpty": "No transfers yet.",
   "xfer.undo": "Undo",
   "xfer.confirmUndo": "Undo this transfer of {amount} ({from} → {to})?",
+  "xfer.forgiveTitle": "Start from zero",
+  "xfer.forgiveHint": "Clears a jar's deficit so it starts again from zero. Your spending stays in the history, and you can undo it.",
+  "xfer.forgiveNone": "No jar is in deficit.",
+  "xfer.deficit": "deficit of {amount}",
+  "xfer.forgive": "Clear the deficit",
+  "xfer.confirmForgive": "Clear the deficit of {jar} ({amount})? The jar starts from zero; your spending stays in the history and you can undo it.",
+  "xfer.forgiven": "✅ Deficit cleared",
+  "xfer.forgivenOn": "Deficit cleared on {date}",
+  "xfer.confirmUndoForgive": "Undo the {amount} clearing on {jar}? The deficit will come back.",
+  "xfer.forgiveUndone": "✅ Clearing undone",
+  "yearstart.title": "New year: review your jars",
+  "yearstart.leftover": "{amount} unspent in your spending jars, to move to savings.",
+  "yearstart.deficit": "{jars}: deficit to clear or cover.",
+  "yearstart.open": "Open",
+  "yearstart.later": "Later",
 };
 
 export default en;

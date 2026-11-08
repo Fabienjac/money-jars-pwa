@@ -32,9 +32,11 @@ function jarLevel(j) {
   const net = revenues - spent;
   // Solde déplacé volontairement vers d'autres jarres : hors du plan pour le seuil de 80 % (port de src/jarAlerts.ts)
   const base = revenues + Math.max(0, Number(j && j.transferOut) || 0);
-  if (net < -0.005) return { level: 2, percent: base > 0 ? (spent / base) * 100 : 100, net };
-  if (base > 0 && spent / base >= WARN_RATIO) return { level: 1, percent: (spent / base) * 100, net };
-  return { level: 0, percent: base > 0 ? (spent / base) * 100 : 0, net };
+  // Déficit effacé (« repartir de zéro ») : dépense pardonnée pour le seuil
+  const counted = Math.max(0, spent - Math.max(0, Number(j && j.settled) || 0));
+  if (net < -0.005) return { level: 2, percent: base > 0 ? (counted / base) * 100 : 100, net };
+  if (base > 0 && counted / base >= WARN_RATIO) return { level: 1, percent: (counted / base) * 100, net };
+  return { level: 0, percent: base > 0 ? (counted / base) * 100 : 0, net };
 }
 
 function computeAlerts(jars) {
@@ -144,14 +146,37 @@ async function readJarTotals(db, userId) {
   });
 
   const moved = await readTransferDeltas(db, userId);
+  const settled = await readAdjustmentTotals(db, userId);
 
   const jars = {};
   for (const k of JAR_KEYS) jars[k] = {
-    revenues: totalRevenues * (pct[k] / 100) + initial[k] + moved[k],
+    revenues: totalRevenues * (pct[k] / 100) + initial[k] + moved[k] + settled[k],
     spendings: spent[k],
     transferOut: Math.max(0, -moved[k]),
+    settled: settled[k],
   };
   return jars;
+}
+
+// Déficits effacés (port de adjustmentTotals dans src/jarTransfers.ts), au centime. Table absente : aucun.
+async function readAdjustmentTotals(db, userId) {
+  const cents = { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 };
+  let rows = [];
+  try {
+    rows = await readAll((from, to) =>
+      db.from("jar_adjustments").select("jar, amount").eq("user_id", userId).order("id", { ascending: true }).range(from, to)
+    );
+  } catch (err) {
+    if (!/does not exist|schema cache|could not find the table/i.test(String((err && err.message) || ""))) throw err;
+  }
+  for (const r of rows) {
+    const c = Math.round(Number(r.amount) * 100);
+    if (!Number.isFinite(c) || c <= 0 || !JAR_KEYS.includes(r.jar)) continue;
+    cents[r.jar] += c;
+  }
+  const out = {};
+  for (const k of JAR_KEYS) out[k] = cents[k] / 100;
+  return out;
 }
 
 // Transferts entre jarres (port de transferDeltas dans src/jarTransfers.ts) : entrées moins sorties, au centime.
@@ -308,4 +333,4 @@ async function handler(event, deps) {
 }
 
 exports.handler = (event) => handler(event);
-exports._test = { handler, jarLevel, computeAlerts, buildPayload, claimLevels, readTransferDeltas };
+exports._test = { handler, jarLevel, computeAlerts, buildPayload, claimLevels, readTransferDeltas, readAdjustmentTotals };

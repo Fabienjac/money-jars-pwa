@@ -33,6 +33,8 @@ export interface JarTotals {
   revPct: number;
   /** Solde net déplacé volontairement vers d'autres jarres (transferts) : ne compte pas dans le seuil d'alerte. */
   transferOut?: number;
+  /** Déficit effacé (« repartir de zéro ») : compté comme dépense pardonnée pour le seuil d'alerte. */
+  settled?: number;
 }
 
 export interface TotalsResponse {

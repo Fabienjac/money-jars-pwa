@@ -895,6 +895,21 @@ const fr = {
   "xfer.historyEmpty": "Aucun transfert pour l'instant.",
   "xfer.undo": "Annuler",
   "xfer.confirmUndo": "Annuler ce transfert de {amount} ({from} → {to}) ?",
+  "xfer.forgiveTitle": "Repartir de zéro",
+  "xfer.forgiveHint": "Efface le déficit d'une jarre pour qu'elle reparte de zéro. Tes dépenses restent dans l'historique, et tu peux annuler.",
+  "xfer.forgiveNone": "Aucune jarre n'est en déficit.",
+  "xfer.deficit": "déficit de {amount}",
+  "xfer.forgive": "Effacer le déficit",
+  "xfer.confirmForgive": "Effacer le déficit de {jar} ({amount}) ? La jarre repart de zéro ; tes dépenses restent dans l'historique et tu pourras annuler.",
+  "xfer.forgiven": "✅ Déficit effacé",
+  "xfer.forgivenOn": "Déficit effacé le {date}",
+  "xfer.confirmUndoForgive": "Annuler l'effacement de {amount} sur {jar} ? Le déficit réapparaîtra.",
+  "xfer.forgiveUndone": "✅ Effacement annulé",
+  "yearstart.title": "Nouvelle année : faire le point sur tes jarres",
+  "yearstart.leftover": "{amount} non dépensés dans tes jarres de dépense, à verser vers l'épargne.",
+  "yearstart.deficit": "{jars} : déficit à solder ou à combler.",
+  "yearstart.open": "Voir",
+  "yearstart.later": "Plus tard",
 } as const;
 
 export default fr;
