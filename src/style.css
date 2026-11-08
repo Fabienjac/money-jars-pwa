@@ -3987,3 +3987,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .subs-find-dates { margin: 4px 0 0; font-size: 11px; color: var(--text-muted); }
 .subs-find-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
 .subs-find-select { width: auto; min-width: 0; }
+
+/* Carte « Train de vie » : deux lignes d'évolution (courantes, alimentation) */
+.life-trends { display: flex; flex-direction: column; gap: 14px; }
+.life-trend { display: flex; flex-direction: column; gap: 5px; }
+.life-trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.life-trend-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
+.life-trend-month { font-size: 13px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.life-trend-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.life-chip { padding: 3px 10px; border-radius: 10px; background: rgba(52, 199, 89, 0.12); color: var(--ok-text); font-size: 14px; font-weight: 700; }
+.life-chip--up { background: rgba(255, 149, 0, 0.12); color: var(--warn-text); }
+.life-trend-sub { font-size: 12px; color: var(--text-muted); }
+.life-trend-3m { font-size: 12px; color: var(--text-muted); }

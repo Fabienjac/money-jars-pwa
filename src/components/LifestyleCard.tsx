@@ -3,7 +3,7 @@
 // dans le panneau de réglage (voyage, gros achat…). Calcul : src/lifestyle.ts.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs, fetchExceptionalDismissed, saveExceptionalDismissed, markSpendingExceptional, type SpendingLite } from "../api";
-import { computeLifestyle, lifestyleFetchFrom, rollingAverageSeries, tagTotalsThisYear } from "../lifestyle";
+import { computeLifestyle, lifestyleFetchFrom, rollingAverageSeries, tagTotalsThisYear, trendLine, type TrendLine } from "../lifestyle";
 import DailyAverageChart from "./DailyAverageChart";
 import { suggestExceptional } from "../exceptional";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
@@ -40,6 +40,35 @@ function beforeJan1(today: string, days: number): string {
   d.setDate(d.getDate() - days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+const pctText = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(0)} %`;
+const arrowOf = (n: number) => (n > 10 ? "↑" : n < -10 ? "↓" : "→");
+
+/** Une ligne d'évolution : tendance en premier, équivalent mensuel, puis la comparaison à il y a 3 mois. */
+const TrendRow: React.FC<{ name: string; trend: TrendLine }> = ({ name, trend }) => {
+  const up = trend.status === "up";
+  return (
+    <div className="life-trend">
+      <div className="life-trend-head">
+        <span className="life-trend-name">{name}</span>
+        <span className="life-trend-month">{t("life.perMonth", { amount: money(trend.perMonth, 0) })}</span>
+      </div>
+      {trend.deltaYear != null ? (
+        <div className="life-trend-main">
+          <span className={`life-chip${up ? " life-chip--up" : ""}`}>
+            {arrowOf(trend.deltaYear)} {pctText(trend.deltaYear)}
+          </span>
+          <span className="life-trend-sub">{t("life.trendVsYear", { date: shortDate(trend.since) })}</span>
+        </div>
+      ) : (
+        <div className="life-trend-sub">{t("life.trendNoRef")}</div>
+      )}
+      {trend.delta3m != null && (
+        <div className="life-trend-3m">{t("life.trendVs3m", { arrow: arrowOf(trend.delta3m), pct: pctText(trend.delta3m) })}</div>
+      )}
+    </div>
+  );
+};
 
 const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel }) => {
   useT(); // re-rendu au changement de langue
@@ -94,6 +123,10 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
   const chartPoints = useMemo(() => (rows ? rollingAverageSeries(rows, extraSet, today) : []), [rows, extraSet, today]);
   const foodPoints = useMemo(() => (rows ? rollingAverageSeries(rows, extraSet, today, "alimentaire") : []), [rows, extraSet, today]);
   const foodNow = foodPoints.length > 0 ? foodPoints[foodPoints.length - 1].avg : 0;
+  const totalNow = chartPoints.length > 0 ? chartPoints[chartPoints.length - 1].avg : 0;
+  // Évolution des dépenses courantes et de l'alimentation (30 derniers jours vs moyenne de l'année et vs il y a 3 mois)
+  const trendAll = useMemo(() => (rows ? trendLine(rows, extraSet, today) : null), [rows, extraSet, today]);
+  const trendFood = useMemo(() => (rows ? trendLine(rows, extraSet, today, "alimentaire") : null), [rows, extraSet, today]);
 
   // Grosses dépenses pas encore étiquetées : on propose de les marquer « Exceptionnel »
   const suggestions = useMemo(
@@ -175,7 +208,7 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
             <div className="life-chart-legend">
               <span className="life-chart-key">
                 <span className="life-chart-swatch" aria-hidden="true" />
-                {t("life.chartTotal")}
+                {t("life.chartTotal")} · {money(totalNow, 2)}{t("life.perDayShort")}
               </span>
               {foodNow > 0 && (
                 <span className="life-chart-key life-chart-key--food">
@@ -205,7 +238,12 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
 
         {stats && (
           <>
-            <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flexWrap: "wrap" }}>
+            {stats.last30 && trendAll ? (
+              <div className="life-trends">
+                <TrendRow name={t("life.rowCurrent")} trend={trendAll} />
+                {trendFood && trendFood.perDay30 > 0 && <TrendRow name={`🥗 ${t("life.rowFood")}`} trend={trendFood} />}
+              </div>
+            ) : (
               <div style={{ flex: "1 1 130px", minWidth: 0 }}>
                 <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>
                   {t("life.since", { date: shortDate(stats.startDate) })}
@@ -214,40 +252,6 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
                   {money(stats.perDay)}
                   <span className="life-unit">{t("life.perDay")}</span>
                 </div>
-              </div>
-              {stats.last30 && (
-                <div style={{ flex: "1 1 130px", minWidth: 0 }}>
-                  <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "2px" }}>{t("life.last30")}</div>
-                  <div className="life-figure">
-                    {money(stats.last30.perDay)}
-                    <span className="life-unit">{t("life.perDay")}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {stats.status && stats.deltaPct != null && (
-              <div
-                style={{
-                  display: "inline-flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  gap: "4px 8px",
-                  marginTop: "10px",
-                  padding: "4px 10px",
-                  borderRadius: "10px",
-                  background: statusBg,
-                  color: statusColor,
-                  fontSize: "12px",
-                  fontWeight: 700,
-                }}
-              >
-                <span>
-                  {arrow} {statusLabel}
-                </span>
-                <span style={{ fontWeight: 500 }}>
-                  {t("life.vsAverage", { pct: `${stats.deltaPct > 0 ? "+" : ""}${stats.deltaPct.toFixed(0)} %` })}
-                </span>
               </div>
             )}
 

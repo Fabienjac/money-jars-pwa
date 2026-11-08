@@ -953,6 +953,12 @@ const fr = {
   "subs.why.zeroAmount": "Montant nul.",
   "subs.why.dateSpread": "La date de prélèvement varie de {spread} jours (maximum {max}).",
   "subs.why.variable": "Le montant varie : il faut 3 mois de suite, tu en as {run}.",
+  "life.rowCurrent": "Dépenses courantes",
+  "life.rowFood": "Alimentation",
+  "life.perMonth": "≈ {amount} /mois",
+  "life.trendVsYear": "30 derniers jours vs moyenne depuis le {date}",
+  "life.trendVs3m": "vs il y a 3 mois : {arrow} {pct}",
+  "life.trendNoRef": "Pas encore de moyenne de référence.",
 } as const;
 
 export default fr;

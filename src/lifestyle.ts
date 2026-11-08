@@ -69,23 +69,33 @@ export function lifestyleFetchFrom(today: string): string | null {
   return isoFromDayNumber(Math.min(jan1, t - 29));
 }
 
+export interface LifestyleOptions {
+  /** Ne compter que les dépenses portant cette étiquette (ex. « alimentaire »). */
+  tagId?: string;
+  /** Début de période imposé (AAAA-MM-JJ), pour comparer une étiquette sur la même période que le total. */
+  start?: string;
+}
+
 export function computeLifestyle(
   rows: readonly LifestyleRow[],
   extraordinaryTags: ReadonlySet<string>,
-  today: string
+  today: string,
+  options: LifestyleOptions = {}
 ): LifestyleStats | null {
   const t = dayNumber(today);
   if (t == null) return null;
   const jan1 = dayNumber(`${today.slice(0, 4)}-01-01`)!;
 
   const dated = rows
+    .filter((r) => !options.tagId || splitTags(r.tags).includes(options.tagId))
     .map((r) => ({ d: dayNumber(r.date), amount: Number(r.amount), extra: isExtraordinary(r.tags, extraordinaryTags) }))
     .filter((r): r is { d: number; amount: number; extra: boolean } => r.d != null && Number.isFinite(r.amount) && r.d <= t);
 
   const inYear = dated.filter((r) => r.d >= jan1);
   if (inYear.length === 0) return null;
 
-  const start = Math.max(jan1, Math.min(...inYear.map((r) => r.d)));
+  const forced = options.start ? dayNumber(options.start) : null;
+  const start = forced != null ? Math.max(jan1, forced) : Math.max(jan1, Math.min(...inYear.map((r) => r.d)));
   const days = t - start + 1;
 
   let total = 0;
@@ -195,4 +205,87 @@ export function rollingAverageSeries(
   for (let d = start; d <= t; d += 7) days.push(d);
   if (days[days.length - 1] !== t) days.push(t);
   return days.map((d) => ({ date: isoFromDayNumber(d), avg: average(d) }));
+}
+
+/**
+ * Dépense moyenne par jour sur les 30 jours qui se terminent à `date`, hors extraordinaires (et limitée à une
+ * étiquette si `tagId`). Sert à comparer « maintenant » à « il y a 3 mois ». null si la date est invalide.
+ */
+export function rollingAverageAt(
+  rows: readonly LifestyleRow[],
+  extraordinaryTags: ReadonlySet<string>,
+  date: string,
+  tagId?: string
+): number | null {
+  const end = dayNumber(date);
+  if (end == null) return null;
+  let sum = 0;
+  for (const r of rows) {
+    const d = dayNumber(r.date);
+    const amount = Number(r.amount);
+    if (d == null || d > end || d <= end - 30 || !Number.isFinite(amount)) continue;
+    if (isExtraordinary(r.tags, extraordinaryTags)) continue;
+    if (tagId && !splitTags(r.tags).includes(tagId)) continue;
+    sum += amount;
+  }
+  return sum / 30;
+}
+
+/** Date AAAA-MM-JJ située `days` jours avant `date` ; null si `date` est invalide. */
+export function daysBefore(date: string, days: number): string | null {
+  const n = dayNumber(date);
+  return n == null ? null : isoFromDayNumber(n - days);
+}
+
+export interface TrendLine {
+  /** Moyenne par jour sur les 30 derniers jours. */
+  perDay30: number;
+  /** Équivalent sur un mois (30 jours). */
+  perMonth: number;
+  /** Écart des 30 derniers jours par rapport à la moyenne depuis le début de la période, en %. */
+  deltaYear: number | null;
+  status: LifestyleStatus | null;
+  /** Écart par rapport aux 30 jours qui se terminaient il y a ~3 mois (91 jours), en % ; null si pas assez d'historique. */
+  delta3m: number | null;
+  /** Début de la période de référence (AAAA-MM-JJ). */
+  since: string;
+}
+
+const statusOf = (pct: number): LifestyleStatus => (pct > STABLE_BAND * 100 ? "up" : pct < -STABLE_BAND * 100 ? "down" : "stable");
+
+/**
+ * Évolution d'une dépense courante (tout, ou une étiquette) : 30 derniers jours contre la moyenne de la période et
+ * contre il y a 3 mois. `period` = début de période du total, pour que les lignes soient comparables entre elles.
+ * null tant que la période compte moins de 30 jours.
+ */
+export function trendLine(
+  rows: readonly LifestyleRow[],
+  extraordinaryTags: ReadonlySet<string>,
+  today: string,
+  tagId?: string
+): TrendLine | null {
+  const total = computeLifestyle(rows, extraordinaryTags, today);
+  if (!total || !total.last30) return null;
+  const own = tagId ? computeLifestyle(rows, extraordinaryTags, today, { tagId, start: total.startDate }) : total;
+  const perDay30 = tagId ? computeLifestyle(rows, extraordinaryTags, today, { tagId })?.last30?.perDay ?? 0 : total.last30.perDay;
+  const yearAvg = own?.perDay ?? 0;
+  const deltaYear = yearAvg > 0 ? ((perDay30 - yearAvg) / yearAvg) * 100 : null;
+
+  // « Il y a 3 mois » : les 30 jours qui se terminaient 91 jours plus tôt, seulement si l'historique les couvre
+  let delta3m: number | null = null;
+  const refDate = daysBefore(today, 91);
+  const jan7 = `${today.slice(0, 4)}-01-07`;
+  if (refDate && refDate >= jan7) {
+    const ref = rollingAverageAt(rows, extraordinaryTags, refDate, tagId);
+    if (ref != null && ref > 0) delta3m = ((perDay30 - ref) / ref) * 100;
+  }
+
+  return {
+    perDay30,
+    perMonth: perDay30 * 30,
+    deltaYear,
+    status: deltaYear == null ? null : statusOf(deltaYear),
+    delta3m,
+    since: total.startDate,
+  };
 }

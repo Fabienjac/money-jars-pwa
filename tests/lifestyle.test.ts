@@ -131,3 +131,52 @@ test("courbe : filtre par étiquette, fenêtre qui chevauche l'année précéden
   assert.deepEqual(rollingAverageSeries(rows, none, "2026-01-05"), []); // avant le 7 janvier
   assert.deepEqual(rollingAverageSeries(rows, none, "pas une date"), []);
 });
+
+test("évolution : 30 derniers jours contre la moyenne de l'année et contre il y a 3 mois, courant et par étiquette", async () => {
+  const { trendLine, rollingAverageAt, daysBefore } = await import("../src/lifestyle.ts");
+  // 1er janvier → 30 juin : 20 €/jour dont 5 € d'alimentation, puis juillet : 10 €/jour dont 2 € d'alimentation
+  const rows: Array<{ date: string; amount: number; tags: string }> = [];
+  for (let d = new Date(2026, 0, 1); d <= new Date(2026, 6, 30); d.setDate(d.getDate() + 1)) {
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const july = d.getMonth() === 6;
+    rows.push({ date: iso, amount: july ? 8 : 15, tags: "" });
+    rows.push({ date: iso, amount: july ? 2 : 5, tags: "alimentaire" });
+  }
+  const today = "2026-07-30"; // 211 jours depuis le 1er janvier
+  const all = trendLine(rows, none, today)!;
+  assert.equal(all.perDay30, 10); // juillet : 8 + 2
+  assert.equal(all.perMonth, 300);
+  assert.equal(all.since, "2026-01-01");
+  // moyenne de la période : (181 jours × 20 + 30 jours × 10) / 211
+  const yearAvg = (181 * 20 + 30 * 10) / 211;
+  assert.ok(Math.abs(all.deltaYear! - ((10 - yearAvg) / yearAvg) * 100) < 1e-9);
+  assert.equal(all.status, "down");
+  // il y a 91 jours (30 avril) : 20 €/jour → -50 %
+  assert.equal(all.delta3m, -50);
+
+  const food = trendLine(rows, none, today, "alimentaire")!;
+  assert.equal(food.perDay30, 2);
+  assert.equal(food.perMonth, 60);
+  assert.equal(food.delta3m, -60); // 5 → 2
+  assert.equal(food.status, "down");
+
+  assert.equal(rollingAverageAt(rows, none, "2026-04-30"), 20);
+  assert.equal(daysBefore("2026-07-30", 91), "2026-04-30");
+});
+
+test("évolution : pas de comparaison à 3 mois tôt dans l'année ; null avant 30 jours de données ; étiquette absente", async () => {
+  const { trendLine } = await import("../src/lifestyle.ts");
+  const rows = Array.from({ length: 60 }, (_, i) => {
+    const d = new Date(2026, 0, 1 + i);
+    return { date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`, amount: 10, tags: "" };
+  });
+  const t = trendLine(rows, none, "2026-03-01")!; // 60 jours : pas de « il y a 3 mois »
+  assert.equal(t.delta3m, null);
+  assert.equal(t.deltaYear, 0);
+  assert.equal(t.status, "stable");
+  assert.equal(trendLine(rows.slice(0, 20), none, "2026-01-20"), null); // moins de 30 jours
+  const noFood = trendLine(rows, none, "2026-03-01", "alimentaire")!;
+  assert.equal(noFood.perDay30, 0);
+  assert.equal(noFood.deltaYear, null);
+  assert.equal(noFood.status, null);
+});

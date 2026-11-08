@@ -955,6 +955,12 @@ const en: Record<keyof typeof fr, string> = {
   "subs.why.zeroAmount": "Zero amount.",
   "subs.why.dateSpread": "The payment date varies by {spread} days (maximum {max}).",
   "subs.why.variable": "The amount varies: 3 months in a row are needed, you have {run}.",
+  "life.rowCurrent": "Regular spending",
+  "life.rowFood": "Food",
+  "life.perMonth": "≈ {amount} /month",
+  "life.trendVsYear": "last 30 days vs average since {date}",
+  "life.trendVs3m": "vs 3 months ago: {arrow} {pct}",
+  "life.trendNoRef": "No reference average yet.",
 };
 
 export default en;
