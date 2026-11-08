@@ -121,6 +121,7 @@ create table if not exists transactions_revenue (
 );
 
 create index if not exists idx_revenue_user_date on transactions_revenue(user_id, date desc);
+-- Normalisation de income_type / destination (casse, espaces) + déclencheur anti-doublons : voir normalize_revenue_labels.sql
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- AUTO-TAG RULES

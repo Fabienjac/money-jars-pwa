@@ -590,11 +590,18 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
         <input
           id="rev-type"
           type="text"
+          list="rev-type-list"
           value={incomeType}
           onChange={(e) => setIncomeType(e.target.value)}
           placeholder={t("rev.typePlaceholder")}
           style={fieldStyle}
         />
+        {/* Types déjà utilisés dans tes comptes de revenus : on réutilise la même écriture plutôt que d'en créer une variante */}
+        <datalist id="rev-type-list">
+          {Array.from(new Set(revenueAccounts.map((a) => a.type).filter((v): v is string => !!v))).map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
       </div>
 
       {/* ── Champs crypto uniquement ── */}

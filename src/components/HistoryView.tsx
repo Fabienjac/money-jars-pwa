@@ -625,7 +625,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
               {t("hist.fDestination")}
-              <input type="text" value={editDraft.destination || ""} onChange={e => setEditDraft(d => ({ ...d, destination: e.target.value }))}
+              <input type="text" list="hist-dest-list" value={editDraft.destination || ""} onChange={e => setEditDraft(d => ({ ...d, destination: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
@@ -635,7 +635,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             </label>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>
               {t("hist.fType")}
-              <input type="text" value={editDraft.incomeType || ""} onChange={e => setEditDraft(d => ({ ...d, incomeType: e.target.value }))}
+              <input type="text" list="hist-type-list" value={editDraft.incomeType || ""} onChange={e => setEditDraft(d => ({ ...d, incomeType: e.target.value }))}
                 style={{ padding: "8px 10px", border: "1.5px solid var(--border-color)", borderRadius: 8, fontSize: 14, background: "var(--bg-card)", color: "var(--text-main)" }} />
             </label>
           </>)}
@@ -1052,6 +1052,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
         )}
 
         <div style={{ height: 20 }} />
+
+        {/* Valeurs déjà utilisées : le formulaire de modification les propose pour ne pas recréer de doublon */}
+        <datalist id="hist-type-list">{uniqueTypes.map((v) => <option key={v} value={v} />)}</datalist>
+        <datalist id="hist-dest-list">{uniqueDestinations.map((v) => <option key={v} value={v} />)}</datalist>
 
         {/* ═══ HISTORY TAB ═══ */}
         {mainTab === "history" && (<>
