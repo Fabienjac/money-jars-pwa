@@ -13,6 +13,9 @@ const FILTERS_KEY = "mjars:analyticsFilters";
 const TAB_KEY = "mjars:analyticsTab";
 
 export type AnalyticsTab = "report" | "tags" | "subs";
+
+/** Événement : ouvrir l'écran Analyses (l'onglet à ouvrir est passé par saveTab juste avant). */
+export const OPEN_ANALYTICS_EVENT = "mjars:openAnalytics";
 const TABS: AnalyticsTab[] = ["report", "tags", "subs"];
 const PERIODS: PeriodFilter[] = ["all", "month", "prevmonth", "30d", "90d", "6m", "year", "custom"];
 const JARS = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];

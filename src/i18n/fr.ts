@@ -892,6 +892,7 @@ const fr = {
   "home.projectionPace": "au rythme actuel",
   "home.projectionLater": "dès le 10 du mois",
   "home.projectionOneOff": "rythme courant + {amount} exceptionnels",
+  "home.upcoming": "{amount} à prélever sous 30 jours ({n})",
   "home.notSub": "Pas un abonnement",
   "home.dismissedCount": "{n} écarté(s)",
   "home.restoreAll": "Tout restaurer",

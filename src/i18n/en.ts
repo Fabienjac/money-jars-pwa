@@ -894,6 +894,7 @@ const en: Record<keyof typeof fr, string> = {
   "home.projectionPace": "at the current pace",
   "home.projectionLater": "from the 10th",
   "home.projectionOneOff": "regular pace + {amount} one-off",
+  "home.upcoming": "{amount} due within 30 days ({n})",
   "home.notSub": "Not a subscription",
   "home.dismissedCount": "{n} hidden",
   "home.restoreAll": "Restore all",

@@ -1,7 +1,10 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince, fetchLifestylePrefs } from "../api";
+import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince, fetchLifestylePrefs, fetchDismissedSubscriptions } from "../api";
+import { detectRecurring } from "../subscriptions";
+import { totalUpcoming, upcomingCharges } from "../upcomingCharges";
+import { OPEN_ANALYTICS_EVENT, saveTab } from "../analyticsState";
 import { projectMonthEnd, projectionReady as isProjectionReady, splitOneOff } from "../monthProjection";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import { TotalsResponse, JarKey } from "../types";
@@ -250,8 +253,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
     Promise.all([
       fetchSpendingRowsSince(`${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-01`),
       fetchLifestylePrefs().catch(() => ({ extraordinaryTags: [] as string[] })),
+      fetchDismissedSubscriptions().catch(() => [] as string[]),
     ])
-      .then(([all, prefs]) => {
+      .then(([all, prefs, dismissedSubs]) => {
         const now = new Date();
         const targetMonth = now.getMonth() + 1;
         const targetYear  = now.getFullYear();
@@ -271,6 +275,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
 
         setMonthlyTagStats(calculateTagStats(currentMonthTxns));
         // Courantes / exceptionnelles du mois : la projection ne prolonge que le rythme courant
+        // Prélèvements attendus dans les 30 jours (abonnements détectés), pour la ligne de la carte « Ce mois »
+        const upcomingList = upcomingCharges(detectRecurring(all, now, new Set(dismissedSubs)), now, 30);
+        setUpcoming(upcomingList.length > 0 ? { total: totalUpcoming(upcomingList), count: upcomingList.length } : null);
         setOneOffTagIds([EXCEPTIONAL_TAG_ID, ...prefs.extraordinaryTags]);
         setMonthSplit(splitOneOff(currentMonthTxns, [EXCEPTIONAL_TAG_ID, ...prefs.extraordinaryTags]));
 
@@ -312,6 +319,11 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   /** Courantes / exceptionnelles du mois en cours (null tant que les dépenses ne sont pas lues) */
   const [monthSplit, setMonthSplit] = useState<{ regular: number; oneOff: number } | null>(null);
   const [oneOffTagIds, setOneOffTagIds] = useState<string[]>([EXCEPTIONAL_TAG_ID]);
+  const [upcoming, setUpcoming] = useState<{ total: number; count: number } | null>(null);
+  const openSubscriptions = () => {
+    try { saveTab("subs", sessionStorage); } catch { /* sans importance */ }
+    window.dispatchEvent(new CustomEvent(OPEN_ANALYTICS_EVENT));
+  };
 
   /**
    * Projection dépense fin de mois : on prolonge le rythme des dépenses courantes et on ajoute telles quelles les
@@ -588,6 +600,18 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                 )}
               </div>
             </div>
+
+            {/* Prélèvements attendus : l'information sans ouvrir l'onglet Abonnements */}
+            {upcoming && (
+              <button type="button" onClick={openSubscriptions} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", width: "100%",
+                padding: "8px 10px", marginBottom: "14px", borderRadius: "10px", border: "1px solid var(--border-color)",
+                background: "var(--bg-body)", color: "var(--text-main)", fontFamily: "inherit", fontSize: "12px", cursor: "pointer", textAlign: "left",
+              }}>
+                <span>🔁 {t("home.upcoming", { amount: `${formatMoney(upcoming.total)}\u00A0${curSym()}`, n: upcoming.count })}</span>
+                <span aria-hidden="true" style={{ color: "var(--text-light)" }}>›</span>
+              </button>
+            )}
 
             {/* Jauge budget */}
             {monthlyBudget != null && budgetPercent != null && (
