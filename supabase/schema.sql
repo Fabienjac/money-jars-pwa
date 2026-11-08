@@ -99,6 +99,7 @@ create table if not exists transactions_spending (
 
 create index if not exists idx_spending_user_date on transactions_spending(user_id, date desc);
 create index if not exists idx_spending_user_jar  on transactions_spending(user_id, jar);
+-- Normalisation du compte (casse, espaces) + déclencheur anti-doublons : voir normalize_spending_accounts.sql
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- TRANSACTIONS — REVENUS
