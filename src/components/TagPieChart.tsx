@@ -6,9 +6,11 @@ import { t as tr, useLang } from "../i18n";
 import { currencySymbol as curSym } from "../baseCurrency";
 interface TagPieChartProps {
   stats: TagStat[];
+  /** Total réellement dépensé (chaque dépense une seule fois). Sans lui, la somme des étiquettes, qui peut être plus grande. */
+  totalSpent?: number;
 }
 
-export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
+export const TagPieChart: React.FC<TagPieChartProps> = ({ stats, totalSpent }) => {
   useLang();
   if (stats.length === 0) {
     return (
@@ -33,14 +35,15 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
   const centerY = size / 2;
   const holeRadius = radius * 0.45; // Trou du donut
 
-  // Calculer le total
-  const total = stats.reduce((sum, stat) => sum + stat.totalAmount, 0);
+  // Total au centre : ce qui a vraiment été dépensé. La somme des montants par étiquette est plus grande dès qu'une
+  // dépense porte plusieurs étiquettes ; elle ne sert qu'aux angles.
+  const total = totalSpent ?? stats.reduce((sum, stat) => sum + stat.totalAmount, 0);
 
   // Calculer les angles pour chaque segment
   let currentAngle = -90; // Commencer en haut (12h)
   
   const segments = stats.map(stat => {
-    const angle = (stat.percentage / 100) * 360;
+    const angle = (stat.pieShare / 100) * 360;
     const startAngle = currentAngle;
     const endAngle = currentAngle + angle;
     const midAngle = startAngle + angle / 2;
@@ -134,8 +137,8 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
                   </title>
                 </path>
                 
-                {/* Emoji si segment > 4% */}
-                {segment.percentage > 4 && (
+                {/* Emoji si le segment est assez large */}
+                {segment.pieShare > 4 && (
                   <text
                     x={labelPos.x}
                     y={labelPos.y}
@@ -150,24 +153,6 @@ export const TagPieChart: React.FC<TagPieChartProps> = ({ stats }) => {
                   </text>
                 )}
                 
-                {/* Pourcentage si segment > 7% */}
-                {segment.percentage > 7 && (
-                  <text
-                    x={labelPos.x}
-                    y={labelPos.y + 30}
-                    textAnchor="middle"
-                    alignmentBaseline="middle"
-                    style={{
-                      fontSize: "18px",
-                      fontWeight: "700",
-                      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-                      fill: "white",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    {segment.percentage.toFixed(1)}%
-                  </text>
-                )}
               </g>
             );
           })}

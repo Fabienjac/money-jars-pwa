@@ -1,6 +1,6 @@
 // src/api.ts — backend Supabase
 import { supabase } from "./lib/supabase";
-import { invalidateHistoryCache } from "./historyCache";
+import { cacheVersion, invalidateHistoryCache, readHistoryCache, writeHistoryCache, type HistoryKind } from "./historyCache";
 import { t } from "./i18n";
 import type {
   SpendingRow,
@@ -326,6 +326,29 @@ export async function fetchAllRevenues(q = ""): Promise<SearchRevenueResult[]> {
       .range(from, to);
   });
   return rows.map((r) => mapRevenueRow(r as RevenueDbRow));
+}
+
+/**
+ * Lectures complètes avec le cache en mémoire de l'écran Historique (voir historyCache.ts) : l'écran Analyses réutilise
+ * ce que l'Historique vient de lire, et inversement. Toute écriture de données vide ce cache.
+ */
+async function readAllCached<T>(kind: HistoryKind, fetcher: () => Promise<T[]>): Promise<T[]> {
+  const { data } = await supabase.auth.getSession(); // lecture locale, sans réseau
+  const uid = data.session?.user.id ?? null;
+  const cached = uid ? readHistoryCache<T>(uid, kind) : null;
+  if (cached && cached.fresh) return cached.rows;
+  const startedAt = cacheVersion();
+  const rows = await fetcher();
+  if (uid) writeHistoryCache<T>(uid, kind, rows, startedAt);
+  return rows;
+}
+
+export function fetchAllSpendingsCached(): Promise<SearchSpendingResult[]> {
+  return readAllCached<SearchSpendingResult>("spending", () => fetchAllSpendings());
+}
+
+export function fetchAllRevenuesCached(): Promise<SearchRevenueResult[]> {
+  return readAllCached<SearchRevenueResult>("revenue", () => fetchAllRevenues());
 }
 
 export async function searchRevenues(q: string, max = 50): Promise<{ rows: SearchRevenueResult[] }> {

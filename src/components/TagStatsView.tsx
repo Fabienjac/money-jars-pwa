@@ -1,6 +1,6 @@
 // src/components/TagStatsView.tsx
 import React, { useState, useEffect } from "react";
-import { searchSpendings, searchRevenues } from "../api";
+import { fetchAllSpendingsCached, fetchAllRevenuesCached } from "../api";
 import { SearchSpendingResult, SearchRevenueResult } from "../types";
 import { TagFilter } from "./TagFilter";
 import { TagPieChart } from "./TagPieChart";
@@ -13,12 +13,8 @@ import { getTagById } from "../tagsUtils";
 import { loadAccounts } from "../accountsUtils";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { t as tr, useLang } from "../i18n";
-import {
-  computeReceivedByAccount,
-  computeSpentByAccountByTag,
-  getAccountNames,
-  type AccountTagStats,
-} from "../accountStatsUtils";
+import { computeReceivedByAccount } from "../accountStatsUtils";
+import { accountKey, mergeAccountLines, sumByName } from "../accountMerge";
 
 const TagStatsView: React.FC = () => {
   useLang();
@@ -33,12 +29,10 @@ const TagStatsView: React.FC = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const [spendRes, revRes] = await Promise.all([
-          searchSpendings("", 500),
-          searchRevenues("", 500),
-        ]);
-        setAllTransactions(spendRes.rows || []);
-        setAllRevenues(revRes.rows || []);
+        // Tout l'historique : l'ancienne lecture s'arrêtait à 500 lignes et faussait les totaux au-delà
+        const [spendRes, revRes] = await Promise.all([fetchAllSpendingsCached(), fetchAllRevenuesCached()]);
+        setAllTransactions(spendRes);
+        setAllRevenues(revRes);
       } catch (err) {
         console.error("Erreur chargement données:", err);
       } finally {
@@ -83,22 +77,30 @@ const TagStatsView: React.FC = () => {
   // Total de toutes les dépenses filtrées
   const totalAmount = filteredTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
 
+  // Dépenses sans aucune étiquette : absentes du graphique par étiquette, signalées en dessous
+  const untagged = filteredTransactions.filter((t) => !t.tags || !t.tags.split(",").some((x) => x.trim()));
+  const untaggedCount = untagged.length;
+  const untaggedAmount = untagged.reduce((sum, t) => sum + (t.amount || 0), 0);
+
   // --- Par compte de dépense : reçus (revenus → destination) et dépensés par tag ---
+  // « Keystone » (destination d'un revenu) et « KEYSTONE » (compte d'une dépense) sont le même compte : fusion sans
+  // tenir compte de la casse ni des espaces.
   const receivedByAccount = computeReceivedByAccount(allRevenues, advancedFilters);
-  const accountStatsList = computeSpentByAccountByTag(filteredTransactions);
-  const accountStatsByKey = Object.fromEntries(
-    accountStatsList.map((a) => [a.accountName, a])
-  ) as Record<string, AccountTagStats>;
-  const accountNames = getAccountNames(
-    loadAccounts(),
-    allTransactions,
-    Object.keys(receivedByAccount)
-  );
-  const accountReportRows = accountNames.map((name) => ({
-    accountName: name,
-    totalReceived: receivedByAccount[name] ?? 0,
-    totalSpent: accountStatsByKey[name]?.totalSpent ?? 0,
-    tagStats: accountStatsByKey[name]?.tagStats ?? [],
+  const spentByAccount = sumByName(filteredTransactions, (s) => s.account, (s) => s.amount);
+  const settingsAccounts = loadAccounts();
+  const accountReportRows = mergeAccountLines(
+    [
+      ...settingsAccounts.map((a) => ({ name: a.name, received: 0, spent: 0 })),
+      ...allTransactions.map((s) => ({ name: s.account, received: 0, spent: 0 })),
+      ...Object.entries(receivedByAccount).map(([name, received]) => ({ name, received, spent: 0 })),
+      ...Object.entries(spentByAccount).map(([name, spent]) => ({ name, received: 0, spent })),
+    ],
+    settingsAccounts.map((a) => a.name)
+  ).map((m) => ({
+    accountName: m.name,
+    totalReceived: m.received,
+    totalSpent: m.spent,
+    tagStats: calculateTagStats(filteredTransactions.filter((s) => accountKey(s.account) === m.key)),
   }));
 
   if (loading) {
@@ -302,7 +304,11 @@ const TagStatsView: React.FC = () => {
           }}>
             {tr("stats.visual")}
           </h3>
-          <TagPieChart stats={stats} />
+          <TagPieChart stats={stats} totalSpent={totalAmount} />
+          <p className="stats-overlap-note">{tr("stats.overlapNote")}</p>
+          {untaggedCount > 0 && (
+            <p className="stats-overlap-note">{tr("stats.untagged", { amount: `${untaggedAmount.toFixed(2)} ${curSym()}`, n: untaggedCount })}</p>
+          )}
         </div>
       )}
 
@@ -438,7 +444,7 @@ const TagStatsView: React.FC = () => {
                 }}>
                   <div
                     style={{
-                      width: `${stat.percentage}%`,
+                      width: `${Math.min(100, stat.percentage)}%`,
                       height: "100%",
                       background: stat.color,
                       transition: "width 0.3s ease",

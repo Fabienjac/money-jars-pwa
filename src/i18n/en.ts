@@ -464,6 +464,8 @@ const en: Record<keyof typeof fr, string> = {
   "stats.spent": "Spent",
   "stats.detailByTag": "Detail by tag",
   "stats.visual": "📊 Visual breakdown",
+  "stats.overlapNote": "A spending item with several tags counts in each of them, so the shares can add up to more than 100%. The chart shows each tag's relative weight.",
+  "stats.untagged": "Untagged: {amount} ({n})",
   "stats.advHide": "📊 Stats shown",
   "stats.advShow": "📈 Show advanced stats",
   "stats.noTagged": "No transactions with tags",

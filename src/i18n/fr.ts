@@ -462,6 +462,8 @@ const fr = {
   "stats.spent": "Dépensé",
   "stats.detailByTag": "Détail par tag",
   "stats.visual": "📊 Répartition visuelle",
+  "stats.overlapNote": "Une dépense qui porte plusieurs étiquettes compte dans chacune : la somme des parts peut donc dépasser 100 %. Le graphique montre le poids relatif de chaque étiquette.",
+  "stats.untagged": "Sans étiquette : {amount} ({n})",
   "stats.advHide": "📊 Stats visibles",
   "stats.advShow": "📈 Voir stats avancées",
   "stats.noTagged": "Aucune transaction avec des tags",
