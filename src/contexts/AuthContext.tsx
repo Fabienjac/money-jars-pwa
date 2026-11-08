@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
+import { invalidateHistoryCache } from "../historyCache";
 
 interface SubscriptionStatus {
   plan: "trial" | "active" | "expired" | "cancelled";
@@ -125,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     await supabase.auth.signOut();
+    invalidateHistoryCache(); // les données de l'ancien compte ne restent pas en mémoire
   }
 
   async function refreshSubscription() {

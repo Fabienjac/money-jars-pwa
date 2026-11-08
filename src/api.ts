@@ -1,5 +1,6 @@
 // src/api.ts — backend Supabase
 import { supabase } from "./lib/supabase";
+import { invalidateHistoryCache } from "./historyCache";
 import { t } from "./i18n";
 import type {
   SpendingRow,
@@ -87,6 +88,7 @@ export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; e
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true };
 }
 
@@ -105,6 +107,7 @@ export async function updateSpending(rowIndex: number, row: SpendingRow): Promis
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true };
 }
 
@@ -114,6 +117,7 @@ export async function deleteSpending(rowIndex: number): Promise<{ ok: boolean; e
   const { error } = await supabase.from("transactions_spending").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true };
 }
 
@@ -132,6 +136,7 @@ export async function bulkRenameSpendingAccount(
     .select("id");
   if (error) return { ok: false, count: 0, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true, count: data?.length ?? 0 };
 }
 
@@ -226,6 +231,7 @@ export async function appendRevenue(row: RevenueRow): Promise<{ ok: boolean; err
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true };
 }
 
@@ -248,6 +254,7 @@ export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<
 
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true };
 }
 
@@ -257,6 +264,7 @@ export async function deleteRevenue(rowIndex: number): Promise<{ ok: boolean; er
   const { error } = await supabase.from("transactions_revenue").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true };
 }
 
@@ -275,6 +283,7 @@ export async function bulkRenameRevenueSource(
     .select("id");
   if (error) return { ok: false, count: 0, error: error.message };
   clearCache("mjars:cache:totals", "mjars:cache:analytics");
+  invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true, count: data?.length ?? 0 };
 }
 

@@ -1,5 +1,5 @@
 // src/components/HistoryView.tsx - VERSION REFACTORISÉE (Features 4 & 5)
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   fetchAllSpendings, fetchAllRevenues,
   updateSpending, updateRevenue,
@@ -12,6 +12,8 @@ import { loadAccounts } from "../accountsUtils";
 import { getAccounts } from "../api";
 import { Account } from "../types";
 
+import { supabase } from "../lib/supabase";
+import { cacheVersion, invalidateHistoryCache, readHistoryCache, rememberHistoryRows, writeHistoryCache } from "../historyCache";
 import { currencySymbol as curSym } from "../baseCurrency";
 import { useT, t as tr, localeTag } from "../i18n";
 import { inBounds, periodBounds, type PeriodFilter } from "../historyPeriod";
@@ -153,23 +155,50 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   // Tout l'historique est lu une fois (par pages) ; la recherche, les filtres et le tri se font ensuite sur l'appareil :
   // pas de nouvelle requête à chaque frappe, et la recherche peut porter sur les étiquettes et le compte, pas
   // seulement sur le libellé.
+  // Cache en mémoire : on affiche aussitôt la copie qu'on a (visite précédente, autre mode), puis on la rafraîchit
+  // discrètement si elle a plus de quelques secondes. Toute écriture de données vide ce cache (voir api.ts).
+  const reqRef = useRef(0); // numéro de la dernière lecture lancée : une lecture plus ancienne est ignorée
+  const userRef = useRef<string | null>(null);
+  const editingRef = useRef(false); // une modification est en cours : on ne remplace pas les lignes dessous
+  const modeRef = useRef<Mode>("spending");
+
   const doSearch = useCallback(async (m: Mode) => {
-    setLoading(true);
+    const req = ++reqRef.current;
     setError(null);
+    const { data } = await supabase.auth.getSession(); // lecture locale, sans réseau
+    if (req !== reqRef.current) return;
+    const uid = data.session?.user.id ?? null;
+    userRef.current = uid;
+
+    const apply = (rows: SearchSpendingResult[] | SearchRevenueResult[]) => {
+      if (m === "spending") { setSpendings(rows as SearchSpendingResult[]); setRevenues([]); }
+      else { setRevenues(rows as SearchRevenueResult[]); setSpendings([]); }
+    };
+
+    const cached = uid ? readHistoryCache<SearchSpendingResult | SearchRevenueResult>(uid, m) : null;
+    if (cached) {
+      apply(cached.rows as SearchSpendingResult[] | SearchRevenueResult[]);
+      setLoading(false);
+      if (cached.fresh) return;
+    } else {
+      setLoading(true);
+    }
+
+    const startedAt = cacheVersion();
     try {
-      if (m === "spending") {
-        setSpendings(await fetchAllSpendings());
-        setRevenues([]);
-      } else {
-        setRevenues(await fetchAllRevenues());
-        setSpendings([]);
-      }
+      const rows = m === "spending" ? await fetchAllSpendings() : await fetchAllRevenues();
+      if (uid) writeHistoryCache<unknown>(uid, m, rows, startedAt);
+      if (req !== reqRef.current) return; // un autre chargement est parti entre-temps
+      if (cached && editingRef.current) return; // rafraîchissement discret : pas pendant une modification
+      apply(rows);
     } catch (e: any) {
+      if (req !== reqRef.current) return;
+      if (cached) return; // la copie affichée reste valable ; l'échec du rafraîchissement n'est pas bloquant
       setError(e.message || t("hist.unknownError"));
       setSpendings([]);
       setRevenues([]);
     } finally {
-      setLoading(false);
+      if (req === reqRef.current) setLoading(false);
     }
   }, []);
 
@@ -179,8 +208,22 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   }, []);
 
   useEffect(() => {
+    modeRef.current = mode;
     doSearch(mode);
   }, [mode, doSearch]);
+
+  // Une dépense ou un revenu vient d'être enregistré ailleurs (formulaire rapide, vocal…) : on relit
+  useEffect(() => {
+    const reload = () => { invalidateHistoryCache(); doSearch(modeRef.current); };
+    window.addEventListener("mjars:transactionSaved", reload);
+    window.addEventListener("mjars:revenueSaved", reload);
+    return () => {
+      window.removeEventListener("mjars:transactionSaved", reload);
+      window.removeEventListener("mjars:revenueSaved", reload);
+    };
+  }, [doSearch]);
+
+  useEffect(() => { editingRef.current = editingRow != null; }, [editingRow]);
 
   // ── Computed filters ──────────────────────────────────────────────
   const periodRange = useMemo(() => periodBounds(periodFilter, new Date(), customFrom, customTo), [periodFilter, customFrom, customTo]);
@@ -316,15 +359,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     try {
       if (isSpendingRow(editingRow)) {
         if (!editingRow.rowIndex) throw new Error(t("hist.rowMissingScript"));
-        await updateSpending(editingRow.rowIndex, {
+        const res = await updateSpending(editingRow.rowIndex, {
           date: editDraft.date, description: editDraft.description,
           amount: parseFloat(editDraft.amount), jar: editDraft.jar,
           account: editDraft.account, tags: editDraft.tags || undefined,
         });
-        setSpendings(prev => prev.map(s => s === editingRow ? { ...s, ...editDraft, amount: parseFloat(editDraft.amount) } : s));
+        if (!res.ok) throw new Error(res.error || t("hist.saveError"));
+        const next = spendings.map(s => s === editingRow ? { ...s, ...editDraft, amount: parseFloat(editDraft.amount) } as SearchSpendingResult : s);
+        setSpendings(next);
+        if (userRef.current) rememberHistoryRows(userRef.current, "spending", next);
       } else {
         if (!editingRow.rowIndex) throw new Error(t("hist.rowMissingScript"));
-        await updateRevenue(editingRow.rowIndex, {
+        const res = await updateRevenue(editingRow.rowIndex, {
           date: editDraft.date, source: editDraft.source,
           amount: parseFloat(editDraft.amount) || undefined,
           value: editDraft.value || undefined, method: editDraft.method || undefined,
@@ -333,7 +379,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
           incomeType: editDraft.incomeType || undefined,
           tags: editDraft.tags || undefined,
         });
-        setRevenues(prev => prev.map(r => r === editingRow ? { ...r, ...editDraft, amount: parseFloat(editDraft.amount) } : r));
+        if (!res.ok) throw new Error(res.error || t("hist.saveError"));
+        const next = revenues.map(r => r === editingRow ? { ...r, ...editDraft, amount: parseFloat(editDraft.amount) } as SearchRevenueResult : r);
+        setRevenues(next);
+        if (userRef.current) rememberHistoryRows(userRef.current, "revenue", next);
       }
       setEditingRow(null);
     } catch (e: any) {
@@ -347,8 +396,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     if (!row.rowIndex) { alert(t("hist.rowMissing")); return; }
     if (!window.confirm(t("hist.confirmDelete", { name: row.description, amount: `${row.amount} ${curSym()}` }))) return;
     try {
-      await deleteSpending(row.rowIndex);
-      setSpendings(prev => prev.filter(s => s !== row));
+      const res = await deleteSpending(row.rowIndex);
+      if (!res.ok) throw new Error(res.error || t("hist.unknownError"));
+      const next = spendings.filter(s => s !== row);
+      setSpendings(next);
+      if (userRef.current) rememberHistoryRows(userRef.current, "spending", next);
       setExpandedCard(null);
     } catch (e: any) { alert(t("hist.error", { msg: e.message || String(e) })); }
   };
@@ -357,8 +409,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     if (!row.rowIndex) { alert(t("hist.rowMissing")); return; }
     if (!window.confirm(t("hist.confirmDelete", { name: row.source, amount: `${row.amount} ${curSym()}` }))) return;
     try {
-      await deleteRevenue(row.rowIndex);
-      setRevenues(prev => prev.filter(r => r !== row));
+      const res = await deleteRevenue(row.rowIndex);
+      if (!res.ok) throw new Error(res.error || t("hist.unknownError"));
+      const next = revenues.filter(r => r !== row);
+      setRevenues(next);
+      if (userRef.current) rememberHistoryRows(userRef.current, "revenue", next);
       setExpandedCard(null);
     } catch (e: any) { alert(t("hist.error", { msg: e.message || String(e) })); }
   };
