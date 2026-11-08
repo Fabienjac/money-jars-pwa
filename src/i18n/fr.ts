@@ -959,6 +959,8 @@ const fr = {
   "life.trendVsYear": "30 derniers jours vs moyenne depuis le {date}",
   "life.trendVs3m": "vs il y a 3 mois : {arrow} {pct}",
   "life.trendNoRef": "Pas encore de moyenne de référence.",
+  "life.monthsNote": "Moyenne par jour, mois par mois · pointillé : moyenne depuis le début de l'année ({avg}) · * mois en cours",
+  "life.chartNote": "Courbes : moyenne des 30 derniers jours, un point par semaine",
 } as const;
 
 export default fr;

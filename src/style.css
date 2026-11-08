@@ -3999,3 +3999,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .life-chip--up { background: rgba(255, 149, 0, 0.12); color: var(--warn-text); }
 .life-trend-sub { font-size: 12px; color: var(--text-muted); }
 .life-trend-3m { font-size: 12px; color: var(--text-muted); }
+
+/* Train de vie : légende lisible et moyenne par jour, mois par mois */
+.life-chart-legend { flex-direction: column; align-items: flex-start; gap: 3px; font-size: 12px; color: var(--text-muted); }
+.life-chart-legend strong { color: var(--text-main); }
+.life-chart-note { margin-left: 0; font-size: 11px; color: var(--text-light); }
+.life-months { margin-top: 8px; }
+.life-months-plot { position: relative; display: flex; align-items: stretch; gap: 8px; height: 50px; margin-top: 16px; }
+.life-months-ref { position: absolute; left: 0; right: 0; border-top: 1.5px dashed var(--text-light); pointer-events: none; z-index: 1; }
+.life-month-col { position: relative; flex: 1; min-width: 0; }
+.life-month-bar { position: absolute; left: 12%; right: 12%; bottom: 0; border-radius: 4px 4px 0 0; min-height: 1px; }
+.life-month-val { position: absolute; left: 50%; transform: translateX(-50%); z-index: 2; padding: 0 3px; border-radius: 3px; background: var(--bg-card); text-align: center; font-size: 10px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.life-months-labels { display: flex; gap: 8px; margin-top: 3px; }
+.life-month-label { flex: 1; text-align: center; font-size: 10px; color: var(--text-light); }
+.life-months-note { margin-top: 4px; font-size: 10px; line-height: 1.35; color: var(--text-light); }

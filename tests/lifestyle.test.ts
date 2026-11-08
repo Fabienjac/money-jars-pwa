@@ -180,3 +180,31 @@ test("évolution : pas de comparaison à 3 mois tôt dans l'année ; null avant 
   assert.equal(noFood.deltaYear, null);
   assert.equal(noFood.status, null);
 });
+
+test("mois par mois : total du mois / jours écoulés, mois en cours partiel, extraordinaires exclues, étiquette", async () => {
+  const { monthlyAverages } = await import("../src/lifestyle.ts");
+  const rows = [
+    { date: "2026-08-10", amount: 310, tags: "" }, // août (31 jours) : 10 €/jour
+    { date: "2026-09-05", amount: 300, tags: "alimentaire" }, // septembre (30 jours) : 10 €/jour
+    { date: "2026-09-06", amount: 900, tags: "voyage" }, // exclu
+    { date: "2026-10-01", amount: 62, tags: "alimentaire" }, // octobre : 2 €/jour
+    { date: "2026-11-02", amount: 40, tags: "" }, // novembre, 8 jours écoulés : 5 €/jour
+    { date: "2026-11-03", amount: 20, tags: "alimentaire" },
+  ];
+  const all = monthlyAverages(rows, voyage, "2026-11-08", { count: 4 });
+  assert.deepEqual(all.map((m) => m.month), ["2026-08", "2026-09", "2026-10", "2026-11"]);
+  assert.deepEqual(all.map((m) => m.perDay), [10, 10, 2, 60 / 8]);
+  assert.deepEqual(all.map((m) => m.days), [31, 30, 31, 8]);
+  assert.deepEqual(all.map((m) => m.current), [false, false, false, true]);
+  assert.equal(all[3].monthIndex, 10);
+  const food = monthlyAverages(rows, voyage, "2026-11-08", { count: 4, tagId: "alimentaire" });
+  assert.deepEqual(food.map((m) => m.perDay), [0, 10, 2, 20 / 8]);
+  // les mois d'avant le début des données chargées sont ignorés
+  const since = monthlyAverages(rows, voyage, "2026-11-08", { count: 6, since: "2026-09-04" });
+  assert.deepEqual(since.map((m) => m.month), ["2026-09", "2026-10", "2026-11"]);
+  // passage d'année
+  const jan = monthlyAverages([{ date: "2025-12-15", amount: 310, tags: "" }], none, "2026-01-10", { count: 2 });
+  assert.deepEqual(jan.map((m) => m.month), ["2025-12", "2026-01"]);
+  assert.equal(jan[0].perDay, 10);
+  assert.deepEqual(monthlyAverages(rows, none, "pas une date"), []);
+});

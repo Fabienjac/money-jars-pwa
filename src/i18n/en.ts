@@ -961,6 +961,8 @@ const en: Record<keyof typeof fr, string> = {
   "life.trendVsYear": "last 30 days vs average since {date}",
   "life.trendVs3m": "vs 3 months ago: {arrow} {pct}",
   "life.trendNoRef": "No reference average yet.",
+  "life.monthsNote": "Daily average, month by month · dashed: average since the start of the year ({avg}) · * current month",
+  "life.chartNote": "Lines: average of the last 30 days, one point per week",
 };
 
 export default en;

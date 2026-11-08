@@ -240,6 +240,8 @@ export function daysBefore(date: string, days: number): string | null {
 export interface TrendLine {
   /** Moyenne par jour sur les 30 derniers jours. */
   perDay30: number;
+  /** Moyenne par jour depuis le début de la période (la référence de l'écart « deltaYear »). */
+  perDayYear: number;
   /** Équivalent sur un mois (30 jours). */
   perMonth: number;
   /** Écart des 30 derniers jours par rapport à la moyenne depuis le début de la période, en %. */
@@ -282,10 +284,68 @@ export function trendLine(
 
   return {
     perDay30,
+    perDayYear: yearAvg,
     perMonth: perDay30 * 30,
     deltaYear,
     status: deltaYear == null ? null : statusOf(deltaYear),
     delta3m,
     since: total.startDate,
   };
+}
+
+export interface MonthAverage {
+  /** AAAA-MM */
+  month: string;
+  /** 0 = janvier … 11 = décembre */
+  monthIndex: number;
+  /** Dépense moyenne par jour : total du mois / jours écoulés (le mois en cours est donc partiel mais comparable). */
+  perDay: number;
+  days: number;
+  current: boolean;
+}
+
+/**
+ * Dépense moyenne par jour, mois par mois, sur les `count` derniers mois (le mois en cours compris), hors
+ * extraordinaires et limitée à une étiquette si `tagId`. `since` = première date réellement chargée : les mois qui
+ * commencent avant le mois de cette date sont ignorés (ils seraient sous-estimés).
+ */
+export function monthlyAverages(
+  rows: readonly LifestyleRow[],
+  extraordinaryTags: ReadonlySet<string>,
+  today: string,
+  options: { tagId?: string; count?: number; since?: string } = {}
+): MonthAverage[] {
+  const t = dayNumber(today);
+  if (t == null) return [];
+  const count = options.count ?? 6;
+  const y = Number(today.slice(0, 4));
+  const m0 = Number(today.slice(5, 7)) - 1;
+  const sinceMonthStart = options.since ? dayNumber(`${options.since.slice(0, 7)}-01`) : null;
+
+  const daily = new Map<number, number>();
+  for (const r of rows) {
+    const d = dayNumber(r.date);
+    const amount = Number(r.amount);
+    if (d == null || d > t || !Number.isFinite(amount)) continue;
+    if (isExtraordinary(r.tags, extraordinaryTags)) continue;
+    if (options.tagId && !splitTags(r.tags).includes(options.tagId)) continue;
+    daily.set(d, (daily.get(d) ?? 0) + amount);
+  }
+
+  const out: MonthAverage[] = [];
+  for (let k = count - 1; k >= 0; k--) {
+    const monthIdx = y * 12 + m0 - k;
+    const my = Math.floor(monthIdx / 12);
+    const mm = monthIdx % 12;
+    const first = dayNumber(`${my}-${String(mm + 1).padStart(2, "0")}-01`)!;
+    if (sinceMonthStart != null && first < sinceMonthStart) continue;
+    const lastOfMonth = dayNumber(`${my}-${String(mm + 1).padStart(2, "0")}-${String(new Date(my, mm + 1, 0).getDate()).padStart(2, "0")}`)!;
+    const current = k === 0;
+    const end = current ? t : lastOfMonth;
+    const days = end - first + 1;
+    let sum = 0;
+    for (let d = first; d <= end; d++) sum += daily.get(d) ?? 0;
+    out.push({ month: `${my}-${String(mm + 1).padStart(2, "0")}`, monthIndex: mm, perDay: sum / days, days, current });
+  }
+  return out;
 }

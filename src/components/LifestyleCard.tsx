@@ -3,13 +3,13 @@
 // dans le panneau de réglage (voyage, gros achat…). Calcul : src/lifestyle.ts.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs, fetchExceptionalDismissed, saveExceptionalDismissed, markSpendingExceptional, type SpendingLite } from "../api";
-import { computeLifestyle, lifestyleFetchFrom, rollingAverageSeries, tagTotalsThisYear, trendLine, type TrendLine } from "../lifestyle";
+import { computeLifestyle, lifestyleFetchFrom, monthlyAverages, rollingAverageSeries, tagTotalsThisYear, trendLine, type MonthAverage, type TrendLine } from "../lifestyle";
 import DailyAverageChart from "./DailyAverageChart";
 import { suggestExceptional } from "../exceptional";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import { loadTags } from "../tagsUtils";
 import { currencySymbol as curSym } from "../baseCurrency";
-import { t, useT, localeTag } from "../i18n";
+import { t, useT, localeTag, monthShort } from "../i18n";
 
 function todayISO(): string {
   const d = new Date();
@@ -44,8 +44,35 @@ function beforeJan1(today: string, days: number): string {
 const pctText = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(0)} %`;
 const arrowOf = (n: number) => (n > 10 ? "↑" : n < -10 ? "↓" : "→");
 
-/** Une ligne d'évolution : tendance en premier, équivalent mensuel, puis la comparaison à il y a 3 mois. */
-const TrendRow: React.FC<{ name: string; trend: TrendLine }> = ({ name, trend }) => {
+const dayFmt = (n: number) => n.toLocaleString(localeTag(), { minimumFractionDigits: n < 30 ? 1 : 0, maximumFractionDigits: n < 30 ? 1 : 0 });
+
+/** Moyenne par jour, mois par mois ; trait pointillé = moyenne depuis le début de la période ; le mois en cours est plus clair. */
+const MonthBars: React.FC<{ months: MonthAverage[]; reference: number; color: string }> = ({ months, reference, color }) => {
+  if (months.length < 2) return null;
+  const max = Math.max(...months.map((m) => m.perDay), reference, 0.01);
+  return (
+    <div className="life-months">
+      <div className="life-months-plot">
+        {reference > 0 && <div className="life-months-ref" style={{ bottom: `${(reference / max) * 100}%` }} />}
+        {months.map((m) => (
+          <div key={m.month} className="life-month-col">
+            <span className="life-month-val" style={{ bottom: `calc(${(m.perDay / max) * 100}% + 2px)` }}>{dayFmt(m.perDay)}</span>
+            <div className="life-month-bar" style={{ height: `${(m.perDay / max) * 100}%`, background: color, opacity: m.current ? 0.5 : 1 }} />
+          </div>
+        ))}
+      </div>
+      <div className="life-months-labels">
+        {months.map((m) => (
+          <span key={m.month} className="life-month-label">{monthShort(m.monthIndex)}{m.current ? "*" : ""}</span>
+        ))}
+      </div>
+      <div className="life-months-note">{t("life.monthsNote", { avg: `${dayFmt(reference)}${t("life.perDayShort")}` })}</div>
+    </div>
+  );
+};
+
+/** Une ligne d'évolution : tendance en premier, équivalent mensuel, comparaison à il y a 3 mois, puis les mois. */
+const TrendRow: React.FC<{ name: string; trend: TrendLine; months: MonthAverage[]; color: string }> = ({ name, trend, months, color }) => {
   const up = trend.status === "up";
   return (
     <div className="life-trend">
@@ -66,6 +93,7 @@ const TrendRow: React.FC<{ name: string; trend: TrendLine }> = ({ name, trend })
       {trend.delta3m != null && (
         <div className="life-trend-3m">{t("life.trendVs3m", { arrow: arrowOf(trend.delta3m), pct: pctText(trend.delta3m) })}</div>
       )}
+      <MonthBars months={months} reference={trend.perDayYear} color={color} />
     </div>
   );
 };
@@ -73,6 +101,7 @@ const TrendRow: React.FC<{ name: string; trend: TrendLine }> = ({ name, trend })
 const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel }) => {
   useT(); // re-rendu au changement de langue
   const [rows, setRows] = useState<SpendingLite[] | null>(null);
+  const [dataFrom, setDataFrom] = useState<string | undefined>(undefined); // première date réellement chargée
   const [dismissed, setDismissed] = useState<string[]>([]);
   const [suggestBusy, setSuggestBusy] = useState(false);
   const [suggestError, setSuggestError] = useState(false);
@@ -91,6 +120,7 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
       const from = base < chartFrom ? base : chartFrom;
       const [data, prefs, dismissedIds] = await Promise.all([fetchSpendingsSince(from), fetchLifestylePrefs(), fetchExceptionalDismissed()]);
       setRows(data);
+      setDataFrom(from);
       setExtraTags(prefs.extraordinaryTags);
       setDismissed(dismissedIds);
       setError(false);
@@ -127,6 +157,9 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
   // Évolution des dépenses courantes et de l'alimentation (30 derniers jours vs moyenne de l'année et vs il y a 3 mois)
   const trendAll = useMemo(() => (rows ? trendLine(rows, extraSet, today) : null), [rows, extraSet, today]);
   const trendFood = useMemo(() => (rows ? trendLine(rows, extraSet, today, "alimentaire") : null), [rows, extraSet, today]);
+  // Moyenne par jour, mois par mois (6 mois)
+  const monthsAll = useMemo(() => (rows ? monthlyAverages(rows, extraSet, today, { since: dataFrom }) : []), [rows, extraSet, today, dataFrom]);
+  const monthsFood = useMemo(() => (rows ? monthlyAverages(rows, extraSet, today, { since: dataFrom, tagId: "alimentaire" }) : []), [rows, extraSet, today, dataFrom]);
 
   // Grosses dépenses pas encore étiquetées : on propose de les marquer « Exceptionnel »
   const suggestions = useMemo(
@@ -208,17 +241,17 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
             <div className="life-chart-legend">
               <span className="life-chart-key">
                 <span className="life-chart-swatch" aria-hidden="true" />
-                {t("life.chartTotal")} · {money(totalNow, 2)}{t("life.perDayShort")}
+                {t("life.rowCurrent")} <strong>{money(totalNow, 2)}{t("life.perDayShort")}</strong>
               </span>
               {foodNow > 0 && (
-                <span className="life-chart-key life-chart-key--food">
+                <span className="life-chart-key">
                   <svg width="16" height="6" aria-hidden="true" style={{ overflow: "visible" }}>
                     <line x1="0" y1="3" x2="16" y2="3" stroke="#84CC16" strokeWidth="2" strokeDasharray="4 2" />
                   </svg>
-                  🥗 {money(foodNow, 2)}{t("life.perDayShort")}
+                  🥗 {t("life.rowFood")} <strong>{money(foodNow, 2)}{t("life.perDayShort")}</strong>
                 </span>
               )}
-              <span className="life-chart-note">{t("home.avg30week")}</span>
+              <span className="life-chart-note">{t("life.chartNote")}</span>
             </div>
           </div>
         )}
@@ -240,8 +273,8 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
           <>
             {stats.last30 && trendAll ? (
               <div className="life-trends">
-                <TrendRow name={t("life.rowCurrent")} trend={trendAll} />
-                {trendFood && trendFood.perDay30 > 0 && <TrendRow name={`🥗 ${t("life.rowFood")}`} trend={trendFood} />}
+                <TrendRow name={t("life.rowCurrent")} trend={trendAll} months={monthsAll} color="#FF2D78" />
+                {trendFood && trendFood.perDay30 > 0 && <TrendRow name={`🥗 ${t("life.rowFood")}`} trend={trendFood} months={monthsFood} color="#84CC16" />}
               </div>
             ) : (
               <div style={{ flex: "1 1 130px", minWidth: 0 }}>
