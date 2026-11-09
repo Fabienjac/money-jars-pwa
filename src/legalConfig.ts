@@ -24,13 +24,15 @@ export interface LegalConfig {
 }
 
 export const LEGAL: LegalConfig = {
-  publisherName: "Effivital",
-  legalForm: "",
-  address: "",
-  registration: "",
-  director: "",
-  contactEmail: "",
+  publisherName: "Association Effivital",
+  legalForm: "association loi 1901, déclarée à la sous-préfecture de Montbéliard le 18 août 2022",
+  address: "10 rue de la Motte, 25140 Écorces, France",
+  registration: "RNA W252006915",
+  director: "Fabien Jacquet",
+  contactEmail: "contact@effivital.com",
+  // À renseigner : « TTC » ou « TVA non applicable » (à confirmer avec un expert-comptable)
   vatNote: "",
+  // À renseigner : médiateur de la consommation référencé (obligatoire pour vendre à des particuliers)
   mediator: "",
   updated: "2026-11-09",
 };
