@@ -2,6 +2,18 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { invalidateHistoryCache } from "../historyCache";
+import { getRef, shouldTagUser } from "../referral";
+
+// Comptes déjà étiquetés pendant cette session (updateUser relance onAuthStateChange)
+const taggedUsers = new Set<string>();
+
+/** Attache l'origine mémorisée (?ref=…) à un compte tout juste créé, par exemple via Google. Silencieux en cas d'échec. */
+async function tagReferral(u: User) {
+  const ref = getRef();
+  if (taggedUsers.has(u.id) || !shouldTagUser(u, ref)) return;
+  taggedUsers.add(u.id);
+  try { await supabase.auth.updateUser({ data: { ref } }); } catch { /* sans importance */ }
+}
 
 interface SubscriptionStatus {
   plan: "trial" | "active" | "expired" | "cancelled";
@@ -85,7 +97,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) await fetchSubscription(session.user.id, session.user.email ?? undefined);
+      if (session?.user) {
+        tagReferral(session.user).catch(() => {});
+        await fetchSubscription(session.user.id, session.user.email ?? undefined);
+      }
       setLoading(false);
     });
 
@@ -96,6 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (event === "PASSWORD_RECOVERY") {
           setNeedsPasswordUpdate(true);
         } else if (session?.user) {
+          tagReferral(session.user).catch(() => {});
           fetchSubscription(session.user.id, session.user.email ?? undefined).catch(() => {});
         } else {
           setSubscription(null);
@@ -112,7 +128,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signUpWithEmail(email: string, password: string) {
-    const { error } = await supabase.auth.signUp({ email, password });
+    const ref = getRef();
+    const { error } = await supabase.auth.signUp({ email, password, options: ref ? { data: { ref } } : undefined });
     return { error: error?.message ?? null };
   }
 

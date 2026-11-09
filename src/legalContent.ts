@@ -52,7 +52,7 @@ function frDoc(id: LegalDocId, c: LegalConfig): LegalDoc {
           "Paiement des abonnements : Stripe (Stripe Payments Europe, Ltd., Irlande, pour les clients de l'Union européenne).",
         ] },
         { h: "Propriété intellectuelle", p: [
-          "Le nom, l'interface et le code de Money Jars appartiennent à l'éditeur. La méthode des 6 jarres est une création de T. Harv Eker, auteur de « Secrets of the Millionaire Mind » ; Money Jars est un outil indépendant qui s'en inspire.",
+          "Le nom, l'interface et le code de Money Jars appartiennent à l'éditeur. La méthode des 6 jarres est une création de T. Harv Eker, auteur de « Secrets of the Millionaire Mind » ; Money Jars est un outil indépendant qui s'en inspire ; il n'est ni affilié à T. Harv Eker, ni approuvé par lui.",
         ] },
         { h: "Nature du service", p: [
           "Money Jars est un outil d'organisation du budget personnel. Il ne fournit aucun conseil financier, fiscal, juridique ni en investissement.",
@@ -162,7 +162,7 @@ function enDoc(id: LegalDocId, c: LegalConfig): LegalDoc {
           "Subscription payments: Stripe (Stripe Payments Europe, Ltd., Ireland, for customers in the European Union).",
         ] },
         { h: "Intellectual property", p: [
-          "The name, interface and code of Money Jars belong to the publisher. The 6-jar method is a creation of T. Harv Eker, author of “Secrets of the Millionaire Mind”; Money Jars is an independent tool inspired by it.",
+          "The name, interface and code of Money Jars belong to the publisher. The 6-jar method is a creation of T. Harv Eker, author of “Secrets of the Millionaire Mind”; Money Jars is an independent tool inspired by it; it is not affiliated with or endorsed by T. Harv Eker.",
         ] },
         { h: "Nature of the service", p: [
           "Money Jars is a personal budgeting tool. It does not provide financial, tax, legal or investment advice.",
