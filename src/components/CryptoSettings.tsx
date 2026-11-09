@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { CryptoFav, loadCryptos, saveCryptos, fetchCryptosFromCloud, getDefaultCryptos } from "../cryptoUtils";
 
 import { useT } from "../i18n";
@@ -70,42 +70,15 @@ const CryptoSettings: React.FC = () => {
 
   const remove = (ticker: string) => commit(list.filter((c) => c.ticker !== ticker));
 
-  return (
-    <section className="settings-section">
-      <h3 className="settings-section-title">{t("settings.crypto.title")}</h3>
-      <p className="settings-section-desc">{t("settings.crypto.desc")}</p>
+  // L'éditeur s'ouvre À LA PLACE de la crypto modifiée (et non plus en bas de la liste, hors de l'écran) ;
+  // pour un ajout, il s'ouvre en bas de la liste.
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (draft) editorRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [draft?.original]); // eslint-disable-line react-hooks/exhaustive-deps
 
-      {list.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-          {list.map((c) => (
-            <div
-              key={c.ticker}
-              style={{
-                display: "flex", alignItems: "center", gap: 10,
-                padding: "10px 12px", borderRadius: 12,
-                border: "1px solid var(--border-color)", background: "var(--bg-body)",
-              }}
-            >
-              <span style={{ fontSize: 20 }} aria-hidden="true">🪙</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{c.ticker}</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {c.networks.length > 0 ? c.networks.join(" · ") : t("settings.crypto.noNetwork")}
-                  {c.stable ? t("settings.crypto.stable") : ""}
-                  {c.coingeckoId ? "" : t("settings.crypto.noLive")}
-                </div>
-              </div>
-              <button type="button" onClick={() => startEdit(c)} aria-label={t("settings.crypto.edit", { ticker: c.ticker })}
-                style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", padding: 6 }}>✏️</button>
-              <button type="button" onClick={() => remove(c.ticker)} aria-label={t("settings.crypto.remove", { ticker: c.ticker })}
-                style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", padding: 6, color: "var(--text-muted)" }}>✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {draft ? (
-        <div className="crypto-edit">
+  const editor = draft ? (
+    <div className="crypto-edit" ref={editorRef}>
           <div className="form-group-inline">
             <label className="form-label-inline">{t("settings.crypto.ticker")}</label>
             <input
@@ -196,7 +169,45 @@ const CryptoSettings: React.FC = () => {
             </button>
           </div>
         </div>
-      ) : (
+  ) : null;
+
+  return (
+    <section className="settings-section">
+      <h3 className="settings-section-title">{t("settings.crypto.title")}</h3>
+      <p className="settings-section-desc">{t("settings.crypto.desc")}</p>
+
+      {list.length > 0 && (
+        <div className="crypto-list" style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+          {list.map((c) => (draft && draft.original === c.ticker ? (
+            <React.Fragment key={c.ticker}>{editor}</React.Fragment>
+          ) : (
+            <div
+              key={c.ticker}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 12px", borderRadius: 12,
+                border: "1px solid var(--border-color)", background: "var(--bg-body)",
+              }}
+            >
+              <span style={{ fontSize: 20 }} aria-hidden="true">🪙</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: "var(--text-main)" }}>{c.ticker}</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  {c.networks.length > 0 ? c.networks.join(" · ") : t("settings.crypto.noNetwork")}
+                  {c.stable ? t("settings.crypto.stable") : ""}
+                  {c.coingeckoId ? "" : t("settings.crypto.noLive")}
+                </div>
+              </div>
+              <button type="button" onClick={() => startEdit(c)} aria-label={t("settings.crypto.edit", { ticker: c.ticker })}
+                style={{ border: "none", background: "none", fontSize: 18, cursor: "pointer", padding: 6 }}>✏️</button>
+              <button type="button" onClick={() => remove(c.ticker)} aria-label={t("settings.crypto.remove", { ticker: c.ticker })}
+                style={{ border: "none", background: "none", fontSize: 16, cursor: "pointer", padding: 6, color: "var(--text-muted)" }}>✕</button>
+            </div>
+          )))}
+        </div>
+      )}
+
+      {draft ? (draft.original === null ? editor : null) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <button type="button" className="settings-btn settings-btn-add settings-btn-small" onClick={() => { setError(null); setDraft(emptyDraft); }}>
             {t("settings.crypto.addCrypto")}
