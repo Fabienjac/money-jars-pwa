@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./_load.mjs";
 
-const { checkAccountTransfer, parseTransferAmount, transferFlows, accountBalance } = await loadTs("src/accountTransfers.ts");
+const { checkAccountTransfer, parseTransferAmount, transferFlows, accountBalance, convertTransferAmount } = await loadTs("src/accountTransfers.ts");
 
 test("contrôle : comptes manquants, même compte (casse et espaces ignorés), montant invalide", () => {
   assert.equal(checkAccountTransfer({ from: "Keystone", to: "Redotpay", amount: 100 }), null);
@@ -76,4 +76,23 @@ test("les virements ne créent ni ne détruisent d'argent : la somme des soldes 
     without += accountBalance(v);
   }
   assert.equal(Math.round(withT * 100), Math.round(without * 100));
+});
+
+test("virement dans une autre devise : le cours est exigé, la conversion arrondie au centime", () => {
+  const base = { from: "Keystone", to: "Redotpay" };
+  assert.equal(checkAccountTransfer({ ...base, amount: 500, foreign: true, rate: 0.86 }), null);
+  assert.equal(checkAccountTransfer({ ...base, amount: 500, foreign: true, rate: null }), "rate");
+  assert.equal(checkAccountTransfer({ ...base, amount: 500, foreign: true }), "rate");
+  assert.equal(checkAccountTransfer({ ...base, amount: 500, foreign: true, rate: 0 }), "rate");
+  assert.equal(checkAccountTransfer({ ...base, amount: 500, foreign: true, rate: NaN }), "rate");
+  assert.equal(checkAccountTransfer({ ...base, amount: 0, foreign: true, rate: 0.86 }), "amount");
+  assert.equal(checkAccountTransfer({ ...base, amount: 0.001, foreign: true, rate: 0.5 }), "amount"); // < 1 centime une fois converti
+  assert.equal(checkAccountTransfer({ ...base, amount: 500 }), null); // devise de référence : pas de cours
+  assert.equal(checkAccountTransfer({ from: "", to: "B", amount: 5, foreign: true, rate: 1 }), "empty"); // les autres contrôles passent d'abord
+  assert.equal(convertTransferAmount(472.89, 0.8624), 407.82);
+  assert.equal(convertTransferAmount(1000, 0.86), 860);
+  assert.equal(convertTransferAmount(0.1, 3), 0.3);
+  assert.ok(Number.isNaN(convertTransferAmount(100, null)));
+  assert.ok(Number.isNaN(convertTransferAmount(100, 0)));
+  assert.ok(Number.isNaN(convertTransferAmount(-1, 0.9)));
 });

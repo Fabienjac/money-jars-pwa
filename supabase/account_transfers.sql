@@ -23,3 +23,10 @@ create policy "users_own_account_transfers" on account_transfers for all
 
 -- L'utilisateur crée, lit et annule (supprime) ses virements ; pas de modification : on annule et on refait.
 grant select, insert, delete on account_transfers to authenticated;
+
+-- Virement dans une autre devise (ex. 472,89 USDC) : `amount` reste le montant converti dans la devise de référence
+-- (c'est lui qui entre dans les soldes) ; on garde en plus le montant d'origine, sa devise et le cours utilisé.
+-- Sans risque à réexécuter : « if not exists », les virements déjà saisis restent tels quels.
+alter table account_transfers add column if not exists original_amount   numeric(24,8) check (original_amount is null or original_amount > 0);
+alter table account_transfers add column if not exists original_currency text;
+alter table account_transfers add column if not exists rate              numeric(24,10) check (rate is null or rate > 0);

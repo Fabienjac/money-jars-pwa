@@ -9,25 +9,40 @@ export interface AccountTransfer {
   id: string;
   from: string;
   to: string;
-  /** Montant dans la devise de référence, > 0. */
+  /** Montant dans la devise de référence, > 0 : c'est lui qui entre dans les soldes. */
   amount: number;
+  /** Montant réellement viré, dans sa devise (USDC, USD…) ; absent si le virement est déjà dans la devise de référence. */
+  originalAmount?: number;
+  originalCurrency?: string;
+  /** Cours utilisé : 1 unité de la devise d'origine = `rate` unités de la devise de référence. */
+  rate?: number;
   /** AAAA-MM-JJ. */
   date: string;
   note: string;
 }
 
-export type AccountTransferError = "empty" | "sameAccount" | "amount";
+export type AccountTransferError = "empty" | "sameAccount" | "amount" | "rate";
 
 const clean = (s: string | null | undefined) => String(s ?? "").trim().replace(/\s+/g, " ");
 
 /** Contrôle d'un virement avant enregistrement ; null = valide. Deux écritures du même compte (casse, espaces) = même compte. */
-export function checkAccountTransfer(input: { from: string; to: string; amount: number }): AccountTransferError | null {
+export function checkAccountTransfer(input: { from: string; to: string; amount: number; /** Cours exigé quand le montant saisi est dans une autre devise. */ rate?: number | null; foreign?: boolean }): AccountTransferError | null {
   const from = clean(input.from);
   const to = clean(input.to);
   if (!from || !to) return "empty";
   if (accountKey(from) === accountKey(to)) return "sameAccount";
-  if (!Number.isFinite(input.amount) || Math.round(input.amount * 100) <= 0) return "amount";
+  if (!Number.isFinite(input.amount) || input.amount <= 0) return "amount";
+  if (input.foreign) {
+    if (input.rate == null || !Number.isFinite(input.rate) || input.rate <= 0) return "rate";
+    if (Math.round(input.amount * input.rate * 100) <= 0) return "amount";
+  } else if (Math.round(input.amount * 100) <= 0) return "amount";
   return null;
+}
+
+/** Montant dans la devise de référence : montant d'origine × cours, arrondi au centime. NaN si le cours est inutilisable. */
+export function convertTransferAmount(original: number, rate: number | null | undefined): number {
+  if (!Number.isFinite(original) || original <= 0 || rate == null || !Number.isFinite(rate) || rate <= 0) return NaN;
+  return Math.round(original * rate * 100) / 100;
 }
 
 /** Montant saisi (« 1 500,50 », « 1500.5 »…) → nombre, NaN si illisible. */

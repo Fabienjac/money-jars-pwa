@@ -705,17 +705,20 @@ export async function fetchAccountTransfers(): Promise<AccountTransfer[] | null>
     const data = await fetchAllPages((from, to) =>
       supabase
         .from("account_transfers")
-        .select("id, from_account, to_account, amount, transfer_date, note")
+        .select("*") // « * » : fonctionne aussi tant que les colonnes de devise d'origine ne sont pas créées
         .eq("user_id", user.id)
         .order("id", { ascending: true })
         .range(from, to)
     );
     return data
-      .map((r) => ({
+      .map((r): AccountTransfer => ({
         id: String(r.id),
         from: String(r.from_account ?? ""),
         to: String(r.to_account ?? ""),
         amount: Number(r.amount),
+        ...(r.original_amount != null && r.original_currency
+          ? { originalAmount: Number(r.original_amount), originalCurrency: String(r.original_currency), rate: r.rate != null ? Number(r.rate) : undefined }
+          : {}),
         date: String(r.transfer_date ?? ""),
         note: String(r.note ?? ""),
       }))
@@ -726,7 +729,11 @@ export async function fetchAccountTransfers(): Promise<AccountTransfer[] | null>
   }
 }
 
-export async function addAccountTransfer(input: { from: string; to: string; amount: number; date?: string; note?: string }): Promise<{ ok: boolean; error?: string }> {
+/** `amount` : montant dans la devise de référence. `original` : montant réellement viré (autre devise) et cours utilisé. */
+export async function addAccountTransfer(input: {
+  from: string; to: string; amount: number; date?: string; note?: string;
+  original?: { amount: number; currency: string; rate: number };
+}): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("account_transfers").insert({
@@ -735,6 +742,7 @@ export async function addAccountTransfer(input: { from: string; to: string; amou
     to_account: input.to.trim().replace(/\s+/g, " "),
     amount: round2(input.amount),
     ...(input.date ? { transfer_date: input.date } : {}),
+    ...(input.original ? { original_amount: input.original.amount, original_currency: input.original.currency.toUpperCase(), rate: input.original.rate } : {}),
     note: (input.note ?? "").trim().slice(0, 200),
   });
   if (error) return { ok: false, error: error.message };

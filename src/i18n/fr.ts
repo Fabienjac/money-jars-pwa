@@ -1087,6 +1087,12 @@ const fr = {
   "atr.err.save": "Opération impossible pour le moment. Réessaie plus tard.",
   "stats.transfers": "Virements",
   "stats.transfersTitle": "Reçus : {in} · Envoyés : {out}",
+  "atr.currency": "Devise",
+  "atr.rate": "Cours : 1 {cur} = ? {base}",
+  "atr.convertedLabel": "Montant converti",
+  "atr.rateHint": "Cours du jour du virement, repris automatiquement ; tu peux le corriger.",
+  "atr.rateFailed": "Cours introuvable : saisis-le à la main.",
+  "atr.err.rate": "Indique le cours de conversion.",
 } as const;
 
 export default fr;

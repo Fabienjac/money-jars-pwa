@@ -1089,6 +1089,12 @@ const en: Record<keyof typeof fr, string> = {
   "atr.err.save": "Operation failed. Please try again later.",
   "stats.transfers": "Transfers",
   "stats.transfersTitle": "Received: {in} · Sent: {out}",
+  "atr.currency": "Currency",
+  "atr.rate": "Rate: 1 {cur} = ? {base}",
+  "atr.convertedLabel": "Converted amount",
+  "atr.rateHint": "Rate on the transfer date, filled in automatically; you can adjust it.",
+  "atr.rateFailed": "Rate not found: enter it by hand.",
+  "atr.err.rate": "Enter the conversion rate.",
 };
 
 export default en;

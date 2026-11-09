@@ -1,10 +1,12 @@
 // Réglages : virements entre comptes (ex. de Keystone vers Redotpay). Ni revenu ni dépense : seuls les soldes des deux
 // comptes changent, dans Analyses > Par compte. Calculs : src/accountTransfers.ts.
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addAccountTransfer, deleteAccountTransfer, fetchAccountTransfers, fetchAllRevenuesCached, getAccounts } from "../api";
 import { accountKey } from "../accountMerge";
-import { checkAccountTransfer, parseTransferAmount, type AccountTransfer } from "../accountTransfers";
-import { currencySymbol as curSym, formatMoney } from "../baseCurrency";
+import { checkAccountTransfer, convertTransferAmount, parseTransferAmount, type AccountTransfer } from "../accountTransfers";
+import { getRateToBase } from "../exchangeRate";
+import { ALL_CURRENCIES } from "../currencyUtils";
+import { currencySymbol as curSym, formatMoney, getBaseCurrency, useBaseCurrency } from "../baseCurrency";
 import { loadAccounts } from "../accountsUtils";
 import { localeTag, t, useT } from "../i18n";
 
@@ -19,13 +21,26 @@ const shortDate = (iso: string) => {
   return new Date(y, m - 1, d).toLocaleDateString(localeTag(), { day: "numeric", month: "short", year: "numeric" });
 };
 
+const num = (n: number, max = 2) => n.toLocaleString(localeTag(), { minimumFractionDigits: 0, maximumFractionDigits: max });
+
+/** Devises proposées : la devise de référence, les stablecoins des virements crypto, puis toutes les autres. */
+function currencyChoices(base: string): string[] {
+  const all = ALL_CURRENCIES.map((c) => c.code);
+  return Array.from(new Set([base, "USDC", "USDT", "USD", ...all]));
+}
+
 const AccountTransfers: React.FC = () => {
   useT();
+  const base = useBaseCurrency();
   const [transfers, setTransfers] = useState<AccountTransfer[] | null | undefined>(undefined); // undefined = chargement, null = table absente
   const [known, setKnown] = useState<string[]>([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
+  const [currency, setCurrency] = useState(() => getBaseCurrency());
+  const [rateText, setRateText] = useState("");
+  const [rateState, setRateState] = useState<"idle" | "loading" | "failed">("idle");
+  const rateTouched = useRef(false);
   const [date, setDate] = useState(todayISO);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -52,8 +67,35 @@ const AccountTransfers: React.FC = () => {
     })();
   }, [load]);
 
-  const parsed = parseTransferAmount(amount);
-  const error = useMemo(() => checkAccountTransfer({ from, to, amount: parsed }), [from, to, parsed]);
+  // La devise de référence peut changer dans les Réglages : on la suit tant qu'on n'a pas choisi autre chose
+  const foreign = currency !== base;
+
+  // Cours du jour du virement (fiat : taux historique ; crypto : prix CoinGecko), modifiable à la main
+  useEffect(() => {
+    if (!foreign) { setRateState("idle"); return; }
+    rateTouched.current = false;
+    let alive = true;
+    setRateState("loading");
+    getRateToBase(currency, date).then((r) => {
+      if (!alive || rateTouched.current) return;
+      if (r && r > 0) {
+        setRateText(String(Math.round(r * 1e6) / 1e6).replace(".", ","));
+        setRateState("idle");
+      } else {
+        setRateText("");
+        setRateState("failed");
+      }
+    });
+    return () => { alive = false; };
+  }, [currency, date, foreign]);
+
+  const typed = parseTransferAmount(amount);
+  const rate = foreign ? parseTransferAmount(rateText) : 1;
+  const baseAmount = foreign ? convertTransferAmount(typed, rate) : typed;
+  const error = useMemo(
+    () => checkAccountTransfer({ from, to, amount: typed, foreign, rate: Number.isFinite(rate) ? rate : null }),
+    [from, to, typed, foreign, rate]
+  );
 
   const flash = (text: string, ok: boolean) => {
     setMessage({ text, ok });
@@ -65,7 +107,10 @@ const AccountTransfers: React.FC = () => {
     setTouched(true);
     if (busy || error) return;
     setBusy(true);
-    const res = await addAccountTransfer({ from, to, amount: parsed, date, note });
+    const res = await addAccountTransfer({
+      from, to, amount: foreign ? baseAmount : typed, date, note,
+      ...(foreign ? { original: { amount: typed, currency, rate } } : {}),
+    });
     setBusy(false);
     if (!res.ok) {
       flash(t("atr.err.save"), false);
@@ -73,6 +118,7 @@ const AccountTransfers: React.FC = () => {
     }
     setAmount("");
     setNote("");
+    setCurrency(base);
     setTouched(false);
     flash(t("atr.saved"), true);
     await load();
@@ -114,22 +160,51 @@ const AccountTransfers: React.FC = () => {
 
             <div className="jt-line">
               <label className="jt-field">
-                <span>{t("atr.amount")} ({curSym()})</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={amount}
-                  placeholder="0,00"
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="jar-input"
-                  aria-invalid={touched && error === "amount"}
-                />
+                <span>{t("atr.amount")}</span>
+                <span className="jt-amount">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={amount}
+                    placeholder="0,00"
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="jar-input"
+                    aria-invalid={touched && error === "amount"}
+                  />
+                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="jar-input" aria-label={t("atr.currency")}>
+                    {currencyChoices(base).map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </span>
               </label>
               <label className="jt-field">
                 <span>{t("atr.date")}</span>
                 <input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value || todayISO())} className="jar-input" />
               </label>
             </div>
+
+            {foreign && (
+              <div className="jt-line">
+                <label className="jt-field">
+                  <span>{t("atr.rate", { cur: currency, base: curSym() })}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={rateText}
+                    placeholder={rateState === "loading" ? "…" : "0,00"}
+                    onChange={(e) => { rateTouched.current = true; setRateText(e.target.value); }}
+                    className="jar-input"
+                    aria-invalid={touched && error === "rate"}
+                  />
+                </label>
+                <div className="jt-field">
+                  <span>{t("atr.convertedLabel")}</span>
+                  <strong className="atr-converted">{Number.isFinite(baseAmount) ? `≈ ${formatMoney(baseAmount)}` : "—"}</strong>
+                </div>
+              </div>
+            )}
+            {foreign && rateState === "failed" && <p className="jt-warn">{t("atr.rateFailed")}</p>}
+            {foreign && rateState !== "failed" && <p className="jt-hint">{t("atr.rateHint")}</p>}
+
             <label className="jt-field">
               <span>{t("atr.note")}</span>
               <input type="text" value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} className="jar-input" />
@@ -154,7 +229,12 @@ const AccountTransfers: React.FC = () => {
                     <span>{tr.from} → {tr.to}</span>
                     <span className="jt-meta">{shortDate(tr.date)}{tr.note ? ` · ${tr.note}` : ""}</span>
                   </span>
-                  <strong>{formatMoney(tr.amount)}</strong>
+                  <strong className="atr-amount">
+                    {formatMoney(tr.amount)}
+                    {tr.originalAmount != null && tr.originalCurrency && (
+                      <small>{num(tr.originalAmount, 8)} {tr.originalCurrency}{tr.rate ? ` × ${num(tr.rate, 6)}` : ""}</small>
+                    )}
+                  </strong>
                   <button type="button" className="push-btn push-btn--quiet" disabled={busy} onClick={() => onUndo(tr)}>
                     {t("atr.undo")}
                   </button>
