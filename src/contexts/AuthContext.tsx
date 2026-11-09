@@ -3,6 +3,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import { invalidateHistoryCache } from "../historyCache";
 import { getRef, shouldTagUser } from "../referral";
+import { clearAccountLocalDataSafe } from "../sessionCleanup";
 
 // Comptes déjà étiquetés pendant cette session (updateUser relance onAuthStateChange)
 const taggedUsers = new Set<string>();
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           fetchSubscription(session.user.id, session.user.email ?? undefined).catch(() => {});
         } else {
           setSubscription(null);
+          if (event === "SIGNED_OUT") clearAccountLocalDataSafe();
         }
       }
     );
@@ -141,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function signOut() {
     await supabase.auth.signOut();
     invalidateHistoryCache(); // les données de l'ancien compte ne restent pas en mémoire
+    clearAccountLocalDataSafe(); // ni dans le stockage local (totaux, étiquettes, budgets…) : l'appareil peut servir à un autre compte
   }
 
   async function refreshSubscription() {
