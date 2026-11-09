@@ -18,6 +18,7 @@ import { fetchAllPages } from "./paginate";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
 import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
 import { addTagTo } from "./exceptional";
+import type { AccountTransfer } from "./accountTransfers";
 import { adjustmentTotals, isJarKey, round2, transferDeltas, type JarAdjustment, type JarTransfer } from "./jarTransfers";
 
 // ── Helpers dates ──────────────────────────────────────────────────────────────
@@ -136,6 +137,10 @@ export async function bulkRenameSpendingAccount(
     .eq("account", oldName)
     .select("id");
   if (error) return { ok: false, count: 0, error: error.message };
+  // Les virements entre comptes désignent les comptes par leur nom : ils suivent le renommage (table absente = rien à faire)
+  for (const col of ["from_account", "to_account"] as const) {
+    await supabase.from("account_transfers").update({ [col]: newName }).eq("user_id", user.id).eq(col, oldName);
+  }
   clearCache("mjars:cache:totals", "mjars:cache:analytics", "mjars:cache:spendings");
   invalidateHistoryCache(); // l'écran Historique relira les données
   return { ok: true, count: data?.length ?? 0 };
@@ -687,6 +692,60 @@ export async function deleteJarTransfer(id: string): Promise<{ ok: boolean; erro
   const { error } = await supabase.from("jar_transfers").delete().eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
   clearCache("mjars:cache:totals");
+  return { ok: true };
+}
+
+// ── Virements entre comptes ────────────────────────────────────────────────────
+
+/** Virements de l'utilisateur, du plus récent au plus ancien. null = table absente (SQL à exécuter). */
+export async function fetchAccountTransfers(): Promise<AccountTransfer[] | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+  try {
+    const data = await fetchAllPages((from, to) =>
+      supabase
+        .from("account_transfers")
+        .select("id, from_account, to_account, amount, transfer_date, note")
+        .eq("user_id", user.id)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+    return data
+      .map((r) => ({
+        id: String(r.id),
+        from: String(r.from_account ?? ""),
+        to: String(r.to_account ?? ""),
+        amount: Number(r.amount),
+        date: String(r.transfer_date ?? ""),
+        note: String(r.note ?? ""),
+      }))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  } catch (e) {
+    if (e instanceof Error && TABLE_MISSING.test(e.message)) return null;
+    throw e;
+  }
+}
+
+export async function addAccountTransfer(input: { from: string; to: string; amount: number; date?: string; note?: string }): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("account_transfers").insert({
+    user_id: user.id,
+    from_account: input.from.trim().replace(/\s+/g, " "),
+    to_account: input.to.trim().replace(/\s+/g, " "),
+    amount: round2(input.amount),
+    ...(input.date ? { transfer_date: input.date } : {}),
+    note: (input.note ?? "").trim().slice(0, 200),
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export async function deleteAccountTransfer(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("account_transfers").delete().eq("id", id).eq("user_id", user.id);
+  if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
 

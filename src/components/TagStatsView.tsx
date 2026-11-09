@@ -2,7 +2,8 @@
 // Ordre de l'écran : résumé (le chiffre d'abord) → filtres repliables → liste unique des étiquettes (un clic filtre)
 // → graphique → comptes (reçu / dépensé / solde) → lien vers l'Historique avec les mêmes filtres.
 import React, { useEffect, useMemo, useState } from "react";
-import { fetchAllRevenuesCached, fetchAllSpendingsCached, fetchLifestylePrefs } from "../api";
+import { fetchAccountTransfers, fetchAllRevenuesCached, fetchAllSpendingsCached, fetchLifestylePrefs } from "../api";
+import { accountBalance, transferFlows, type AccountTransfer } from "../accountTransfers";
 import { JarKey, SearchRevenueResult, SearchSpendingResult } from "../types";
 import TagWeightPanel from "./TagWeightPanel";
 import { AdvancedTagStats } from "./AdvancedTagStats";
@@ -76,6 +77,7 @@ const TagStatsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [allTransactions, setAllTransactions] = useState<SearchSpendingResult[]>([]);
   const [allRevenues, setAllRevenues] = useState<SearchRevenueResult[]>([]);
+  const [allTransfers, setAllTransfers] = useState<AccountTransfer[]>([]);
   const [oneOffTags, setOneOffTags] = useState<string[]>([EXCEPTIONAL_TAG_ID]);
   // Les filtres sont conservés le temps de la session : on les retrouve en revenant d'un autre écran (Historique…)
   const [filters, setFilters] = useState<AnalyticsFilters>(() => { try { return loadFilters(sessionStorage); } catch { return DEFAULT_ANALYTICS_FILTERS; } });
@@ -90,12 +92,13 @@ const TagStatsView: React.FC = () => {
       setLoading(true);
       try {
         // Tout l'historique (l'ancienne lecture s'arrêtait à 500 lignes) ; lecture partagée avec l'Historique
-        const [sp, rev, prefs] = await Promise.all([
-          fetchAllSpendingsCached(), fetchAllRevenuesCached(), fetchLifestylePrefs().catch(() => null),
+        const [sp, rev, prefs, xfers] = await Promise.all([
+          fetchAllSpendingsCached(), fetchAllRevenuesCached(), fetchLifestylePrefs().catch(() => null), fetchAccountTransfers().catch(() => null),
         ]);
         if (!alive) return;
         setAllTransactions(sp);
         setAllRevenues(rev);
+        setAllTransfers(xfers ?? []);
         setOneOffTags(Array.from(new Set([EXCEPTIONAL_TAG_ID, ...(prefs?.extraordinaryTags ?? [])])));
       } catch (err) {
         console.error("Erreur chargement données:", err);
@@ -160,17 +163,27 @@ const TagStatsView: React.FC = () => {
   const accountRows = useMemo(() => {
     const received = computeReceivedByAccount(filterByPeriod(allRevenues, filters, now), NO_ADV_FILTERS);
     const spent = sumByName(filtered, (s) => s.account, (s) => s.amount);
+    // Virements de la même période (leur date AAAA-MM-JJ est lue comme celle des revenus)
+    const flows = transferFlows(filterByPeriod(allTransfers.map((x) => ({ ...x })), filters, now));
+    const flowByKey = new Map(flows.map((f) => [f.key, f]));
     return mergeAccountLines(
       [
         ...Object.entries(received).map(([name, r]) => ({ name, received: r, spent: 0 })),
         ...Object.entries(spent).map(([name, s]) => ({ name, received: 0, spent: s })),
+        ...flows.map((f) => ({ name: f.name, received: 0, spent: 0 })), // un compte qui n'a que des virements apparaît aussi
       ],
       loadAccounts().map((a) => a.name)
     )
-      .filter((m) => Math.abs(m.received) > 0.005 || Math.abs(m.spent) > 0.005) // un compte sans mouvement n'apporte rien
-      .map((m) => ({ ...m, balance: m.received - m.spent, tagStats: calculateTagStats(filtered.filter((s) => accountKey(s.account) === m.key)) }))
+      .map((m) => {
+        const f = flowByKey.get(m.key);
+        const transfersIn = f?.in ?? 0;
+        const transfersOut = f?.out ?? 0;
+        return { ...m, transfersIn, transfersOut, balance: accountBalance({ received: m.received, spent: m.spent, transfersIn, transfersOut }) };
+      })
+      .filter((m) => Math.abs(m.received) > 0.005 || Math.abs(m.spent) > 0.005 || m.transfersIn > 0.005 || m.transfersOut > 0.005) // un compte sans mouvement n'apporte rien
+      .map((m) => ({ ...m, tagStats: calculateTagStats(filtered.filter((s) => accountKey(s.account) === m.key)) }))
       .sort((a, b) => b.balance - a.balance);
-  }, [allRevenues, filtered, filters, now]);
+  }, [allRevenues, allTransfers, filtered, filters, now]);
 
   // ── Actions ─────────────────────────────────────────────────────────
   const openHistory = (tagOverride?: string) => {
@@ -335,6 +348,14 @@ const TagStatsView: React.FC = () => {
                 <div className="stats-account-flows">
                   <span><small>{tr("stats.received")}</small> <b className="is-pos">{money(row.received)}</b></span>
                   <span><small>{tr("stats.spent")}</small> <b className="is-neg">{money(row.spent)}</b></span>
+                  {(row.transfersIn > 0.005 || row.transfersOut > 0.005) && (
+                    <span title={tr("stats.transfersTitle", { in: money(row.transfersIn), out: money(row.transfersOut) })}>
+                      <small>{tr("stats.transfers")}</small>{" "}
+                      <b className={row.transfersIn - row.transfersOut >= 0 ? "is-pos" : "is-neg"}>
+                        {row.transfersIn - row.transfersOut >= 0 ? "+" : "−"}{money(Math.abs(row.transfersIn - row.transfersOut))}
+                      </b>
+                    </span>
+                  )}
                 </div>
                 {row.tagStats.length > 0 && (
                   <details className="stats-account-tags">

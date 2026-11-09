@@ -7,6 +7,7 @@ export const EXPORT_TABLES = [
   "transactions_revenue",
   "jar_transfers",
   "jar_adjustments",
+  "account_transfers",
   "jar_settings",
   "tags",
   "accounts",
