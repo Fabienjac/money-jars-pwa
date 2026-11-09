@@ -1,7 +1,8 @@
 // src/components/JarsViewV2.tsx
 // NOUVELLE VERSION - UX Optimisée pour usage mobile quotidien
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince, fetchLifestylePrefs, fetchDismissedSubscriptions } from "../api";
+import { fetchTotals, fetchAnalytics, AnalyticsResponse, fetchUserBudgetPrefs, saveUserBudgetPrefs, fetchEntryTimestamps, fetchSpendingRowsSince, fetchLifestylePrefs, fetchDismissedSubscriptions, fetchJarSettings } from "../api";
+import { splitFromSettings } from "../jarSplit";
 import { detectRecurring } from "../subscriptions";
 import { totalUpcoming, upcomingCharges } from "../upcomingCharges";
 import { OPEN_ANALYTICS_EVENT, saveTab } from "../analyticsState";
@@ -56,16 +57,7 @@ function loadJarSplitFromSettings(): Record<JarKey, number> | null {
   try {
     const raw = localStorage.getItem(JAR_SETTINGS_STORAGE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as any[];
-    const map: Partial<Record<JarKey, number>> = {};
-    parsed.forEach((j) => {
-      const key = j?.key as JarKey | undefined;
-      const pct = Number(j?.percent);
-      if (key && !isNaN(pct)) {
-        map[key] = pct / 100;
-      }
-    });
-    return map as Record<JarKey, number>;
+    return splitFromSettings(JSON.parse(raw)) as Record<JarKey, number> | null;
   } catch {
     return null;
   }
@@ -200,7 +192,17 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
   };
 
   useEffect(() => {
-    setCustomSplit(loadJarSplitFromSettings());
+    const localSplit = loadJarSplitFromSettings();
+    setCustomSplit(localSplit);
+    if (!localSplit) {
+      // Pas de copie locale (nouvel appareil, déconnexion, stockage vidé) : on relit les réglages dans le cloud
+      fetchJarSettings().then((rows) => {
+        const cloudSplit = rows ? (splitFromSettings(rows) as Record<JarKey, number> | null) : null;
+        if (!cloudSplit) return;
+        setCustomSplit(cloudSplit);
+        try { localStorage.setItem(JAR_SETTINGS_STORAGE_KEY, JSON.stringify(rows)); } catch { /* sans importance */ }
+      }).catch(() => {});
+    }
     loadAnalytics();
 
     // Charger les préférences budget depuis Supabase (cross-device)
