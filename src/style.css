@@ -4176,6 +4176,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .data-account-danger-open { align-self: flex-start; color: #FF3B30; border-color: #FF3B30; }
 .data-account-danger { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; border: 1.5px solid #FF3B30; background: #FF3B3010; font-size: 14px; line-height: 1.45; color: var(--text-main); }
 .data-account-danger p { margin: 0; }
+.data-account-cancelsub { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.data-account-cancelsub input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; accent-color: var(--jar-nec); }
 .data-account-confirm { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
 .data-account-confirm input { padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--border-color); background: var(--bg-card); color: var(--text-main); font-family: inherit; font-size: 15px; }
 .data-account-delete { background: #FF3B30; border-color: #FF3B30; color: #fff; }

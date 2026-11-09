@@ -1,7 +1,7 @@
 // Réglages > Compte : télécharger toutes ses données, supprimer son compte.
 import React, { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { deleteMyAccount, fetchExportTables } from "../api";
+import { deleteMyAccount, fetchExportTables, openBillingPortal } from "../api";
 import { EXPORT_TABLES, buildExport, exportFileName, revenuesCsv, spendingsCsv } from "../dataExport";
 import { t as tr, localeTag, useLang } from "../i18n";
 
@@ -30,7 +30,11 @@ type ExportKind = "all" | "spendings" | "revenues";
 
 const DataAccountSection: React.FC = () => {
   useLang();
-  const { user, signOut } = useAuth();
+  const { user, signOut, subscription } = useAuth();
+  const paying = subscription?.plan === "active";
+  const [cancelSub, setCancelSub] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
+  const [portalError, setPortalError] = useState<string | null>(null);
   const [busy, setBusy] = useState<ExportKind | null>(null);
   const [note, setNote] = useState<{ text: string; ok: boolean } | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -73,8 +77,25 @@ const DataAccountSection: React.FC = () => {
     }
   };
 
+  const openPortal = async () => {
+    if (portalBusy) return;
+    setPortalBusy(true);
+    setPortalError(null);
+    const res = await openBillingPortal();
+    if (res.ok) {
+      window.location.assign(res.url);
+      return;
+    }
+    setPortalError(res.code === "no_customer" ? tr("sub.noCustomer") : res.code === "not_configured" ? tr("sub.notConfigured") : tr("sub.error"));
+    setPortalBusy(false);
+  };
+
   const confirmDelete = async () => {
     if (deleting) return;
+    if (paying && !cancelSub) {
+      setDeleteError(tr("acct.deleteActiveSub"));
+      return;
+    }
     const typed = confirmEmail.trim().toLowerCase();
     if (!typed || typed !== (user?.email ?? "").trim().toLowerCase()) {
       setDeleteError(tr("acct.deleteMismatch"));
@@ -82,7 +103,7 @@ const DataAccountSection: React.FC = () => {
     }
     setDeleting(true);
     setDeleteError(null);
-    const res = await deleteMyAccount(confirmEmail);
+    const res = await deleteMyAccount(confirmEmail, paying && cancelSub);
     if (res.ok) {
       wipeLocalData();
       try { await signOut(); } catch { /* le compte n'existe plus : la session locale est déjà effacée */ }
@@ -91,6 +112,7 @@ const DataAccountSection: React.FC = () => {
     }
     setDeleteError(
       res.code === "active_subscription" ? tr("acct.deleteActiveSub")
+        : res.code === "stripe_cancel_failed" || res.code === "not_configured" ? tr("acct.deleteCancelFailed")
         : res.code === "confirm_mismatch" ? tr("acct.deleteMismatch")
           : tr("acct.deleteError")
     );
@@ -114,6 +136,19 @@ const DataAccountSection: React.FC = () => {
       </div>
       {note && <p className={`data-account-note${note.ok ? "" : " is-error"}`} role="status">{note.text}</p>}
 
+      {paying && (
+        <>
+          <h3 className="data-account-title">{tr("sub.title")}</h3>
+          <p className="settings-section-desc">{tr("sub.hint")}</p>
+          <div className="data-account-buttons">
+            <button type="button" className="settings-btn" onClick={openPortal} disabled={portalBusy}>
+              {portalBusy ? tr("sub.opening") : tr("sub.manage")}
+            </button>
+          </div>
+          {portalError && <p className="data-account-note is-error" role="alert">{portalError}</p>}
+        </>
+      )}
+
       <h3 className="data-account-title data-account-danger-title">{tr("acct.deleteTitle")}</h3>
       {!deleteOpen ? (
         <button type="button" className="settings-btn data-account-danger-open" onClick={() => setDeleteOpen(true)}>
@@ -123,6 +158,12 @@ const DataAccountSection: React.FC = () => {
         <div className="data-account-danger" role="group" aria-label={tr("acct.deleteTitle")}>
           <p>{tr("acct.deleteWarn")}</p>
           <p>{tr("acct.deleteExportFirst")}</p>
+          {paying && (
+            <label className="data-account-cancelsub">
+              <input type="checkbox" checked={cancelSub} onChange={(e) => { setCancelSub(e.target.checked); setDeleteError(null); }} />
+              <span>{tr("acct.cancelSubLabel")}</span>
+            </label>
+          )}
           <label className="data-account-confirm">
             <span>{tr("acct.deleteConfirmLabel", { email: user?.email ?? "" })}</span>
             <input
@@ -141,7 +182,7 @@ const DataAccountSection: React.FC = () => {
             <button type="button" className="settings-btn data-account-delete" onClick={confirmDelete} disabled={deleting}>
               {deleting ? tr("acct.deleting") : tr("acct.deleteButton")}
             </button>
-            <button type="button" className="settings-btn" onClick={() => { setDeleteOpen(false); setConfirmEmail(""); setDeleteError(null); }} disabled={deleting}>
+            <button type="button" className="settings-btn" onClick={() => { setDeleteOpen(false); setConfirmEmail(""); setCancelSub(false); setDeleteError(null); }} disabled={deleting}>
               {tr("set.cancelPlain")}
             </button>
           </div>

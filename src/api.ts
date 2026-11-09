@@ -377,20 +377,42 @@ export async function fetchExportTables(): Promise<{ email: string | null; table
  * Supprime définitivement le compte connecté et toutes ses données (fonction serveur : le client n'a pas le droit de
  * supprimer un utilisateur). `code` : "active_subscription" (abonnement payant à résilier d'abord) ou "confirm_mismatch".
  */
-export async function deleteMyAccount(confirmEmail: string): Promise<{ ok: boolean; code?: string; error?: string }> {
+export async function deleteMyAccount(confirmEmail: string, cancelSubscription = false): Promise<{ ok: boolean; code?: string; error?: string }> {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return { ok: false, error: t("err.notLoggedIn") };
   try {
     const res = await fetch("/.netlify/functions/deleteAccount", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
-      body: JSON.stringify({ confirmEmail }),
+      body: JSON.stringify({ confirmEmail, ...(cancelSubscription ? { cancelSubscription: true } : {}) }),
     });
     const body = await res.json().catch(() => ({}));
     if (res.ok && body.ok) {
       invalidateHistoryCache();
       return { ok: true };
     }
+    const code = typeof body.error === "string" ? body.error : undefined;
+    return { ok: false, code, error: code ?? "HTTP " + res.status };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Adresse du portail client Stripe (résilier, changer de formule, factures). `code` : "no_customer" (aucun paiement Stripe
+ * pour ce compte), "not_configured" (clé Stripe absente côté serveur), "stripe_error" / "stripe_unreachable".
+ */
+export async function openBillingPortal(): Promise<{ ok: true; url: string } | { ok: false; code?: string; error: string }> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { ok: false, error: t("err.notLoggedIn") };
+  try {
+    const res = await fetch("/.netlify/functions/manageSubscription", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: "{}",
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok && typeof body.url === "string") return { ok: true, url: body.url };
     const code = typeof body.error === "string" ? body.error : undefined;
     return { ok: false, code, error: code ?? "HTTP " + res.status };
   } catch (e) {

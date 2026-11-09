@@ -403,7 +403,7 @@ const fr = {
   "acct.deleteButton": "Supprimer définitivement",
   "acct.deleting": "Suppression…",
   "acct.deleteMismatch": "Cette adresse ne correspond pas à celle de ton compte.",
-  "acct.deleteActiveSub": "Ton abonnement payant est encore actif. Résilie-le d'abord (le lien de gestion est dans les e-mails de Stripe), puis reviens ici.",
+  "acct.deleteActiveSub": "Ton abonnement payant est encore actif : coche la case de résiliation ci-dessus, ou résilie-le d'abord depuis « Gérer mon abonnement ».",
   "acct.deleteError": "Suppression impossible pour le moment. Réessaie plus tard.",
   "set.destination": "Destination",
   "set.type": "Type",
@@ -1058,6 +1058,15 @@ const fr = {
   "auto.note": "Sans aucun revenu futur. Les déficits effacés par « Repartir de zéro » ne comptent pas comme de l'argent disponible.",
   "auto.months": "{n} mois",
   "auto.years": "{n} ans",
+  "sub.title": "Mon abonnement",
+  "sub.hint": "Résilier, changer de formule, mettre à jour ton moyen de paiement ou télécharger tes factures : tu passes par le portail sécurisé de Stripe.",
+  "sub.manage": "Gérer mon abonnement",
+  "sub.opening": "Ouverture…",
+  "sub.noCustomer": "Aucun paiement Stripe n'est rattaché à ce compte.",
+  "sub.notConfigured": "La gestion de l'abonnement n'est pas disponible pour le moment. Contacte-nous via le formulaire de suggestions.",
+  "sub.error": "Impossible d'ouvrir le portail pour le moment. Réessaie plus tard.",
+  "acct.cancelSubLabel": "Je résilie aussi mon abonnement, immédiatement et sans remboursement de la période en cours.",
+  "acct.deleteCancelFailed": "La résiliation de ton abonnement a échoué : ton compte n'a pas été supprimé. Résilie-le depuis « Gérer mon abonnement », puis réessaie.",
 } as const;
 
 export default fr;

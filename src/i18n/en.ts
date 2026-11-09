@@ -405,7 +405,7 @@ const en: Record<keyof typeof fr, string> = {
   "acct.deleteButton": "Delete permanently",
   "acct.deleting": "Deleting…",
   "acct.deleteMismatch": "That address doesn't match your account.",
-  "acct.deleteActiveSub": "Your paid subscription is still active. Cancel it first (the management link is in the Stripe emails), then come back here.",
+  "acct.deleteActiveSub": "Your paid subscription is still active: tick the cancellation box above, or cancel it first from \"Manage my subscription\".",
   "acct.deleteError": "Couldn't delete right now. Try again later.",
   "set.destination": "Destination",
   "set.type": "Type",
@@ -1060,6 +1060,15 @@ const en: Record<keyof typeof fr, string> = {
   "auto.note": "Assumes no future income. Deficits cleared with \"Start from zero\" do not count as available money.",
   "auto.months": "{n} months",
   "auto.years": "{n} years",
+  "sub.title": "My subscription",
+  "sub.hint": "Cancel, change plan, update your payment method or download invoices through Stripe's secure portal.",
+  "sub.manage": "Manage my subscription",
+  "sub.opening": "Opening…",
+  "sub.noCustomer": "No Stripe payment is linked to this account.",
+  "sub.notConfigured": "Subscription management is not available right now. Contact us through the suggestions form.",
+  "sub.error": "Could not open the portal right now. Please try again later.",
+  "acct.cancelSubLabel": "I also cancel my subscription, immediately and with no refund for the current period.",
+  "acct.deleteCancelFailed": "Cancelling your subscription failed: your account was not deleted. Cancel it from \"Manage my subscription\", then try again.",
 };
 
 export default en;
