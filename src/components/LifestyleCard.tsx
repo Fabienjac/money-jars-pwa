@@ -218,18 +218,8 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
   return (
     <section style={{ padding: "0 16px 12px" }}>
       <div style={cardStyle}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "8px", marginBottom: "4px" }}>
-          <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            {t("life.title")}
-          </div>
-          <button
-            type="button"
-            className="life-link"
-            aria-expanded={panelOpen}
-            onClick={() => setPanelOpen((v) => !v)}
-          >
-            {extraTags.length > 0 ? t("life.edit") : t("life.choose")}
-          </button>
+        <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
+          {t("life.title")}
         </div>
         <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>{t("life.subtitle")}</div>
 
@@ -332,6 +322,15 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
             {suggestError && <p className="life-suggest-error" role="alert">{t("life.suggestError")}</p>}
           </div>
         )}
+
+        <button
+          type="button"
+          className="life-link life-edit"
+          aria-expanded={panelOpen}
+          onClick={() => setPanelOpen((v) => !v)}
+        >
+          {extraTags.length > 0 ? t("life.edit") : t("life.choose")}
+        </button>
 
         {panelOpen && (
           <div className="life-panel" role="group" aria-label={t("life.panelTitle")}>

@@ -3798,6 +3798,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   min-height: 32px;
   padding: 0 4px;
 }
+.life-edit { display: block; margin-top: 8px; padding-left: 0; }
 .life-panel {
   margin-top: 14px;
   padding-top: 12px;
