@@ -1093,6 +1093,10 @@ const fr = {
   "atr.rateHint": "Cours du jour du virement, repris automatiquement ; tu peux le corriger.",
   "atr.rateFailed": "Cours introuvable : saisis-le à la main.",
   "atr.err.rate": "Indique le cours de conversion.",
+  "atr.groupCrypto": "Cryptos",
+  "atr.groupFiat": "Devises",
+  "atr.otherCurrency": "Autre…",
+  "atr.otherCurrencyLabel": "Autre devise",
 } as const;
 
 export default fr;

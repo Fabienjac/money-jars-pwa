@@ -5,7 +5,8 @@ import { addAccountTransfer, deleteAccountTransfer, fetchAccountTransfers, fetch
 import { accountKey } from "../accountMerge";
 import { checkAccountTransfer, convertTransferAmount, parseTransferAmount, type AccountTransfer } from "../accountTransfers";
 import { getRateToBase } from "../exchangeRate";
-import { ALL_CURRENCIES } from "../currencyUtils";
+import { ALL_CURRENCIES, loadPreferredCurrencies } from "../currencyUtils";
+import { loadCryptos } from "../cryptoUtils";
 import { currencySymbol as curSym, formatMoney, getBaseCurrency, useBaseCurrency } from "../baseCurrency";
 import { loadAccounts } from "../accountsUtils";
 import { localeTag, t, useT } from "../i18n";
@@ -23,11 +24,25 @@ const shortDate = (iso: string) => {
 
 const num = (n: number, max = 2) => n.toLocaleString(localeTag(), { minimumFractionDigits: 0, maximumFractionDigits: max });
 
-/** Devises proposées : la devise de référence, les stablecoins des virements crypto, puis toutes les autres. */
-function currencyChoices(base: string): string[] {
-  const all = ALL_CURRENCIES.map((c) => c.code);
-  return Array.from(new Set([base, "USDC", "USDT", "USD", ...all]));
+const OTHER = "__other__";
+const LAST_CURRENCY_KEY = "mjars:lastTransferCurrency";
+const CRYPTO_CODES = new Set(["BTC", "ETH", "USDT", "USDC", "SOL", "XRP", "ADA", "DOGE", "DOT", "MATIC", "LTC", "BCH", "XMR"]);
+
+/**
+ * Devises proposées, courtes et séparées : la devise de référence, tes cryptos favorites (Réglages), tes devises
+ * préférées (Réglages) ; toutes les autres sont derrière « Autre… ».
+ */
+function currencyLists(base: string): { cryptos: string[]; fiats: string[]; otherFiats: string[]; otherCryptos: string[] } {
+  const cryptos = loadCryptos().map((c) => c.ticker).filter((c) => c !== base);
+  const fiats = loadPreferredCurrencies().filter((c) => c !== base && !CRYPTO_CODES.has(c));
+  const shown = new Set([base, ...cryptos, ...fiats]);
+  const rest = ALL_CURRENCIES.map((c) => c.code).filter((c) => !shown.has(c));
+  return { cryptos, fiats, otherFiats: rest.filter((c) => !CRYPTO_CODES.has(c)), otherCryptos: rest.filter((c) => CRYPTO_CODES.has(c)) };
 }
+
+const readLastCurrency = (): string | null => {
+  try { return localStorage.getItem(LAST_CURRENCY_KEY); } catch { return null; }
+};
 
 const AccountTransfers: React.FC = () => {
   useT();
@@ -37,7 +52,7 @@ const AccountTransfers: React.FC = () => {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState(() => getBaseCurrency());
+  const [currency, setCurrency] = useState(() => readLastCurrency() || getBaseCurrency()); // la dernière devise utilisée (virements en USDC répétés)
   const [rateText, setRateText] = useState("");
   const [rateState, setRateState] = useState<"idle" | "loading" | "failed">("idle");
   const rateTouched = useRef(false);
@@ -69,6 +84,12 @@ const AccountTransfers: React.FC = () => {
 
   // La devise de référence peut changer dans les Réglages : on la suit tant qu'on n'a pas choisi autre chose
   const foreign = currency !== base;
+  const lists = useMemo(() => currencyLists(base), [base]);
+  const inShortList = currency === base || lists.cryptos.includes(currency) || lists.fiats.includes(currency);
+  const chooseCurrency = (c: string) => {
+    setCurrency(c);
+    try { localStorage.setItem(LAST_CURRENCY_KEY, c); } catch { /* sans importance */ }
+  };
 
   // Cours du jour du virement (fiat : taux historique ; crypto : prix CoinGecko), modifiable à la main
   useEffect(() => {
@@ -118,7 +139,6 @@ const AccountTransfers: React.FC = () => {
     }
     setAmount("");
     setNote("");
-    setCurrency(base);
     setTouched(false);
     flash(t("atr.saved"), true);
     await load();
@@ -171,8 +191,24 @@ const AccountTransfers: React.FC = () => {
                     className="jar-input"
                     aria-invalid={touched && error === "amount"}
                   />
-                  <select value={currency} onChange={(e) => setCurrency(e.target.value)} className="jar-input" aria-label={t("atr.currency")}>
-                    {currencyChoices(base).map((c) => <option key={c} value={c}>{c}</option>)}
+                  <select
+                    value={inShortList ? currency : OTHER}
+                    onChange={(e) => chooseCurrency(e.target.value === OTHER ? (lists.otherFiats[0] ?? lists.otherCryptos[0] ?? base) : e.target.value)}
+                    className="jar-input"
+                    aria-label={t("atr.currency")}
+                  >
+                    <option value={base}>{base}</option>
+                    {lists.cryptos.length > 0 && (
+                      <optgroup label={t("atr.groupCrypto")}>
+                        {lists.cryptos.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </optgroup>
+                    )}
+                    {lists.fiats.length > 0 && (
+                      <optgroup label={t("atr.groupFiat")}>
+                        {lists.fiats.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </optgroup>
+                    )}
+                    <option value={OTHER}>{t("atr.otherCurrency")}</option>
                   </select>
                 </span>
               </label>
@@ -181,6 +217,22 @@ const AccountTransfers: React.FC = () => {
                 <input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value || todayISO())} className="jar-input" />
               </label>
             </div>
+
+            {!inShortList && (
+              <label className="jt-field">
+                <span>{t("atr.otherCurrencyLabel")}</span>
+                <select value={currency} onChange={(e) => chooseCurrency(e.target.value)} className="jar-input">
+                  <optgroup label={t("atr.groupFiat")}>
+                    {lists.otherFiats.map((c) => <option key={c} value={c}>{c} · {ALL_CURRENCIES.find((x) => x.code === c)?.label}</option>)}
+                  </optgroup>
+                  {lists.otherCryptos.length > 0 && (
+                    <optgroup label={t("atr.groupCrypto")}>
+                      {lists.otherCryptos.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+              </label>
+            )}
 
             {foreign && (
               <div className="jt-line">

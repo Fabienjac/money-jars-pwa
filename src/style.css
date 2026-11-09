@@ -4188,3 +4188,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .data-account-confirm { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
 .data-account-confirm input { padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--border-color); background: var(--bg-card); color: var(--text-main); font-family: inherit; font-size: 15px; }
 .data-account-delete { background: #FF3B30; border-color: #FF3B30; color: #fff; }
+
+/* Réglages : répartition des jarres compacte (nom en tête, puis % et montant côte à côte) */
+.jars-grid { gap: 8px; }
+.jar-card { padding: 10px 12px; gap: 8px; border-radius: 14px; }
+.jar-card .jar-card-emoji { font-size: 20px; }
+.jar-card .jar-card-inputs { flex-direction: row; gap: 10px; }
+.jar-card .jar-input-row { flex: 1 1 0; min-width: 0; gap: 6px; }
+.jar-card .jar-input-label { display: none; }
+.jar-card .jar-input { min-height: 40px; padding: 6px 8px; min-width: 0; }
+.jar-card .jar-input-unit { width: auto; }

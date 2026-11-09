@@ -1095,6 +1095,10 @@ const en: Record<keyof typeof fr, string> = {
   "atr.rateHint": "Rate on the transfer date, filled in automatically; you can adjust it.",
   "atr.rateFailed": "Rate not found: enter it by hand.",
   "atr.err.rate": "Enter the conversion rate.",
+  "atr.groupCrypto": "Crypto",
+  "atr.groupFiat": "Currencies",
+  "atr.otherCurrency": "Other…",
+  "atr.otherCurrencyLabel": "Other currency",
 };
 
 export default en;

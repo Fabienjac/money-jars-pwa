@@ -575,6 +575,7 @@ const SettingsView: React.FC = () => {
                     value={jar.percent}
                     onChange={(e) => handlePercentChange(jar.key, e.target.value)}
                     className="jar-input"
+                    aria-label={`${JAR_LABELS[jar.key]} (%)`}
                   />
                   <span className="jar-input-unit">%</span>
                 </div>
@@ -587,6 +588,7 @@ const SettingsView: React.FC = () => {
                     value={jar.initialBalance}
                     onChange={(e) => handleBalanceChange(jar.key, e.target.value)}
                     className="jar-input"
+                    aria-label={`${JAR_LABELS[jar.key]} (${curSym()})`}
                   />
                   <span className="jar-input-unit">{curSym()}</span>
                 </div>
