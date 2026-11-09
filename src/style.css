@@ -4198,3 +4198,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .jar-card .jar-input-label { display: none; }
 .jar-card .jar-input { min-height: 40px; padding: 6px 8px; min-width: 0; }
 .jar-card .jar-input-unit { width: auto; }
+
+/* Pages légales */
+.legal-page { min-height: 100dvh; background: var(--bg-body); color: var(--text-main); padding: 24px 16px 64px; }
+.legal-inner { max-width: 720px; margin: 0 auto; line-height: 1.65; font-size: 15px; }
+.legal-inner h1 { font-size: 26px; margin: 12px 0 20px; }
+.legal-inner h2 { font-size: 17px; margin: 26px 0 8px; }
+.legal-inner p { margin: 0 0 10px; color: var(--text-main); }
+.legal-back { background: none; border: none; padding: 8px 0; min-height: 44px; font: inherit; font-weight: 600; color: var(--jar-nec); cursor: pointer; }
+.legal-others { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+.legal-others a { color: var(--jar-nec); }
+
+/* FAQ de la page de vente */
+.lp-faq { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 0 20px; margin-bottom: 10px; }
+.lp-faq summary { cursor: pointer; padding: 16px 0; font-size: 16px; font-weight: 600; color: #fff; list-style-position: outside; }
+.lp-faq p { margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: rgba(255,255,255,0.65); }

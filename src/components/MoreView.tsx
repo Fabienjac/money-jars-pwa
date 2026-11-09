@@ -72,6 +72,14 @@ const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, o
         </span>
         <span className="more-item-chevron">{feedbackOpen ? "⌄" : "›"}</span>
       </button>
+      <a className="more-item" href="#confidentialite">
+        <span className="more-item-icon">🔒</span>
+        <span className="more-item-text">
+          <span className="more-item-label">{t("more.legal")}</span>
+          <span className="more-item-sub">{t("more.legalSub")}</span>
+        </span>
+        <span className="more-item-chevron">›</span>
+      </a>
       <button type="button" className="more-item" onClick={onToggleDark}>
         <span className="more-item-icon">{darkMode ? "☀️" : "🌙"}</span>
         <span className="more-item-text">

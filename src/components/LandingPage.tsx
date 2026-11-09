@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { t as tr, useLang, setLang, LANGS, localeTag } from "../i18n";
+import { LEGAL_IDS } from "../legalContent";
+import { legalLabel } from "./LegalPage";
 
 const fmtEur = (n: number) =>
   new Intl.NumberFormat(localeTag(), { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
@@ -24,11 +26,11 @@ export function LandingPage({ onStart }: Props) {
       {/* ── Navigation ───────────────────────────────────────────────────── */}
       <nav style={{
         display: "flex", justifyContent: "space-between", alignItems: "center",
-        padding: "18px 24px", maxWidth: "900px", margin: "0 auto",
+        padding: "18px 16px", maxWidth: "900px", margin: "0 auto", gap: "8px",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "28px" }}>🏺</span>
-          <span style={{ fontSize: "18px", fontWeight: "700", color: "#fff" }}>Money Jars</span>
+          <span style={{ fontSize: "18px", fontWeight: "700", color: "#fff", whiteSpace: "nowrap" }}>Money Jars</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={{ display: "flex", gap: "4px" }}>
@@ -52,8 +54,8 @@ export function LandingPage({ onStart }: Props) {
         <button
           onClick={onStart}
           style={{
-            padding: "10px 22px", borderRadius: "20px", border: "1px solid rgba(255,255,255,0.3)",
-            background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: "14px",
+            padding: "10px 18px", borderRadius: "20px", border: "1px solid rgba(255,255,255,0.3)",
+            background: "rgba(255,255,255,0.1)", color: "#fff", fontSize: "14px", whiteSpace: "nowrap",
             fontWeight: "600", cursor: "pointer", backdropFilter: "blur(10px)",
           }}
         >
@@ -152,7 +154,7 @@ export function LandingPage({ onStart }: Props) {
       {/* ── Pour ceux qui connaissent ─────────────────────────────────────── */}
       <section style={{
         maxWidth: "900px", margin: "0 auto 80px", padding: "0 24px",
-        display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px",
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "20px",
       }}>
         <div style={{
           background: "rgba(0,122,255,0.08)", borderRadius: "24px", padding: "32px 28px",
@@ -190,9 +192,10 @@ export function LandingPage({ onStart }: Props) {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "20px" }}>
           {[
-            { icon: "🤖", title: tr("lp.f1t"), desc: tr("lp.f1d") },
+            { icon: "📂", title: tr("lp.f1t"), desc: tr("lp.f1d") },
             { icon: "🎙️", title: tr("lp.f2t"), desc: tr("lp.f2d") },
             { icon: "📊", title: tr("lp.f3t"), desc: tr("lp.f3d") },
+            { icon: "🛟", title: tr("lp.f7t"), desc: tr("lp.f7d") },
             { icon: "🔄", title: tr("lp.f4t"), desc: tr("lp.f4d") },
             { icon: "₿", title: tr("lp.f5t"), desc: tr("lp.f5d") },
             { icon: "📱", title: tr("lp.f6t"), desc: tr("lp.f6d") },
@@ -204,6 +207,30 @@ export function LandingPage({ onStart }: Props) {
               <div style={{ fontSize: "32px", marginBottom: "14px" }}>{f.icon}</div>
               <h3 style={{ fontSize: "17px", fontWeight: "700", margin: "0 0 10px" }}>{f.title}</h3>
               <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.6)", lineHeight: "1.6", margin: 0 }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Vos données vous appartiennent ───────────────────────────────── */}
+      <section style={{ maxWidth: "900px", margin: "0 auto 80px", padding: "0 24px" }}>
+        <h2 style={{ textAlign: "center", fontSize: "32px", fontWeight: "800", marginBottom: "40px" }}>
+          {tr("lp.trustTitle")}
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+          {[
+            { icon: "🏦", title: tr("lp.trust1t"), desc: tr("lp.trust1d") },
+            { icon: "📤", title: tr("lp.trust2t"), desc: tr("lp.trust2d") },
+            { icon: "🗑️", title: tr("lp.trust3t"), desc: tr("lp.trust3d") },
+            { icon: "✋", title: tr("lp.trust4t"), desc: tr("lp.trust4d") },
+          ].map(x => (
+            <div key={x.title} style={{
+              background: "rgba(108,203,119,0.06)", borderRadius: "18px", padding: "22px 20px",
+              border: "1px solid rgba(108,203,119,0.18)",
+            }}>
+              <div style={{ fontSize: "26px", marginBottom: "10px" }}>{x.icon}</div>
+              <h3 style={{ fontSize: "16px", fontWeight: "700", margin: "0 0 8px" }}>{x.title}</h3>
+              <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.6)", lineHeight: "1.55", margin: 0 }}>{x.desc}</p>
             </div>
           ))}
         </div>
@@ -232,12 +259,21 @@ export function LandingPage({ onStart }: Props) {
             {tr("lp.pricingBadge")}
           </div>
 
-          <div style={{ fontSize: "56px", fontWeight: "900", lineHeight: 1 }}>
-            {tr("pw.price")}
-            <span style={{ fontSize: "20px", fontWeight: "500", color: "rgba(255,255,255,0.55)" }}>{tr("pw.perMonth")}</span>
-          </div>
-          <div style={{ fontSize: "15px", color: "rgba(255,255,255,0.5)", margin: "8px 0 32px" }}>
-            {tr("pw.orYear")}
+          <div style={{ display: "flex", gap: "12px", justifyContent: "center", flexWrap: "wrap", margin: "0 0 28px" }}>
+            <div style={{ flex: "1 1 130px", padding: "16px 12px", borderRadius: "18px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{tr("lp.planMonthly")}</div>
+              <div style={{ fontSize: "32px", fontWeight: "900", lineHeight: 1.1 }}>
+                {tr("pw.price")}<span style={{ fontSize: "14px", fontWeight: "500", color: "rgba(255,255,255,0.55)" }}>{tr("pw.perMonth")}</span>
+              </div>
+            </div>
+            <div style={{ flex: "1 1 130px", padding: "16px 12px", borderRadius: "18px", background: "rgba(0,122,255,0.16)", border: "1px solid rgba(0,122,255,0.5)" }}>
+              <div style={{ fontSize: "12px", color: "#93c5fd", marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                {tr("lp.planYearly")} · {tr("lp.yearlySave")}
+              </div>
+              <div style={{ fontSize: "32px", fontWeight: "900", lineHeight: 1.1 }}>
+                69€<span style={{ fontSize: "14px", fontWeight: "500", color: "rgba(255,255,255,0.55)" }}>{tr("lp.perYear")}</span>
+              </div>
+            </div>
           </div>
 
           {[tr("pw.f1"), tr("pw.f2"), tr("pw.f3"), tr("pw.f4"), tr("pw.f5"), tr("lp.f6list")].map(f => (
@@ -262,7 +298,21 @@ export function LandingPage({ onStart }: Props) {
           >
             {tr("lp.startTrial")}
           </button>
+          <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.45)", margin: "14px 0 0" }}>{tr("lp.cancelNote")}</p>
         </div>
+      </section>
+
+      {/* ── FAQ ──────────────────────────────────────────────────────────── */}
+      <section style={{ maxWidth: "720px", margin: "0 auto 80px", padding: "0 24px" }}>
+        <h2 style={{ textAlign: "center", fontSize: "32px", fontWeight: "800", marginBottom: "32px" }}>
+          {tr("lp.faqTitle")}
+        </h2>
+        {[1, 2, 3, 4, 5, 6, 7, 8].map(n => (
+          <details key={n} className="lp-faq">
+            <summary>{tr(`lp.faq${n}q` as "lp.faq1q")}</summary>
+            <p>{tr(`lp.faq${n}a` as "lp.faq1a")}</p>
+          </details>
+        ))}
       </section>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}
@@ -278,9 +328,14 @@ export function LandingPage({ onStart }: Props) {
             Effivital
           </a>
         </p>
-        <p style={{ margin: 0 }}>
+        <p style={{ margin: "0 0 14px" }}>
           {tr("lp.credit")}
         </p>
+        <nav aria-label={tr("lp.legalTitle")} style={{ display: "flex", gap: "8px 18px", justifyContent: "center", flexWrap: "wrap" }}>
+          {LEGAL_IDS.map(id => (
+            <a key={id} href={`#${id}`} style={{ color: "rgba(255,255,255,0.5)", textDecoration: "underline" }}>{legalLabel(id)}</a>
+          ))}
+        </nav>
       </footer>
     </div>
   );

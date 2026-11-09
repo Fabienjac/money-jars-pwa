@@ -12,6 +12,8 @@ import { ImportSuccessScreen } from "./components/ImportSuccessScreen";
 import { OfflineIndicator } from "./components/OfflineIndicator";
 import { AuthScreen } from "./components/AuthScreen";
 import { LandingPage } from "./components/LandingPage";
+import LegalPage, { readLegalHash } from "./components/LegalPage";
+import type { LegalDocId } from "./legalContent";
 import { OnboardingFlow } from "./components/OnboardingFlow";
 import { PaywallModal } from "./components/PaywallModal";
 import MoreView from "./components/MoreView";
@@ -82,6 +84,14 @@ function App() {
 
   useEffect(() => {
     return offlineManager.subscribe((state) => setPendingCount(state.pendingTransactions.length));
+  }, []);
+
+  // Pages légales (#cgv, #confidentialite, #mentions-legales) : accessibles avant comme après la connexion
+  const [legalId, setLegalId] = useState<LegalDocId | null>(readLegalHash);
+  useEffect(() => {
+    const onHash = () => setLegalId(readLegalHash());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
   // Alertes des jarres (point rouge sur « Plus ») : recalculées à chaque changement d'écran et à chaque saisie
@@ -194,6 +204,8 @@ function App() {
   }, [darkMode]);
 
   // ── Auth gate ─────────────────────────────────────────────────────────────
+  if (legalId) return <LegalPage id={legalId} />;
+
   if (authLoading) {
     return (
       <div style={{
