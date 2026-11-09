@@ -14,7 +14,7 @@ import LifestyleCard from "./LifestyleCard";
 import YearStartCard from "./YearStartCard";
 import AutonomyCard from "./AutonomyCard";
 
-import { currencySymbol as curSym, formatMoney as formatMoneyBase, formatPercent } from "../baseCurrency";
+import { formatMoney as formatMoneyBase, formatPercent } from "../baseCurrency";
 import { t, useT, type TKey, localeTag, monthShort, monthLong, JAR_LABELS, JAR_EMPTY_COPY } from "../i18n";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
@@ -543,7 +543,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
               <div>
                 <div style={{ fontSize: "10px", color: "var(--text-muted)", marginBottom: "3px" }}>{t("home.spent")}</div>
                 <div style={{ fontSize: "20px", fontWeight: "800", color: "var(--text-main)", letterSpacing: "-0.5px" }}>
-                  {currentMonthSpending != null ? `${formatMoney(currentMonthSpending)}\u00A0${curSym()}` : "—"}
+                  {currentMonthSpending != null ? `${formatMoney(currentMonthSpending)}` : "—"}
                 </div>
               </div>
 
@@ -558,13 +558,13 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                     : "var(--text-main)"
                     : "var(--text-main)",
                 }}>
-                  {projectedMonthSpending != null && projectionReady ? `≈ ${formatMoney(projectedMonthSpending)}\u00A0${curSym()}` : "—"}
+                  {projectedMonthSpending != null && projectionReady ? `≈ ${formatMoney(projectedMonthSpending)}` : "—"}
                 </div>
                 <div style={{ fontSize: "10px", color: "var(--text-light)", marginTop: "2px" }}>
                   {!projectionReady
                     ? t("home.projectionLater")
                     : projectionDetail && projectionDetail.oneOff > 0
-                      ? t("home.projectionOneOff", { amount: `${formatMoney(projectionDetail.oneOff)}\u00A0${curSym()}` })
+                      ? t("home.projectionOneOff", { amount: `${formatMoney(projectionDetail.oneOff)}` })
                       : t("home.projectionPace")}
                 </div>
               </div>
@@ -595,7 +595,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                     style={{ fontSize: "20px", fontWeight: "800", color: monthlyBudget ? "var(--text-main)" : "var(--text-light)", letterSpacing: "-0.5px", cursor: "pointer" }}
                     onClick={() => { setEditingBudget(true); setBudgetInput(monthlyBudget ? String(monthlyBudget) : ""); }}
                   >
-                    {monthlyBudget ? `${formatMoney(monthlyBudget)}\u00A0${curSym()}` : t("home.setGoal")}
+                    {monthlyBudget ? `${formatMoney(monthlyBudget)}` : t("home.setGoal")}
                   </div>
                 )}
               </div>
@@ -608,7 +608,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                 padding: "8px 10px", marginBottom: "14px", borderRadius: "10px", border: "1px solid var(--border-color)",
                 background: "var(--bg-body)", color: "var(--text-main)", fontFamily: "inherit", fontSize: "12px", cursor: "pointer", textAlign: "left",
               }}>
-                <span>🔁 {t("home.upcoming", { amount: `${formatMoney(upcoming.total)}\u00A0${curSym()}`, n: upcoming.count })}</span>
+                <span>🔁 {t("home.upcoming", { amount: `${formatMoney(upcoming.total)}`, n: upcoming.count })}</span>
                 <span aria-hidden="true" style={{ color: "var(--text-light)" }}>›</span>
               </button>
             )}
@@ -633,7 +633,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                   {budgetPercent < 70 ? t("home.budgetGood") : budgetPercent < 90 ? t("home.budgetWarn") : t("home.budgetOver")}
                   {projectedMonthSpending != null && monthlyBudget && projectedMonthSpending > monthlyBudget && (
                     <span style={{ color: "var(--danger-text)", marginLeft: "6px" }}>
-                      {t("home.projOver", { amount: `${formatMoney(projectedMonthSpending - monthlyBudget)}\u00A0${curSym()}` })}
+                      {t("home.projOver", { amount: `${formatMoney(projectedMonthSpending - monthlyBudget)}` })}
                     </span>
                   )}
                 </div>
@@ -699,10 +699,10 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                           <button
                             onClick={() => { setEditingTagBudget(tag.tagId); setTagBudgetInput(budget ? String(budget) : ""); }}
                             style={{ background: "none", border: "none", cursor: "pointer", fontSize: budget ? "11px" : "18px", color: budget ? textTone(barColor) : "var(--text-muted)", flexShrink: 0, padding: "0 2px", lineHeight: 1, minWidth: "32px", minHeight: "32px", display: "flex", alignItems: "center", justifyContent: "center" }}
-                            title={budget ? t("home.budgetTitle", { amount: `${formatMoney(budget)}\u00A0${curSym()}` }) : t("home.setBudget")}
-                            aria-label={budget ? t("home.budgetTitle", { amount: `${formatMoney(budget)}\u00A0${curSym()}` }) : t("home.setBudget")}
+                            title={budget ? t("home.budgetTitle", { amount: `${formatMoney(budget)}` }) : t("home.setBudget")}
+                            aria-label={budget ? t("home.budgetTitle", { amount: `${formatMoney(budget)}` }) : t("home.setBudget")}
                           >
-                            {budget ? `/${formatMoney(budget)}\u00A0${curSym()}` : "+"}
+                            {budget ? `/${formatMoney(budget)}` : "+"}
                           </button>
                         )}
                         {isEditingThis && (
@@ -860,7 +860,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                   ) : allocation && (
                     <div style={{ paddingLeft: "28px", display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
                       <span style={{ fontSize: "10px", color: "var(--text-light)" }}>
-                        {t("home.allocated", { amount: `${formatMoney(allocation)}\u00A0${curSym()}` })}
+                        {t("home.allocated", { amount: `${formatMoney(allocation)}` })}
                       </span>
                       <span style={{ fontSize: "10px", fontWeight: "700", color: textTone(barColor) }}>
                         {showProjection ? t("home.projShort") : t("home.spent")} {formatPercent(projPct!)}
@@ -876,7 +876,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
             <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "10px", marginTop: "4px" }}>
               {jarMonthlyAllocations ? (
                 <div style={{ fontSize: "11px", color: "var(--text-muted)", textAlign: "center" }}>
-                  {t("home.basedOn", { amount: `${formatMoney(viewMonthRevenue)}\u00A0${curSym()}` })}
+                  {t("home.basedOn", { amount: `${formatMoney(viewMonthRevenue)}` })}
                 </div>
               ) : (
                 <div style={{ textAlign: "center" }}>
@@ -951,9 +951,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
                         <div className="jar-progress-fill" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }} />
                       </div>
                       <div className="jars-bal-meta">
-                        <span>{t("home.received", { amount: `${amount(received)}\u00A0${curSym()}` })}</span>
+                        <span>{t("home.received", { amount: `${amount(received)}` })}</span>
                         <span style={over ? { color: "var(--danger-text)", fontWeight: 700 } : undefined}>
-                          {t("home.spentOf", { amount: `${amount(spent)}\u00A0${curSym()}`, pct: pct > 999 ? "999+" : formatPercent(pct).replace(/\s?%$/, "") })}
+                          {t("home.spentOf", { amount: `${amount(spent)}`, pct: pct > 999 ? "999+" : formatPercent(pct).replace(/\s?%$/, "") })}
                         </span>
                       </div>
                     </li>
