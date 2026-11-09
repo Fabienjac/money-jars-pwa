@@ -38,6 +38,7 @@ import LanguageSettings from "./LanguageSettings";
 import JarTransfers from "./JarTransfers";
 import AccountTransfers from "./AccountTransfers";
 import SettingsAccordion from "./SettingsAccordion";
+import EntryRulesSettings from "./EntryRulesSettings";
 import { SEEN_KEY, OPEN_KEY, initialOpenIds, parseOpenIds, toggleOpenId, percentsSummary } from "../settingsAccordion";
 import { useT, useLang, JAR_LABELS } from "../i18n";
 import type { TKey } from "../i18n";
@@ -115,6 +116,7 @@ const SettingsView: React.FC = () => {
   const t = useT();
   const [jarSettings, setJarSettings] = useState<JarSetting[]>(loadSettings());
   const [rules, setRules] = useState<AutoRule[]>(loadAutoRules());
+  const [spendingRuleCount, setSpendingRuleCount] = useState(0);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([]);
   const [tags, setTags] = useState<Tag[]>(loadTags);
@@ -212,7 +214,7 @@ const SettingsView: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
 
   // Nouvelle règle
-  const [newRuleMode, setNewRuleMode] = useState<"spending" | "revenue">("spending");
+  const [newRuleMode] = useState<"spending" | "revenue">("revenue"); // les règles de dépense ont leur propre bloc (EntryRulesSettings)
   const [newRuleKeyword, setNewRuleKeyword] = useState("");
   const [newRuleJar, setNewRuleJar] = useState<JarKey>("NEC");
   const [newRuleAccount, setNewRuleAccount] = useState("");
@@ -562,7 +564,8 @@ const SettingsView: React.FC = () => {
   const toggleSection = (id: string) => setOpenIds((prev) => toggleOpenId(prev, id));
 
   const plural = (n: number, zero: TKey, one: TKey, other: TKey) => (n === 0 ? t(zero) : n === 1 ? t(one) : t(other, { n }));
-  const sumRules = plural(rules.length, "set.sum.rules.zero", "set.sum.rules.one", "set.sum.rules.other");
+  const revenueRules = rules.filter((r) => r.mode === "revenue");
+  const sumRules = plural(spendingRuleCount + revenueRules.length, "set.sum.rules.zero", "set.sum.rules.one", "set.sum.rules.other");
   const sumAccounts = plural(accounts.length, "set.sum.accounts.zero", "set.sum.accounts.one", "set.sum.accounts.other");
   const sumRevAccounts = plural(revenueAccounts.length, "set.sum.revAccounts.zero", "set.sum.revAccounts.one", "set.sum.revAccounts.other");
   const sumTags = plural(tags.length, "set.sum.tags.zero", "set.sum.tags.one", "set.sum.tags.other");
@@ -674,9 +677,22 @@ const SettingsView: React.FC = () => {
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.rulesTitle")}</h3>
 
-        {rules.length > 0 && (
+        <EntryRulesSettings
+          accountNames={accounts.map((a) => a.name)}
+          tags={tags}
+          legacySpending={rules.filter((r) => r.mode === "spending")}
+          onLegacyMigrated={() => {
+            const kept = rules.filter((r) => r.mode !== "spending");
+            setRules(kept);
+            saveRules(kept);
+          }}
+          onManualCount={setSpendingRuleCount}
+        />
+
+        <h4 className="rules-sub-title">{t("rules.revenueTitle")}</h4>
+        {revenueRules.length > 0 && (
           <div className="rules-list">
-            {rules.map((rule) => (
+            {revenueRules.map((rule) => (
               <div key={rule.id} className={`rule-card ${rule.mode}`}>
                 <div className="rule-card-content">
                   <p className="rule-keyword">"{rule.keyword}"</p>
@@ -718,18 +734,6 @@ const SettingsView: React.FC = () => {
         ) : (
           <div className="form-inline">
             <div className="form-group-inline">
-              <label className="form-label-inline">{t("set.mode")}</label>
-              <select
-                className="form-select-inline"
-                value={newRuleMode}
-                onChange={(e) => setNewRuleMode(e.target.value as "spending" | "revenue")}
-              >
-                <option value="spending">{t("set.optSpending")}</option>
-                <option value="revenue">{t("set.optRevenue")}</option>
-              </select>
-            </div>
-
-            <div className="form-group-inline">
               <label className="form-label-inline">{t("set.keyword")}</label>
               <input
                 type="text"
@@ -739,35 +743,6 @@ const SettingsView: React.FC = () => {
                 onChange={(e) => setNewRuleKeyword(e.target.value)}
               />
             </div>
-
-            {newRuleMode === "spending" && (
-              <>
-                <div className="form-group-inline">
-                  <label className="form-label-inline">{t("set.jar")}</label>
-                  <select
-                    className="form-select-inline"
-                    value={newRuleJar}
-                    onChange={(e) => setNewRuleJar(e.target.value as JarKey)}
-                  >
-                    {Object.keys(JAR_LABELS).map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-group-inline">
-                  <label className="form-label-inline">{t("set.account")}</label>
-                  <input
-                    type="text"
-                    className="form-input-inline"
-                    placeholder={t("set.phCard")}
-                    value={newRuleAccount}
-                    onChange={(e) => setNewRuleAccount(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
 
             {newRuleMode === "revenue" && (
               <>

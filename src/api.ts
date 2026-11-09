@@ -15,6 +15,7 @@ import type {
 } from "./types";
 import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
 import { fetchAllPages } from "./paginate";
+import { rowToRule, ruleToRow, type EntryRule, type RuleRow } from "./entryRules";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
 import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
 import { addTagTo } from "./exceptional";
@@ -1148,10 +1149,19 @@ export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<voi
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
+  // Les règles écrites à la main dans les Réglages (origin = manual) ne sont ni remplacées ni supprimées par l'import.
+  let manual = new Set<string>();
+  try {
+    const { data: m, error: mErr } = await supabase
+      .from("auto_tag_rules").select("pattern").eq("user_id", user.id).eq("origin", "manual");
+    if (!mErr && m) manual = new Set(m.map((x) => String(x.pattern)));
+  } catch { /* colonne pas encore créée (SQL non exécuté) : aucune règle manuelle */ }
+
   // Upsert d'abord (les anciennes règles restent intactes si ça échoue),
   // puis suppression des patterns obsolètes.
-  if (rules.length > 0) {
-    const rows = rules.map(r => ({
+  const learned = rules.filter((r) => !manual.has(r.originalKey));
+  if (learned.length > 0) {
+    const rows = learned.map(r => ({
       user_id: user.id,
       pattern: r.originalKey,
       jar:     r.jar ?? null,
@@ -1168,15 +1178,80 @@ export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<voi
 
   // Supprimer les règles qui n'existent plus dans le nouveau jeu
   const activePatterns = rules.map(r => r.originalKey);
-  if (activePatterns.length > 0) {
-    await supabase
-      .from("auto_tag_rules")
-      .delete()
-      .eq("user_id", user.id)
-      .not("pattern", "in", `(${activePatterns.map(p => `"${p.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",")})`);
-  } else {
-    await supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
+  const deleteObsolete = async (keepManual: boolean) => {
+    let q = supabase.from("auto_tag_rules").delete().eq("user_id", user.id);
+    if (keepManual) q = q.neq("origin", "manual");
+    if (activePatterns.length > 0) {
+      q = q.not("pattern", "in", `(${activePatterns.map(p => `"${p.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",")})`);
+    }
+    return q;
+  };
+  const { error: delErr } = await deleteObsolete(true);
+  // Colonne origin absente (SQL non exécuté) : comportement d'avant. Toute autre erreur : on ne supprime rien.
+  if (delErr && COLUMN_MISSING.test(delErr.message)) await deleteObsolete(false);
+}
+
+// ── Règles automatiques unifiées (manuelles + apprises) : voir entryRules.ts et supabase/rules_unify.sql ────────
+
+const ENTRY_RULES_CACHE = "mjars:entryRules";
+const RULE_COLS_FULL = "pattern, jar, tags, account, mode, destination, income_type, origin";
+const RULE_COLS_BASE = "pattern, jar, tags, account";
+const COLUMN_MISSING = /column .* does not exist|schema cache|could not find the .* column/i;
+
+function readCachedEntryRules(): EntryRule[] {
+  try {
+    const raw = localStorage.getItem(ENTRY_RULES_CACHE);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? (parsed as EntryRule[]) : [];
+  } catch { return []; }
+}
+
+/** Toutes les règles de l'utilisateur. Hors ligne ou erreur : la dernière copie locale. */
+export async function fetchEntryRules(): Promise<EntryRule[]> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return readCachedEntryRules();
+  const read = (cols: string) => fetchAllPages((from, to) =>
+    supabase.from("auto_tag_rules").select(cols).eq("user_id", user.id).order("pattern", { ascending: true }).range(from, to));
+  try {
+    let rows: unknown[];
+    try {
+      rows = await read(RULE_COLS_FULL);
+    } catch (e) {
+      if (!(e instanceof Error && COLUMN_MISSING.test(e.message))) throw e;
+      rows = await read(RULE_COLS_BASE); // SQL pas encore exécuté : toutes les règles sont « apprises »
+    }
+    const rules = (rows as RuleRow[]).map(rowToRule);
+    try { localStorage.setItem(ENTRY_RULES_CACHE, JSON.stringify(rules)); } catch { /* sans importance */ }
+    return rules;
+  } catch {
+    return readCachedEntryRules();
   }
+}
+
+/** Crée ou remplace une règle (clé : le mot-clé). */
+export async function saveEntryRule(rule: EntryRule): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const row = ruleToRow(rule);
+  let { error } = await supabase.from("auto_tag_rules")
+    .upsert({ user_id: user.id, ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,pattern" });
+  if (error && COLUMN_MISSING.test(error.message)) {
+    // SQL pas encore exécuté : on enregistre au moins l'essentiel (mot-clé, jarre, étiquettes, compte)
+    ({ error } = await supabase.from("auto_tag_rules")
+      .upsert({ user_id: user.id, pattern: row.pattern, jar: row.jar, tags: row.tags, account: row.account }, { onConflict: "user_id,pattern" }));
+  }
+  if (error) return { ok: false, error: error.message };
+  try { localStorage.removeItem(ENTRY_RULES_CACHE); } catch { /* sans importance */ }
+  return { ok: true };
+}
+
+export async function deleteEntryRule(keyword: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const { error } = await supabase.from("auto_tag_rules").delete().eq("user_id", user.id).eq("pattern", keyword);
+  if (error) return { ok: false, error: error.message };
+  try { localStorage.removeItem(ENTRY_RULES_CACHE); } catch { /* sans importance */ }
+  return { ok: true };
 }
 
 // ── Suggestions des utilisateurs ───────────────────────────────────────────────

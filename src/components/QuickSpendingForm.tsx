@@ -1,6 +1,7 @@
 // src/components/QuickSpendingForm.tsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { appendSpending, getAccounts, searchSpendings } from "../api";
+import { appendSpending, getAccounts, searchSpendings, fetchEntryRules } from "../api";
+import { findBestRule, spendingPatch, describeRule, type EntryRule } from "../entryRules";
 import { updateStreak } from "../streakUtils";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
@@ -80,6 +81,11 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const [message, setMessage] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [suppliers, setSuppliers] = useState<Supplier[]>(suppliersCache ?? []);
+  // Règles automatiques (Réglages) : un mot-clé dans le fournisseur remplit jarre, compte et étiquettes.
+  const [entryRules, setEntryRules] = useState<EntryRule[]>([]);
+  const [appliedRule, setAppliedRule] = useState<{ rule: EntryRule; summary: string; prev: { jar: JarKey; account: string; tags: string[] } } | null>(null);
+  // Champs que la personne a choisis elle-même : une règle ne les remplace jamais.
+  const touched = useRef({ jar: false, account: false, tags: false });
 
   const { rate, loading: rateLoading, error: rateError } = useExchangeRate(currency, date, base);
 
@@ -95,6 +101,12 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
         setSuppliers(built);
       })
       .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEntryRules().then((list) => { if (!cancelled) setEntryRules(list); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -122,13 +134,14 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
 
   useEffect(() => {
     if (prefill) {
-      if (prefill.jar) setJar(prefill.jar);
-      if (prefill.account) setAccount(prefill.account);
+      if (prefill.jar) { setJar(prefill.jar); touched.current.jar = true; }
+      if (prefill.account) { setAccount(prefill.account); touched.current.account = true; }
       if (prefill.amount != null) setAmount(String(prefill.amount));
       if (prefill.description) setSupplier(cleanSupplierName(prefill.description));
       if (prefill.tags && typeof prefill.tags === "string") {
         const tagIds = prefill.tags.split(",").map((t: string) => t.trim()).filter(Boolean);
         setSelectedTags(tagIds);
+        touched.current.tags = true;
       }
     }
   }, [prefill]);
@@ -148,6 +161,42 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     []
   );
   const allTags = useMemo(() => loadTags(), []);
+  const tagLabel = (id: string) => allTags.find((x) => x.id === id)?.name ?? id;
+
+  /** Cherche la règle de ce texte et remplit les champs que la personne n'a pas choisis (forceAll : choix d'une suggestion de l'historique). */
+  const applyRuleFor = (text: string, forceAll = false) => {
+    const rule = findBestRule(text, entryRules, "spending");
+    if (!rule) { setAppliedRule(null); return; }
+    if (!forceAll && appliedRule?.rule.keyword === rule.keyword) return;
+    const patch = spendingPatch(
+      rule,
+      forceAll ? { jar: false, account: false, tags: false } : touched.current,
+      accounts.map((a) => a.name),
+      Object.keys(JAR_LABELS),
+    );
+    if (!patch.jar && !patch.account && !patch.tags) { setAppliedRule(null); return; }
+    const summary = describeRule({ ...rule, jar: patch.jar, account: patch.account, tags: patch.tags ?? [] }, tagLabel);
+    setAppliedRule({ rule, summary, prev: { jar, account, tags: selectedTags } });
+    if (patch.jar) setJar(patch.jar as JarKey);
+    if (patch.account) setAccount(patch.account);
+    if (patch.tags) setSelectedTags(patch.tags);
+  };
+
+  const undoRule = () => {
+    if (!appliedRule) return;
+    setJar(appliedRule.prev.jar);
+    setAccount(appliedRule.prev.account);
+    setSelectedTags(appliedRule.prev.tags);
+    touched.current = { jar: true, account: true, tags: true }; // la personne a refusé : on n'y touche plus
+    setAppliedRule(null);
+  };
+
+  // Au fil de la frappe du fournisseur : applique la règle correspondante (sauf si un fournisseur de l'historique est choisi)
+  useEffect(() => {
+    if (picked) return;
+    if (!supplier.trim()) { setAppliedRule(null); return; }
+    applyRuleFor(supplier);
+  }, [supplier, entryRules, accounts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applySupplier = (s: Supplier) => {
     setSupplier(s.name);
@@ -155,12 +204,15 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     setJar(s.jar);
     if (accounts.some(a => a.name === s.account)) setAccount(s.account);
     if (s.tags.length > 0) setSelectedTags(s.tags);
+    applyRuleFor(s.name, true); // une règle écrite par la personne l'emporte sur ce qui a été appris de l'historique
     supplierInputRef.current?.blur();
   };
 
   const clearSupplier = () => {
     setSupplier("");
     setPicked(null);
+    setAppliedRule(null);
+    touched.current = { jar: false, account: false, tags: false };
   };
 
   const handleNumberClick = (num: string) => {
@@ -172,6 +224,8 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const handleClear = () => setAmount("");
 
   const toggleTag = (tagId: string) => {
+    touched.current.tags = true;
+    setAppliedRule(null);
     setSelectedTags(prev =>
       prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]
     );
@@ -326,6 +380,13 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
         </div>
       </div>
 
+      {appliedRule && (
+        <div className="qsf-rule-hint" role="status">
+          <span>⚡ {t("rules.applied", { summary: appliedRule.summary })}</span>
+          <button type="button" onClick={undoRule}>{t("rules.undo")}</button>
+        </div>
+      )}
+
       {/* Amount */}
       <div className="qsf-amount-area">
         <div className="qsf-amount-row">
@@ -355,7 +416,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
             type="button"
             className={`qsf-jar${jar === jarKey ? " qsf-jar--active" : ""}`}
             style={{ "--jar-color": JAR_LABELS[jarKey].color } as React.CSSProperties}
-            onClick={() => setJar(jarKey)}
+            onClick={() => { touched.current.jar = true; setAppliedRule(null); setJar(jarKey); }}
           >
             <span className="qsf-jar-emoji">{JAR_LABELS[jarKey].emoji}</span>
             <span className="qsf-jar-label">{JAR_LABELS[jarKey].label}</span>
@@ -408,7 +469,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
           <div className="qsf-details-body">
             <label className="qsf-field">
               <span className="qsf-field-icon">💳</span>
-              <select className="qsf-select" value={account} onChange={(e) => setAccount(e.target.value)}>
+              <select className="qsf-select" value={account} onChange={(e) => { touched.current.account = true; setAppliedRule(null); setAccount(e.target.value); }}>
                 {accounts.map((acc) => (
                   <option key={acc.id} value={acc.name}>{acc.icon} {acc.name}</option>
                 ))}

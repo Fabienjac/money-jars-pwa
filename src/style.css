@@ -4239,3 +4239,25 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .acc-body > .settings-section { background: none; box-shadow: none; border-radius: 0; padding: 0; margin: 0; }
 .acc-body > .settings-section > .settings-section-title { display: none; }
 @media (prefers-reduced-motion: reduce) { .acc-chev { transition: none; } }
+
+/* ── Réglages > Règles de dépense (EntryRulesSettings) ─────────────────────── */
+.rules-sub-title { margin: 18px 0 6px; font-size: 15px; font-weight: 700; color: var(--text-main); }
+.rules-spending > .rules-sub-title { margin-top: 0; }
+.rules-empty { margin: 4px 0 12px; font-size: 13px; color: var(--text-muted); }
+.rules-flash { margin: 0 0 10px; padding: 8px 12px; border-radius: 10px; background: #34C75918; color: var(--ok-text, #1f8a3b); font-size: 13px; font-weight: 600; }
+.rules-edit { margin-bottom: 12px; padding: 14px; border-radius: 12px; border: 1.5px solid #007AFF; background: var(--bg-body); display: flex; flex-direction: column; gap: 12px; }
+.rules-edit .form-group-inline { flex: none; width: 100%; min-width: 0; }
+.rules-edit .form-input-inline, .rules-edit .form-select-inline { width: 100%; box-sizing: border-box; }
+.rules-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.rules-tag { padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--border-color); background: var(--bg-card); color: var(--text-main); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.rules-tag.is-on { border-color: #007AFF; background: #007AFF1A; color: #0062cc; }
+.rules-error { color: #FF3B30; font-size: 13px; }
+.rules-edit-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.rules-icon-btn { flex-shrink: 0; border: none; background: none; font-size: 17px; cursor: pointer; padding: 6px; }
+.rules-learned { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color); }
+.rules-learned-toggle { border: none; background: none; padding: 0; font-family: inherit; font-size: 14px; font-weight: 600; color: var(--text-muted); cursor: pointer; }
+
+/* Bandeau « règle appliquée » de la dépense rapide */
+.qsf-rule-hint { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 16px 8px; padding: 8px 12px; border-radius: 12px; background: #FF950014; border: 1px solid #FF950040; color: var(--text-main); font-size: 13px; font-weight: 600; }
+.qsf-rule-hint span { min-width: 0; overflow-wrap: anywhere; }
+.qsf-rule-hint button { flex-shrink: 0; border: none; background: none; padding: 4px 6px; font-family: inherit; font-size: 13px; font-weight: 700; color: #007AFF; cursor: pointer; }
