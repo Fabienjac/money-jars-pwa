@@ -130,7 +130,9 @@ body {
   display: flex;
   flex-direction: column;
   padding-top: max(env(safe-area-inset-top), 16px);
-  padding-bottom: max(env(safe-area-inset-bottom), 80px);
+  /* Place pour la barre du bas (≈ 107 px, + zone sûre de l'appareil) et un peu d'air : sans cela, la fin de
+     chaque écran (ex. « Apparence » dans Plus) restait cachée derrière la barre. */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 124px);
 }
 
 .app-main {
@@ -3558,6 +3560,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .more-item {
+  text-decoration: none; /* le lien « Confidentialité et conditions » est un <a> : pas de soulignement */
   display: flex;
   align-items: center;
   gap: 14px;
