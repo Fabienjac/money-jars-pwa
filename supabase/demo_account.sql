@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Compte de démonstration : des données réalistes sur 6 mois pour montrer l'application sans exposer tes vraies données.
 --
--- À FAIRE D'ABORD (dans l'application) : créer un compte avec une adresse dédiée, par exemple demo@effivital.com,
+-- À FAIRE D'ABORD (dans l'application) : créer un compte avec une adresse dédiée, par exemple f.c.jacquet+demo@gmail.com (un alias de ta boîte Gmail : le mail de confirmation y arrive),
 -- confirmer l'e-mail, puis ouvrir l'application une fois pour qu'il existe dans la base.
 -- À EXÉCUTER ENSUITE dans Supabase → SQL Editor, en changeant l'adresse ci-dessous si besoin.
 --
@@ -13,7 +13,7 @@
 
 do $$
 declare
-  v_email text := 'demo@effivital.com';   -- ← adresse du compte de démo
+  v_email text := 'f.c.jacquet+demo@gmail.com';   -- ← adresse du compte de démo
   v_uid   uuid;
   v_month date := date_trunc('month', current_date)::date;
 begin
