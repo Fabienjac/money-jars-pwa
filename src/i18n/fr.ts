@@ -1183,6 +1183,15 @@ const fr = {
   "rules.migrated": "{n} ancienne(s) règle(s) reprise(s) dans ton compte.",
   "rules.applied": "Règle appliquée : {summary}",
   "rules.undo": "Annuler",
+  "rules.revenueDesc": "Quand la source d'un revenu contient ce mot, le compte de destination et le type de revenu se remplissent seuls.",
+  "rules.destination": "Compte de destination",
+  "rules.type": "Type de revenu",
+  "rules.typePh": "ex : Salaire",
+  "rules.typeHint": "Des suggestions apparaissent à partir des types déjà utilisés : choisis-en un plutôt que d'en inventer une variante.",
+  "rules.keywordPhRevenue": "ex : Employeur",
+  "rules.errNothingRevenue": "Choisis au moins un compte de destination ou un type de revenu.",
+  "rules.addSpending": "+ Ajouter une règle de dépense",
+  "rules.addRevenue": "+ Ajouter une règle de revenu",
 } as const;
 
 export default fr;

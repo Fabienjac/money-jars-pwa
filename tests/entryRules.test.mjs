@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./_load.mjs";
 
-const { normalizeKeyword, foldText, keywordMatches, findBestRule, resolveAccountName, spendingPatch, describeRule, rowToRule, ruleToRow, legacyToRules } =
+const { normalizeKeyword, foldText, keywordMatches, findBestRule, resolveAccountName, spendingPatch, describeRule, rowToRule, ruleToRow, legacyToRules, distinctLabels } =
   await loadTs("src/entryRules.ts");
 
 const rule = (keyword, extra = {}) => ({ keyword, mode: "spending", tags: [], origin: "manual", ...extra });
@@ -91,4 +91,36 @@ test("legacyToRules : reprise des anciennes règles locales de dépense", () => 
   assert.deepEqual(out[0].tags, ["abonnements"]); // elle garde les étiquettes apprises
   assert.equal(out[0].origin, "manual");
   assert.equal(out[1].account, undefined);
+});
+
+test("legacyToRules : règles de revenu (destination et type), sans écraser l'autre mode", () => {
+  const existing = [
+    { keyword: "salaire", mode: "revenue", tags: [], origin: "learned" },
+    { keyword: "carrefour", mode: "spending", tags: [], origin: "manual" },
+  ];
+  const out = legacyToRules([
+    { mode: "revenue", keyword: "Salaire", destination: " Keystone ", incomeType: "Salaire" },
+    { mode: "revenue", keyword: "carrefour", destination: "X" },   // le mot-clé appartient déjà à une règle de dépense
+    { mode: "revenue", keyword: "freelance", destination: "", incomeType: "" },
+    { mode: "spending", keyword: "loyer", jar: "NEC" },
+  ], existing, "revenue");
+  assert.deepEqual(out.map((r) => r.keyword), ["salaire", "freelance"]);
+  assert.equal(out[0].destination, "Keystone");
+  assert.equal(out[0].incomeType, "Salaire");
+  assert.equal(out[0].mode, "revenue");
+  assert.equal(out[1].destination, undefined);
+});
+
+test("describeRule : revenus", () => {
+  assert.equal(describeRule({ keyword: "s", mode: "revenue", tags: [], origin: "manual", destination: "Keystone", incomeType: "Salaire" }), "Keystone · Salaire");
+});
+
+test("distinctLabels : sans doublon de casse, écriture la plus fréquente, plus fréquent d'abord", () => {
+  // Freelance : 4 saisies (3 « Freelance », 1 « freelance ») ; Salaire : 3 saisies (2 « Salaire », 1 « salaire »)
+  assert.deepEqual(distinctLabels(["Salaire", "salaire", "Salaire", "Freelance", " freelance ", "Freelance", "Freelance", "Don", "", null, undefined]), ["Freelance", "Salaire", "Don"]);
+  // à égalité de fréquence : ordre alphabétique, résultat stable
+  assert.deepEqual(distinctLabels(["B", "A"]), ["A", "B"]);
+  // même fréquence pour deux écritures : celle avec majuscule
+  assert.deepEqual(distinctLabels(["salaire", "Salaire"]), ["Salaire"]);
+  assert.deepEqual(distinctLabels([]), []);
 });

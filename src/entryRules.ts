@@ -101,6 +101,8 @@ export function describeRule(rule: EntryRule, tagName: (id: string) => string = 
   const parts: string[] = [];
   if (rule.jar) parts.push(rule.jar);
   if (rule.account) parts.push(rule.account);
+  if (rule.destination) parts.push(rule.destination);
+  if (rule.incomeType) parts.push(rule.incomeType);
   if (rule.tags.length > 0) parts.push(rule.tags.map(tagName).join(", "));
   return parts.join(" · ");
 }
@@ -151,31 +153,50 @@ export interface LegacyRule {
   keyword: string;
   jar?: string;
   account?: string;
+  destination?: string;
+  incomeType?: string;
 }
 
 /**
- * Anciennes règles de DÉPENSE → règles écrites à la main. Elles l'emportent sur une règle apprise de même mot-clé
- * (la personne les a voulues) mais ne touchent pas une règle déjà écrite à la main dans le cloud.
- * Les règles de revenu ne sont pas reprises ici : elles gardent leur circuit actuel.
+ * Anciennes règles locales d'un mode → règles écrites à la main. Elles l'emportent sur une règle apprise de même
+ * mot-clé (la personne les a voulues) mais ne touchent pas une règle déjà écrite à la main dans le cloud.
  */
-export function legacyToRules(legacy: LegacyRule[], existing: EntryRule[]): EntryRule[] {
+export function legacyToRules(legacy: LegacyRule[], existing: EntryRule[], mode: RuleMode = "spending"): EntryRule[] {
   const out: EntryRule[] = [];
   const seen = new Set<string>();
   for (const l of legacy) {
-    if (l.mode !== "spending") continue;
+    if (l.mode !== mode) continue;
     const keyword = normalizeKeyword(l.keyword);
     if (!keyword || seen.has(keyword)) continue;
     seen.add(keyword);
-    const current = existing.find((e) => e.mode === "spending" && e.keyword === keyword);
-    if (current && current.origin === "manual") continue;
-    out.push({
-      keyword,
-      mode: "spending",
-      jar: l.jar || undefined,
-      account: (l.account ?? "").trim() || undefined,
-      tags: current?.tags ?? [],
-      origin: "manual",
-    });
+    const current = existing.find((e) => e.keyword === keyword);
+    if (current && (current.origin === "manual" || current.mode !== mode)) continue; // jamais écraser une règle à soi, ni celle de l'autre mode
+    out.push(mode === "spending"
+      ? { keyword, mode, jar: l.jar || undefined, account: (l.account ?? "").trim() || undefined, tags: current?.tags ?? [], origin: "manual" }
+      : { keyword, mode, destination: (l.destination ?? "").trim() || undefined, incomeType: (l.incomeType ?? "").trim() || undefined, tags: [], origin: "manual" });
   }
   return out;
+}
+
+/**
+ * Libellés déjà utilisés (types de revenu…), sans doublon de casse : on garde l'écriture la plus fréquente, la plus
+ * fréquente d'abord. Sert d'aide à la saisie pour ne pas créer de variante d'orthographe.
+ */
+export function distinctLabels(values: Array<string | null | undefined>): string[] {
+  const groups = new Map<string, Map<string, number>>();
+  for (const raw of values) {
+    const v = String(raw ?? "").trim().replace(/\s+/g, " ");
+    if (!v) continue;
+    const key = v.toLowerCase();
+    const g = groups.get(key) ?? new Map<string, number>();
+    g.set(v, (g.get(v) ?? 0) + 1);
+    groups.set(key, g);
+  }
+  const rows = [...groups.values()].map((g) => {
+    // écriture la plus fréquente ; à égalité, celle qui commence par une majuscule (« Salaire »), puis l'ordre alphabétique
+    const cap = (x: string) => (x[0] !== x[0].toLowerCase() ? 1 : 0);
+    const spellings = [...g.entries()].sort((a, b) => b[1] - a[1] || cap(b[0]) - cap(a[0]) || a[0].localeCompare(b[0]));
+    return { label: spellings[0][0], total: [...g.values()].reduce((x, y) => x + y, 0) };
+  });
+  return rows.sort((a, b) => b.total - a.total || a.label.localeCompare(b.label)).map((r) => r.label);
 }

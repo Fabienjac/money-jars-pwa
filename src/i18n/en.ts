@@ -1185,6 +1185,15 @@ const en: Record<keyof typeof fr, string> = {
   "rules.migrated": "{n} old rule(s) moved to your account.",
   "rules.applied": "Rule applied: {summary}",
   "rules.undo": "Undo",
+  "rules.revenueDesc": "When an income source contains this word, the destination account and income type are filled in for you.",
+  "rules.destination": "Destination account",
+  "rules.type": "Income type",
+  "rules.typePh": "e.g. Salary",
+  "rules.typeHint": "Suggestions come from types you already use: pick one instead of inventing a variant.",
+  "rules.keywordPhRevenue": "e.g. Employer",
+  "rules.errNothingRevenue": "Choose at least a destination account or an income type.",
+  "rules.addSpending": "+ Add a spending rule",
+  "rules.addRevenue": "+ Add an income rule",
 };
 
 export default en;

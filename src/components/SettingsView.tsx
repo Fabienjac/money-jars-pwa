@@ -117,6 +117,7 @@ const SettingsView: React.FC = () => {
   const [jarSettings, setJarSettings] = useState<JarSetting[]>(loadSettings());
   const [rules, setRules] = useState<AutoRule[]>(loadAutoRules());
   const [spendingRuleCount, setSpendingRuleCount] = useState(0);
+  const [revenueRuleCount, setRevenueRuleCount] = useState(0);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([]);
   const [tags, setTags] = useState<Tag[]>(loadTags);
@@ -208,18 +209,11 @@ const SettingsView: React.FC = () => {
     }).finally(() => { if (!cancelled) setAccountsLoading(false); });
     return () => { cancelled = true; };
   }, []);
-  const [showRuleForm, setShowRuleForm] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showRevenueAccountForm, setShowRevenueAccountForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   // Nouvelle règle
-  const [newRuleMode] = useState<"spending" | "revenue">("revenue"); // les règles de dépense ont leur propre bloc (EntryRulesSettings)
-  const [newRuleKeyword, setNewRuleKeyword] = useState("");
-  const [newRuleJar, setNewRuleJar] = useState<JarKey>("NEC");
-  const [newRuleAccount, setNewRuleAccount] = useState("");
-  const [newRuleDestination, setNewRuleDestination] = useState("");
-  const [newRuleIncomeType, setNewRuleIncomeType] = useState("");
 
   // Nouveau compte
   const [newAccountName, setNewAccountName] = useState("");
@@ -327,43 +321,6 @@ const SettingsView: React.FC = () => {
     setTimeout(() => setMessage(null), 3000);
   };
 
-  const handleAddRule = () => {
-    if (!newRuleKeyword.trim()) {
-      alert(t("set.keywordRequired"));
-      return;
-    }
-
-    const newRule: AutoRule = {
-      id: `rule_${Date.now()}`,
-      mode: newRuleMode,
-      keyword: newRuleKeyword.trim(),
-      jar: newRuleMode === "spending" ? newRuleJar : undefined,
-      account: newRuleMode === "spending" ? newRuleAccount : undefined,
-      destination: newRuleMode === "revenue" ? newRuleDestination : undefined,
-      incomeType: newRuleMode === "revenue" ? newRuleIncomeType : undefined,
-    };
-
-    const updated = [...rules, newRule];
-    setRules(updated);
-    saveRules(updated);
-    setNewRuleKeyword("");
-    setNewRuleJar("NEC");
-    setNewRuleAccount("");
-    setNewRuleDestination("");
-    setNewRuleIncomeType("");
-    setShowRuleForm(false);
-    setMessage(t("set.ruleAdded"));
-    setTimeout(() => setMessage(null), 2000);
-  };
-
-  const handleDeleteRule = (id: string) => {
-    if (!confirm(t("set.confirmDeleteRule"))) return;
-    const updated = rules.filter((r) => r.id !== id);
-    setRules(updated);
-    saveRules(updated);
-    setMessage(t("set.ruleDeleted"));
-    setTimeout(() => setMessage(null), 2000);
-  };
 
   const handleAddAccount = () => {
     if (!newAccountName.trim()) {
@@ -564,8 +521,7 @@ const SettingsView: React.FC = () => {
   const toggleSection = (id: string) => setOpenIds((prev) => toggleOpenId(prev, id));
 
   const plural = (n: number, zero: TKey, one: TKey, other: TKey) => (n === 0 ? t(zero) : n === 1 ? t(one) : t(other, { n }));
-  const revenueRules = rules.filter((r) => r.mode === "revenue");
-  const sumRules = plural(spendingRuleCount + revenueRules.length, "set.sum.rules.zero", "set.sum.rules.one", "set.sum.rules.other");
+  const sumRules = plural(spendingRuleCount + revenueRuleCount, "set.sum.rules.zero", "set.sum.rules.one", "set.sum.rules.other");
   const sumAccounts = plural(accounts.length, "set.sum.accounts.zero", "set.sum.accounts.one", "set.sum.accounts.other");
   const sumRevAccounts = plural(revenueAccounts.length, "set.sum.revAccounts.zero", "set.sum.revAccounts.one", "set.sum.revAccounts.other");
   const sumTags = plural(tags.length, "set.sum.tags.zero", "set.sum.tags.one", "set.sum.tags.other");
@@ -678,9 +634,10 @@ const SettingsView: React.FC = () => {
         <h3 className="settings-section-title">{t("set.rulesTitle")}</h3>
 
         <EntryRulesSettings
+          mode="spending"
           accountNames={accounts.map((a) => a.name)}
           tags={tags}
-          legacySpending={rules.filter((r) => r.mode === "spending")}
+          legacy={rules.filter((r) => r.mode === "spending")}
           onLegacyMigrated={() => {
             const kept = rules.filter((r) => r.mode !== "spending");
             setRules(kept);
@@ -689,102 +646,19 @@ const SettingsView: React.FC = () => {
           onManualCount={setSpendingRuleCount}
         />
 
-        <h4 className="rules-sub-title">{t("rules.revenueTitle")}</h4>
-        {revenueRules.length > 0 && (
-          <div className="rules-list">
-            {revenueRules.map((rule) => (
-              <div key={rule.id} className={`rule-card ${rule.mode}`}>
-                <div className="rule-card-content">
-                  <p className="rule-keyword">"{rule.keyword}"</p>
-                  <div className="rule-details">
-                    {rule.mode === "spending" && (
-                      <>
-                        <span className="rule-badge">{t("set.badgeJar", { v: rule.jar ?? "" })}</span>
-                        <span className="rule-badge">{t("set.badgeAccount", { v: rule.account ?? "" })}</span>
-                      </>
-                    )}
-                    {rule.mode === "revenue" && (
-                      <>
-                        <span className="rule-badge">{t("set.badgeDest", { v: rule.destination ?? "" })}</span>
-                        <span className="rule-badge">{t("set.badgeType", { v: rule.incomeType ?? "" })}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="rule-delete-btn"
-                  onClick={() => handleDeleteRule(rule.id)}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!showRuleForm ? (
-          <button
-            type="button"
-            className="settings-btn settings-btn-add settings-btn-small"
-            onClick={() => setShowRuleForm(true)}
-          >
-            {t("set.addRule")}
-          </button>
-        ) : (
-          <div className="form-inline">
-            <div className="form-group-inline">
-              <label className="form-label-inline">{t("set.keyword")}</label>
-              <input
-                type="text"
-                className="form-input-inline"
-                placeholder={t("set.phKeyword")}
-                value={newRuleKeyword}
-                onChange={(e) => setNewRuleKeyword(e.target.value)}
-              />
-            </div>
-
-            {newRuleMode === "revenue" && (
-              <>
-                <div className="form-group-inline">
-                  <label className="form-label-inline">{t("set.destination")}</label>
-                  <input
-                    type="text"
-                    className="form-input-inline"
-                    placeholder={t("set.phBank")}
-                    value={newRuleDestination}
-                    onChange={(e) => setNewRuleDestination(e.target.value)}
-                  />
-                </div>
-                <div className="form-group-inline">
-                  <label className="form-label-inline">{t("set.type")}</label>
-                  <input
-                    type="text"
-                    className="form-input-inline"
-                    placeholder={t("set.phSalary")}
-                    value={newRuleIncomeType}
-                    onChange={(e) => setNewRuleIncomeType(e.target.value)}
-                  />
-                </div>
-              </>
-            )}
-
-            <button
-              type="button"
-              className="settings-btn settings-btn-add settings-btn-small"
-              onClick={handleAddRule}
-            >
-              {t("set.add")}
-            </button>
-            <button
-              type="button"
-              className="settings-btn settings-btn-secondary settings-btn-small"
-              onClick={() => setShowRuleForm(false)}
-            >
-              {t("common.cancel")}
-            </button>
-          </div>
-        )}
+        <EntryRulesSettings
+          mode="revenue"
+          accountNames={accounts.map((a) => a.name)}
+          tags={tags}
+          knownTypes={revenueAccounts.map((a) => a.type ?? "")}
+          legacy={rules.filter((r) => r.mode === "revenue")}
+          onLegacyMigrated={() => {
+            const kept = rules.filter((r) => r.mode !== "revenue");
+            setRules(kept);
+            saveRules(kept);
+          }}
+          onManualCount={setRevenueRuleCount}
+        />
       </section>
       </SettingsAccordion>
 

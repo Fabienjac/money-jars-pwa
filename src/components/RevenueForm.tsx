@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { appendRevenue, getAccounts, getRevenueAccounts, setRevenueAccounts as setRevenueAccountsApi } from "../api";
-import { loadAutoRules, AutoRule } from "../autoRules";
+import { appendRevenue, getAccounts, getRevenueAccounts, setRevenueAccounts as setRevenueAccountsApi, fetchEntryRules, searchRevenues } from "../api";
+import { findBestRule, resolveAccountName, describeRule, distinctLabels, type EntryRule } from "../entryRules";
 import { loadRevenueAccounts, saveRevenueAccounts } from "../revenueAccountsUtils";
 import { loadAccounts } from "../accountsUtils";
 import { loadPreferredCurrencies } from "../currencyUtils";
@@ -155,13 +155,27 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
     }
   };
 
-  const [appliedRule, setAppliedRule] = useState<AutoRule | null>(null);
+  // Règles automatiques (Réglages) : un mot-clé dans la source remplit le compte de destination et le type de revenu.
+  const [appliedRule, setAppliedRule] = useState<EntryRule | null>(null);
+  const [entryRules, setEntryRules] = useState<EntryRule[]>([]);
+  const [historyTypes, setHistoryTypes] = useState<string[]>([]);
+  // Champs choisis par la personne elle-même : une règle ne les remplace jamais.
+  const touched = useRef({ destination: false, type: false });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   // ── Comptes ──────────────────────────────────────────────────────────────────
   const [revenueAccounts, setRevenueAccounts] = useState(loadRevenueAccounts());
   const [spendingAccounts, setSpendingAccounts] = useState(loadAccounts());
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEntryRules().then((list) => { if (!cancelled) setEntryRules(list.filter((r) => r.mode === "revenue")); }).catch(() => {});
+    searchRevenues("", 300)
+      .then((res) => { if (!cancelled) setHistoryTypes(distinctLabels(res.rows.map((r) => r.incomeType))); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const reload = () =>
@@ -236,16 +250,23 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
     }
   }, [revenueAccounts]);
 
+  // Types de revenu déjà utilisés (comptes de revenus + historique), sans doublon de casse
+  const typeSuggestions = distinctLabels([...revenueAccounts.map((a) => a.type), ...historyTypes]);
+
   // ── Source change (auto-rules) ───────────────────────────────────────────────
   const handleSourceChange = (v: string) => {
     setSource(v);
-    const text = v.trim().toLowerCase();
-    if (!text) { setAppliedRule(null); return; }
-    const rules = loadAutoRules().filter((r) => r.mode === "revenue");
-    const rule = rules.find((r) => text.includes(r.keyword.toLowerCase()));
+    if (!v.trim()) { setAppliedRule(null); return; }
+    const rule = findBestRule(v, entryRules, "revenue");
     if (!rule) { setAppliedRule(null); return; }
-    setAppliedRule(rule);
-    if (rule.destination) setDestination(rule.destination);
+    // Compte retrouvé dans la liste sans tenir compte de la casse ; type écrit comme un type déjà utilisé s'il existe
+    const dest = touched.current.destination ? null : resolveAccountName(rule.destination, spendingAccounts.map((a) => a.name));
+    const known = typeSuggestions.find((x) => x.toLowerCase() === (rule.incomeType ?? "").toLowerCase());
+    const type = touched.current.type || !rule.incomeType ? null : (known ?? rule.incomeType);
+    if (!dest && !type) { setAppliedRule(null); return; }
+    setAppliedRule({ ...rule, destination: dest ?? undefined, incomeType: type ?? undefined });
+    if (dest) setDestination(dest);
+    if (type) setIncomeType(type);
   };
 
   // ── Auto-ajout de comptes ────────────────────────────────────────────────────
@@ -371,6 +392,8 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
       setRate("");
       setCryptoAddress("");
       setIncomeType("");
+      touched.current = { destination: false, type: false };
+      setAppliedRule(null);
       setDate(todayISO());
       setRevenueAccounts(loadRevenueAccounts());
       setSpendingAccounts(loadAccounts());
@@ -574,7 +597,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
                   role="radio"
                   aria-checked={active}
                   className={`rsf-account${active ? " active" : ""}`}
-                  onClick={() => setDestination(acc.name)}
+                  onClick={() => { touched.current.destination = true; setAppliedRule(null); setDestination(acc.name); }}
                 >
                   <span aria-hidden="true">{acc.icon || "💳"}</span> {acc.name}
                 </button>
@@ -592,13 +615,13 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
           type="text"
           list="rev-type-list"
           value={incomeType}
-          onChange={(e) => setIncomeType(e.target.value)}
+          onChange={(e) => { touched.current.type = true; setIncomeType(e.target.value); }}
           placeholder={t("rev.typePlaceholder")}
           style={fieldStyle}
         />
         {/* Types déjà utilisés dans tes comptes de revenus : on réutilise la même écriture plutôt que d'en créer une variante */}
         <datalist id="rev-type-list">
-          {Array.from(new Set(revenueAccounts.map((a) => a.type).filter((v): v is string => !!v))).map((v) => (
+          {typeSuggestions.map((v) => (
             <option key={v} value={v} />
           ))}
         </datalist>
@@ -800,7 +823,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
 
   const ruleEl = appliedRule ? (
     <div style={{ padding: "10px", borderRadius: "8px", backgroundColor: "rgba(52,199,89,0.1)", border: "1px solid rgba(52,199,89,0.3)", fontSize: "13px", color: "var(--text-main)" }}>
-      {t("rev.ruleApplied", { keyword: appliedRule.keyword })}{appliedRule.destination && ` → ${appliedRule.destination}`}
+      {t("rev.ruleApplied", { keyword: appliedRule.keyword })}{describeRule(appliedRule) && ` → ${describeRule(appliedRule)}`}
     </div>
   ) : null;
 
