@@ -1044,6 +1044,22 @@ const en: Record<keyof typeof fr, string> = {
   "hist.exportCsv": "⬇ Export as CSV ({n})",
   "hist.csvSubscription": "Subscription",
   "hist.avgPerDayOver": "Daily average over {n} days",
+  "auto.title": "Runway",
+  "auto.headline": "of available cash",
+  "auto.detail": "{liquid} available (Necessities, Education, Gift, Play) · {burn} regular spending per month",
+  "auto.show": "Show details",
+  "auto.hide": "Hide details",
+  "auto.colRegular": "Regular pace",
+  "auto.colAll": "With one-offs",
+  "auto.rowLiquid": "Available",
+  "auto.rowTotal": "All jars",
+  "auto.burnRegular": "Regular pace: spending over the last 30 days, excluding one-offs ({amount} per month).",
+  "auto.burnAll": "With one-offs: monthly average over {months} months, everything included ({amount} per month).",
+  "auto.deficit": "Available jars in the red: {amount} (already deducted from the balance).",
+  "auto.shortHistory": "Less than 30 days of spending: unreliable estimate.",
+  "auto.note": "Assumes no future income. Deficits cleared with \"Start from zero\" do not count as available money.",
+  "auto.months": "{n} months",
+  "auto.years": "{n} years",
 };
 
 export default en;

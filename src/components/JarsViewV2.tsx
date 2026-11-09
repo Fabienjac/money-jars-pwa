@@ -12,6 +12,7 @@ import { calculateTagStats, TagStat } from "../tagStatsUtils";
 import { getStreak, computeStreak, StreakState } from "../streakUtils";
 import LifestyleCard from "./LifestyleCard";
 import YearStartCard from "./YearStartCard";
+import AutonomyCard from "./AutonomyCard";
 
 import { currencySymbol as curSym, formatMoney as formatMoneyBase, formatPercent } from "../baseCurrency";
 import { t, useT, type TKey, localeTag, monthShort, monthLong, JAR_LABELS, JAR_EMPTY_COPY } from "../i18n";
@@ -517,6 +518,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
       {/* 🧭 Train de vie : dépense / jour hors dépenses extraordinaires */}
       {onOpenSettings && <YearStartCard onOpen={onOpenSettings} />}
       <LifestyleCard lastImportLabel={lastImportLabel} />
+
+      {/* 🛟 Autonomie : mois de trésorerie au rythme de dépenses actuel */}
+      <AutonomyCard rows={tagStatsLoading && allTransactionsForChart.length === 0 ? null : allTransactionsForChart} oneOffTagIds={oneOffTagIds} />
 
       {/* 📅 Card "Ce mois" — projection + budget + tags */}
       {(currentMonthSpending != null || tagStatsLoading) && (

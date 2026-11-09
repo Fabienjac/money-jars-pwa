@@ -1042,6 +1042,22 @@ const fr = {
   "hist.exportCsv": "⬇ Exporter en CSV ({n})",
   "hist.csvSubscription": "Abonnement",
   "hist.avgPerDayOver": "Moyenne par jour sur {n} jours",
+  "auto.title": "Autonomie",
+  "auto.headline": "de trésorerie disponible",
+  "auto.detail": "{liquid} disponibles (Nécessités, Éducation, Don, Play) · {burn} de dépenses courantes par mois",
+  "auto.show": "Voir le détail",
+  "auto.hide": "Masquer le détail",
+  "auto.colRegular": "Rythme courant",
+  "auto.colAll": "Avec exceptionnelles",
+  "auto.rowLiquid": "Disponible",
+  "auto.rowTotal": "Toutes les jarres",
+  "auto.burnRegular": "Rythme courant : dépenses des 30 derniers jours, hors exceptionnelles ({amount} par mois).",
+  "auto.burnAll": "Avec exceptionnelles : moyenne mensuelle sur {months} mois, tout compris ({amount} par mois).",
+  "auto.deficit": "Jarres disponibles en négatif : {amount} (déjà déduits du solde).",
+  "auto.shortHistory": "Moins de 30 jours de dépenses : estimation peu fiable.",
+  "auto.note": "Sans aucun revenu futur. Les déficits effacés par « Repartir de zéro » ne comptent pas comme de l'argent disponible.",
+  "auto.months": "{n} mois",
+  "auto.years": "{n} ans",
 } as const;
 
 export default fr;
