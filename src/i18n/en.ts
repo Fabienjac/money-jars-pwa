@@ -1141,6 +1141,21 @@ const en: Record<keyof typeof fr, string> = {
   "legal.others": "Other information",
   "more.legal": "Privacy and terms",
   "more.legalSub": "Legal notice, personal data, terms of sale",
+  // Settings: summaries under the collapsible block titles
+  "set.sum.rules.zero": "No rules",
+  "set.sum.rules.one": "1 rule",
+  "set.sum.rules.other": "{n} rules",
+  "set.sum.accounts.zero": "No accounts",
+  "set.sum.accounts.one": "1 account",
+  "set.sum.accounts.other": "{n} accounts",
+  "set.sum.revAccounts.zero": "No income accounts",
+  "set.sum.revAccounts.one": "1 income account",
+  "set.sum.revAccounts.other": "{n} income accounts",
+  "set.sum.tags.zero": "No tags",
+  "set.sum.tags.one": "1 tag",
+  "set.sum.tags.other": "{n} tags",
+  "set.sum.defaultsNone": "No default accounts",
+  "set.sum.more": "+{n}",
 };
 
 export default en;

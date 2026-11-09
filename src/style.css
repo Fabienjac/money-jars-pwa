@@ -4216,3 +4216,21 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .lp-faq { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 0 20px; margin-bottom: 10px; }
 .lp-faq summary { cursor: pointer; padding: 16px 0; font-size: 16px; font-weight: 600; color: #fff; list-style-position: outside; }
 .lp-faq p { margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: rgba(255,255,255,0.65); }
+
+/* ── Réglages : blocs repliables (SettingsAccordion) ──────────────────────────
+   Le bloc est la carte ; les sections qu'il enveloppent perdent leur propre carte et leur titre (remplacé par l'en-tête). */
+.acc { background: var(--bg-card); border-radius: 20px; box-shadow: var(--shadow-sm); margin-bottom: 12px; }
+.acc-h { margin: 0; font-size: inherit; }
+.acc-head { width: 100%; display: flex; align-items: center; gap: 12px; padding: 16px 20px; border: 0; border-radius: 20px; background: none; font-family: inherit; text-align: left; color: var(--text-main); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.acc-head:focus-visible { outline: 2px solid #007AFF; outline-offset: -2px; }
+.acc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.acc-title { font-size: 17px; font-weight: 600; }
+.acc-sum { font-size: 13px; font-weight: 500; color: var(--text-muted); overflow-wrap: anywhere; }
+.acc-chev { flex-shrink: 0; font-size: 24px; line-height: 1; color: var(--text-muted); transition: transform 0.2s ease; }
+.acc.is-open .acc-chev { transform: rotate(90deg); }
+.acc.is-open .acc-sum { display: none; } /* ouvert : le contenu montre déjà l'état */
+.acc-body { padding: 0 20px 20px; }
+.acc-body[hidden] { display: none; }
+.acc-body > .settings-section { background: none; box-shadow: none; border-radius: 0; padding: 0; margin: 0; }
+.acc-body > .settings-section > .settings-section-title { display: none; }
+@media (prefers-reduced-motion: reduce) { .acc-chev { transition: none; } }

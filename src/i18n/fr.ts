@@ -1139,6 +1139,21 @@ const fr = {
   "legal.others": "Autres informations",
   "more.legal": "Confidentialité et conditions",
   "more.legalSub": "Mentions légales, données personnelles, CGV",
+  // Réglages : résumés sous les titres des blocs repliables
+  "set.sum.rules.zero": "Aucune règle",
+  "set.sum.rules.one": "1 règle",
+  "set.sum.rules.other": "{n} règles",
+  "set.sum.accounts.zero": "Aucun compte",
+  "set.sum.accounts.one": "1 compte",
+  "set.sum.accounts.other": "{n} comptes",
+  "set.sum.revAccounts.zero": "Aucun compte de revenus",
+  "set.sum.revAccounts.one": "1 compte de revenus",
+  "set.sum.revAccounts.other": "{n} comptes de revenus",
+  "set.sum.tags.zero": "Aucune étiquette",
+  "set.sum.tags.one": "1 étiquette",
+  "set.sum.tags.other": "{n} étiquettes",
+  "set.sum.defaultsNone": "Aucun compte par défaut",
+  "set.sum.more": "+{n}",
 } as const;
 
 export default fr;

@@ -33,11 +33,14 @@ import { loadTags, setCachedTags, Tag } from "../tagsUtils";
 import { getAccounts, getRevenueAccounts, setAccounts as setAccountsApi, setRevenueAccounts as setRevenueAccountsApi, fetchTagsFromSheet, saveTags as saveTagsApi, bulkRenameSpendingAccount, bulkRenameRevenueSource, fetchJarSettings, saveJarSettings } from "../api";
 import { ALL_CURRENCIES, loadPreferredCurrencies, savePreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 
-import { currencySymbol as curSym } from "../baseCurrency";
+import { currencySymbol as curSym, useBaseCurrency } from "../baseCurrency";
 import LanguageSettings from "./LanguageSettings";
 import JarTransfers from "./JarTransfers";
 import AccountTransfers from "./AccountTransfers";
-import { useT, JAR_LABELS } from "../i18n";
+import SettingsAccordion from "./SettingsAccordion";
+import { SEEN_KEY, OPEN_KEY, initialOpenIds, parseOpenIds, toggleOpenId, percentsSummary } from "../settingsAccordion";
+import { useT, useLang, JAR_LABELS } from "../i18n";
+import type { TKey } from "../i18n";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
   FFA: "🌱",
@@ -534,6 +537,40 @@ const SettingsView: React.FC = () => {
     setTimeout(() => setMessage(null), 2000);
   };
 
+  // ── Blocs repliables : premier passage = jarres ouvertes, ensuite tout replié (voir settingsAccordion.ts) ──
+  const lang = useLang();
+  const baseCurrency = useBaseCurrency();
+  const [openIds, setOpenIds] = useState<string[]>(() => {
+    let seen = false;
+    let stored: string[] | null = null;
+    const forced: string[] = [];
+    try {
+      seen = !!localStorage.getItem(SEEN_KEY);
+      stored = parseOpenIds(sessionStorage.getItem(OPEN_KEY));
+      // Arrivée depuis le rappel de janvier de l'accueil : le bloc des transferts doit être ouvert
+      if (sessionStorage.getItem("mjars:scrollToTransfers")) forced.push("xfer");
+    } catch { /* stockage indisponible : valeurs par défaut */ }
+    return initialOpenIds({ seen, stored, forced });
+  });
+  useEffect(() => {
+    try { localStorage.setItem(SEEN_KEY, "1"); } catch { /* sans importance */ }
+  }, []);
+  useEffect(() => {
+    try { sessionStorage.setItem(OPEN_KEY, JSON.stringify(openIds)); } catch { /* sans importance */ }
+  }, [openIds]);
+  const isOpen = (id: string) => openIds.includes(id);
+  const toggleSection = (id: string) => setOpenIds((prev) => toggleOpenId(prev, id));
+
+  const plural = (n: number, zero: TKey, one: TKey, other: TKey) => (n === 0 ? t(zero) : n === 1 ? t(one) : t(other, { n }));
+  const sumRules = plural(rules.length, "set.sum.rules.zero", "set.sum.rules.one", "set.sum.rules.other");
+  const sumAccounts = plural(accounts.length, "set.sum.accounts.zero", "set.sum.accounts.one", "set.sum.accounts.other");
+  const sumRevAccounts = plural(revenueAccounts.length, "set.sum.revAccounts.zero", "set.sum.revAccounts.one", "set.sum.revAccounts.other");
+  const sumTags = plural(tags.length, "set.sum.tags.zero", "set.sum.tags.one", "set.sum.tags.other");
+  const sumDefaults = [defaultSpendingAccount, defaultRevenueAccount].filter(Boolean).join(" · ") || t("set.sum.defaultsNone");
+  const SHOWN_CURRENCIES = 5;
+  const sumCurrencies = preferredCurrencies.slice(0, SHOWN_CURRENCIES).join(" · ")
+    + (preferredCurrencies.length > SHOWN_CURRENCIES ? " " + t("set.sum.more", { n: preferredCurrencies.length - SHOWN_CURRENCIES }) : "");
+
   return (
     <main className="settings-view">
       <h2 className="settings-title">{t("set.title")}</h2>
@@ -545,9 +582,10 @@ const SettingsView: React.FC = () => {
         </div>
       )}
 
-      <LanguageSettings />
+      <SettingsAccordion id="lang" title={t("settings.lang.title")} summary={lang === "fr" ? "Français" : "English"} open={isOpen("lang")} onToggle={toggleSection}><LanguageSettings /></SettingsAccordion>
 
       {/* Section: Répartition des jarres */}
+      <SettingsAccordion id="jars" title={t("set.jarsTitle")} summary={percentsSummary(jarSettings)} open={isOpen("jars")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.jarsTitle")}</h3>
 
@@ -623,14 +661,16 @@ const SettingsView: React.FC = () => {
           </button>
         </div>
       </section>
+      </SettingsAccordion>
 
       {/* Section: Transferts entre jarres */}
-      <JarTransfers />
+      <SettingsAccordion id="xfer" title={t("xfer.title")} open={isOpen("xfer")} onToggle={toggleSection}><JarTransfers /></SettingsAccordion>
 
       {/* Section: Virements entre comptes */}
-      <AccountTransfers />
+      <SettingsAccordion id="atr" title={t("atr.title")} open={isOpen("atr")} onToggle={toggleSection}><AccountTransfers /></SettingsAccordion>
 
       {/* Section: Règles automatiques */}
+      <SettingsAccordion id="rules" title={t("set.rulesTitle")} summary={sumRules} open={isOpen("rules")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.rulesTitle")}</h3>
 
@@ -771,8 +811,10 @@ const SettingsView: React.FC = () => {
           </div>
         )}
       </section>
+      </SettingsAccordion>
 
       {/* Section: Comptes de dépenses */}
+      <SettingsAccordion id="accounts" title={t("set.spendAccounts")} summary={sumAccounts} open={isOpen("accounts")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.spendAccounts")}</h3>
         {accountsLoading && (
@@ -890,8 +932,10 @@ const SettingsView: React.FC = () => {
           </div>
         )}
       </section>
+      </SettingsAccordion>
 
       {/* Section: Comptes de revenus */}
+      <SettingsAccordion id="revaccounts" title={t("set.revAccounts")} summary={sumRevAccounts} open={isOpen("revaccounts")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.revAccounts")}</h3>
 
@@ -1016,10 +1060,12 @@ const SettingsView: React.FC = () => {
           </div>
         )}
       </section>
+      </SettingsAccordion>
 
-      <CryptoSettings />
+      <SettingsAccordion id="crypto" title={t("settings.crypto.title")} open={isOpen("crypto")} onToggle={toggleSection}><CryptoSettings /></SettingsAccordion>
 
       {/* ── Comptes par défaut ── */}
+      <SettingsAccordion id="defaults" title={t("set.defaultsTitle")} summary={sumDefaults} open={isOpen("defaults")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.defaultsTitle")}</h3>
         <p className="settings-section-desc">{t("set.defaultsDesc")}</p>
@@ -1062,10 +1108,12 @@ const SettingsView: React.FC = () => {
           </label>
         </div>
       </section>
+      </SettingsAccordion>
 
-      <BaseCurrencySettings />
+      <SettingsAccordion id="base" title={t("settings.base.title")} summary={baseCurrency} open={isOpen("base")} onToggle={toggleSection}><BaseCurrencySettings /></SettingsAccordion>
 
       {/* ── Devises préférées ── */}
+      <SettingsAccordion id="currencies" title={t("set.currenciesTitle")} summary={sumCurrencies} open={isOpen("currencies")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.currenciesTitle")}</h3>
         <p className="settings-section-desc">
@@ -1120,7 +1168,9 @@ const SettingsView: React.FC = () => {
           )}
         </div>
       </section>
+      </SettingsAccordion>
       {/* ── Section Tags ── */}
+      <SettingsAccordion id="tags" title={t("set.tagsTitle")} summary={sumTags} open={isOpen("tags")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.tagsTitle")}</h3>
 
@@ -1237,13 +1287,16 @@ const SettingsView: React.FC = () => {
           </button>
         )}
       </section>
+      </SettingsAccordion>
 
       {/* ── Compte ──────────────────────────────────────────────────── */}
+      <SettingsAccordion id="account" title={t("set.account")} open={isOpen("account")} onToggle={toggleSection}>
       <section className="settings-section">
         <h2 className="settings-section-title">{t("set.account")}</h2>
         <LogoutButton />
         <DataAccountSection />
       </section>
+      </SettingsAccordion>
 
     </main>
   );
