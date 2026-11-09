@@ -53,29 +53,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const { data } = await supabase
-      .from("subscriptions")
-      .select("plan, trial_ends_at, current_period_end")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    // Si aucune ligne n'existe (trigger raté ou premier login), on en crée une
-    if (!data) {
-      const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-      const { data: created } = await supabase
+    const readRow = () =>
+      supabase
         .from("subscriptions")
-        .upsert(
-          { user_id: userId, plan: "trial", trial_ends_at: trialEnd },
-          { onConflict: "user_id" }
-        )
         .select("plan, trial_ends_at, current_period_end")
+        .eq("user_id", userId)
         .maybeSingle();
 
-      if (created) {
-        setSubscription({ plan: "trial", trialEndsAt: new Date(trialEnd), isActive: true });
-      } else {
-        setSubscription({ plan: "trial", trialEndsAt: new Date(trialEnd), isActive: true });
-      }
+    let { data } = await readRow();
+
+    // Aucune ligne (compte antérieur au déclencheur d'inscription) : la fonction serveur ensure_my_subscription
+    // (supabase/subscriptions_lockdown.sql) la crée. Le client n'écrit plus jamais dans cette table.
+    if (!data) {
+      try { await supabase.rpc("ensure_my_subscription"); } catch { /* fonction pas encore installée */ }
+      ({ data } = await readRow());
+    }
+
+    // Toujours rien (fonction absente ou lecture impossible) : essai affiché localement, sans écriture
+    if (!data) {
+      const trialEnd = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+      setSubscription({ plan: "trial", trialEndsAt: trialEnd, isActive: true });
       return;
     }
 
