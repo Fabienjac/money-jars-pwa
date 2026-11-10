@@ -6,7 +6,8 @@
 --      soldes). On la passe à la jarre Nécessités (NEC).
 --   B. 13 dépenses d'août 2026 portent le compte « Redotpay Virtuelle », qui n'existe pas dans la liste des comptes
 --      (la liste a « Redotpay VIRT »). On les rattache à « Redotpay VIRT ».
---   C. (À toi de choisir) une dépense du 17 janvier 2026 porte le compte « Redotpay » : carte physique ou virtuelle ?
+--   C. Une dépense du 17 janvier 2026 (« Twin Birds leggings india Odile », 40,93 €) porte le compte « Redotpay » tout
+--      court : tu as précisé qu'il s'agit de la carte virtuelle, on la rattache à « Redotpay VIRT ».
 --   D. Garde-fou : la base refuse désormais une jarre qui n'est pas l'une des six.
 --
 -- À exécuter dans Supabase → SQL Editor, ÉTAPE PAR ÉTAPE (sélectionner un bloc, puis Run). Rien n'est supprimé.
@@ -83,15 +84,14 @@ where account = 'Redotpay Virtuelle'
   and user_id = '<MON_USER_ID>'::uuid
 returning id, date, description, account, amount;
 
--- 3C. (OPTIONNEL, à toi de choisir) la dépense du 17 janvier 2026 au compte « Redotpay ».
---     Décommente UNE des deux lignes « set account » (carte physique OU virtuelle), puis lance le bloc. Attendu : 1 ligne.
--- update transactions_spending
--- set account = 'Redotpay PHYS'      -- ou : 'Redotpay VIRT'
--- where account = 'Redotpay'
---   and date = '2026-01-17'
---   and description = 'Twin Birds leggings india Odile'
---   and user_id = '<MON_USER_ID>'::uuid
--- returning id, date, description, account, amount;
+-- 3C. « Redotpay » → « Redotpay VIRT » pour la dépense du 17 janvier 2026 (carte virtuelle). Attendu : 1 ligne.
+update transactions_spending
+set account = 'Redotpay VIRT'
+where account = 'Redotpay'
+  and date = '2026-01-17'
+  and description = 'Twin Birds leggings india Odile'
+  and user_id = '<MON_USER_ID>'::uuid
+returning id, date, description, account, amount;
 
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -103,6 +103,8 @@ select
        and user_id = '<MON_USER_ID>'::uuid)                                                       as jarres_invalides,
   (select count(*) from transactions_spending
      where account = 'Redotpay Virtuelle' and user_id = '<MON_USER_ID>'::uuid)                   as redotpay_virtuelle,
+  (select count(*) from transactions_spending
+     where account = 'Redotpay' and user_id = '<MON_USER_ID>'::uuid)                             as redotpay_seul,
   (select count(*) from transactions_spending)                                                    as total_depenses,
   (select count(*) from transactions_spending_backup_20261110)                                    as total_sauvegarde;
 
