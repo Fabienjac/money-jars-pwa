@@ -2,8 +2,10 @@
 import React from "react";
 import { SearchSpendingResult } from "../types";
 
-import { currencySymbol as curSym, formatMoney, formatPercent } from "../baseCurrency";
+import { formatMoney } from "../baseCurrency";
 import { t as tr, useLang, localeTag, JAR_LABELS as I18N_JARS } from "../i18n";
+import { axisScale, fillMonthKeys, labelStep, monthKeyOf, ratioOf } from "../monthlyChart";
+
 interface JarBarChartProps {
   transactions: SearchSpendingResult[];
 }
@@ -25,10 +27,8 @@ const JAR_COLORS: { [key: string]: string } = {
   GIFT: "#5AC8FA",   // Cyan
 };
 
-
 export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
   useLang();
-  console.log("📊 JarBarChart - Transactions reçues:", transactions?.length);
 
   if (!transactions || transactions.length === 0) {
     return (
@@ -50,10 +50,7 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
     );
   }
 
-  // Grouper par mois et par jar
   const monthlyData = groupByMonthAndJar(transactions);
-
-  console.log("📊 Données mensuelles par jar:", monthlyData);
 
   if (monthlyData.length === 0) {
     return (
@@ -70,382 +67,203 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
     );
   }
 
-  // Dimensions
-  const width = 900;
-  const height = 450;
-  const padding = { top: 40, right: 200, bottom: 80, left: 80 };
+  // Dimensions petites : sur un téléphone le graphique est réduit à la largeur de l'écran, les textes restent lisibles.
+  const width = 480;
+  const height = 290;
+  const padding = { top: 34, right: 14, bottom: 46, left: 62 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
+  const baseY = padding.top + chartHeight;
 
-  // Trouver le max pour l'échelle Y
-  const maxAmount = Math.max(...monthlyData.map(d => d.total));
+  // Échelle Y : plafonnée si un mois dépasse très nettement les autres
+  const scale = axisScale(monthlyData.map((d) => d.total));
+  const yTicks = scale.ticks;
+  const scaleY = (value: number) => baseY - ratioOf(value, scale.max) * chartHeight;
 
-  // Échelle Y
-  const scaleY = (value: number) => {
-    const ratio = value / maxAmount;
-    return padding.top + chartHeight - (ratio * chartHeight);
-  };
-
-  // Largeur des barres
   const barGroupWidth = chartWidth / monthlyData.length;
-  const barWidth = Math.min(50, barGroupWidth * 0.8);
+  const barWidth = Math.min(40, barGroupWidth * 0.72);
+  const step = labelStep(monthlyData.length);
+  const showTotals = monthlyData.length <= 12;
 
-  // Générer graduations Y
-  const yTicks = generateYTicks(0, maxAmount, 5);
-
-  // Formater les mois
   const formatMonth = (monthStr: string) => {
     try {
-      const [year, month] = monthStr.split('-');
+      const [year, month] = monthStr.split("-");
       const date = new Date(parseInt(year), parseInt(month) - 1);
-      return date.toLocaleDateString(localeTag(), { month: 'short', year: 'numeric' });
+      return date.toLocaleDateString(localeTag(), { month: "short", year: "numeric" });
     } catch (e) {
       return monthStr;
     }
   };
+  const jarName = (jar: string) => I18N_JARS[jar as keyof typeof I18N_JARS] || jar;
 
-  // Obtenir les jars utilisés
   const usedJars = getUsedJars(monthlyData);
+  const grandTotal = monthlyData.reduce((sum, d) => sum + d.total, 0);
+  const cappedMonths = scale.overflow
+    .map((i) => `${formatMonth(monthlyData[i].month)} (${formatMoney(monthlyData[i].total, undefined, 0)})`)
+    .join(", ");
 
   return (
-    <div style={{
-      width: "100%",
-      overflowX: "auto",
-      padding: "20px 0",
-    }}>
+    <div className="mchart">
+      <h4 className="mchart-title">{tr("chart.jarByMonth")}</h4>
       <svg
-        width={width}
-        height={height}
+        width="100%"
         viewBox={`0 0 ${width} ${height}`}
-        style={{ maxWidth: "100%", height: "auto" }}
+        role="img"
+        aria-label={tr("chart.jarByMonth")}
+        style={{ maxWidth: width * 1.6, height: "auto", display: "block", margin: "0 auto" }}
       >
-        {/* Titre */}
-        <text
-          x={width / 2}
-          y={20}
-          textAnchor="middle"
-          style={{
-            fontSize: "18px",
-            fontWeight: "700",
-            fill: "var(--text-main)",
-          }}
-        >
-          {tr("chart.jarByMonth")}
-        </text>
-
-        {/* Grille horizontale */}
+        {/* Grille horizontale et graduations */}
         {yTicks.map((tick, i) => (
           <g key={i}>
-            <line
-              x1={padding.left}
-              y1={scaleY(tick)}
-              x2={width - padding.right}
-              y2={scaleY(tick)}
-              stroke="#E5E5EA"
-              strokeWidth="1"
-            />
-            <text
-              x={padding.left - 10}
-              y={scaleY(tick)}
-              textAnchor="end"
-              alignmentBaseline="middle"
-              style={{
-                fontSize: "12px",
-                fill: "var(--text-muted)",
-              }}
-            >
+            <line x1={padding.left} y1={scaleY(tick)} x2={width - padding.right} y2={scaleY(tick)} stroke="var(--border-color)" strokeWidth="1" />
+            <text x={padding.left - 8} y={scaleY(tick)} textAnchor="end" dominantBaseline="middle" style={{ fontSize: "11px", fill: "var(--text-muted)" }}>
               {formatMoney(tick, undefined, 0)}
             </text>
           </g>
         ))}
 
         {/* Axe X */}
-        <line
-          x1={padding.left}
-          y1={padding.top + chartHeight}
-          x2={width - padding.right}
-          y2={padding.top + chartHeight}
-          stroke="#8E8E93"
-          strokeWidth="2"
-        />
-
-        {/* Axe Y */}
-        <line
-          x1={padding.left}
-          y1={padding.top}
-          x2={padding.left}
-          y2={padding.top + chartHeight}
-          stroke="#8E8E93"
-          strokeWidth="2"
-        />
-
-        {/* Label axe Y */}
-        <text
-          x={20}
-          y={height / 2}
-          textAnchor="middle"
-          transform={`rotate(-90, 20, ${height / 2})`}
-          style={{
-            fontSize: "14px",
-            fontWeight: "600",
-            fill: "var(--text-muted)",
-          }}
-        >
-          {tr("chart.amount", { cur: curSym() })}
-        </text>
-
-        {/* Label axe X */}
-        <text
-          x={width / 2}
-          y={height - 10}
-          textAnchor="middle"
-          style={{
-            fontSize: "14px",
-            fontWeight: "600",
-            fill: "var(--text-muted)",
-          }}
-        >
-          {tr("chart.month")}
-        </text>
+        <line x1={padding.left} y1={baseY} x2={width - padding.right} y2={baseY} stroke="var(--text-light)" strokeWidth="1.5" />
 
         {/* Barres empilées par mois */}
         {monthlyData.map((data, monthIndex) => {
           const x = padding.left + monthIndex * barGroupWidth + (barGroupWidth - barWidth) / 2;
-          let yOffset = 0;
+          const cx = x + barWidth / 2;
+          const over = scale.overflow.includes(monthIndex);
+          const [mShort, mYear] = formatMonth(data.month).split(" ");
+          const showLabel = monthIndex % step === 0;
+          const showYear = monthIndex === 0 || data.month.endsWith("-01");
+          let cumulative = 0;
 
           return (
-            <g key={monthIndex}>
-              {/* Barres empilées pour chaque jar */}
+            <g key={data.month}>
               {usedJars.map((jar) => {
                 const amount = data.jars[jar] || 0;
-                if (amount === 0) return null;
-
-                const barHeight = (amount / maxAmount) * chartHeight;
-                const y = padding.top + chartHeight - yOffset - barHeight;
-
-                const barElement = (
-                  <rect
-                    key={jar}
-                    x={x}
-                    y={y}
-                    width={barWidth}
-                    height={barHeight}
-                    fill={JAR_COLORS[jar] || "#999"}
-                    stroke="white"
-                    strokeWidth="1"
-                    style={{ cursor: "pointer" }}
-                  >
-                    <title>
-                      {formatMonth(data.month)} - {I18N_JARS[jar as keyof typeof I18N_JARS] || jar}: {formatMoney(amount, undefined, 2)}
-                    </title>
+                if (amount <= 0) return null;
+                const yBottom = scaleY(cumulative);
+                cumulative += amount;
+                const yTop = scaleY(cumulative);   // coupé au haut de l'axe
+                if (yBottom - yTop <= 0.2) return null;
+                return (
+                  <rect key={jar} x={x} y={yTop} width={barWidth} height={yBottom - yTop} fill={JAR_COLORS[jar] || "#999"} stroke="var(--bg-card)" strokeWidth="1">
+                    <title>{formatMonth(data.month)} - {jarName(jar)} : {formatMoney(amount, undefined, 2)}</title>
                   </rect>
                 );
-
-                yOffset += barHeight;
-                return barElement;
               })}
 
-              {/* Label du mois */}
-              <text
-                x={x + barWidth / 2}
-                y={padding.top + chartHeight + 20}
-                textAnchor="middle"
-                style={{
-                  fontSize: "11px",
-                  fill: "var(--text-muted)",
-                }}
-              >
-                {formatMonth(data.month).split(' ')[0]}
-              </text>
-              <text
-                x={x + barWidth / 2}
-                y={padding.top + chartHeight + 35}
-                textAnchor="middle"
-                style={{
-                  fontSize: "10px",
-                  fill: "var(--text-muted)",
-                }}
-              >
-                {formatMonth(data.month).split(' ')[1]}
-              </text>
+              {over && (
+                /* Cassure : la barre est coupée ici, le vrai total est écrit au-dessus */
+                <path
+                  d={`M ${x - 3} ${padding.top + 14} l ${barWidth / 4 + 1} -5 l ${barWidth / 4 + 1} 5 l ${barWidth / 4 + 1} -5 l ${barWidth / 4 + 1} 5`}
+                  fill="none"
+                  stroke="var(--bg-card)"
+                  strokeWidth="4"
+                />
+              )}
 
-              {/* Total au-dessus de la barre */}
-              <text
-                x={x + barWidth / 2}
-                y={scaleY(data.total) - 5}
-                textAnchor="middle"
-                style={{
-                  fontSize: "10px",
-                  fontWeight: "700",
-                  fill: "var(--text-main)",
-                }}
-              >
-                {formatMoney(data.total, undefined, 0)}
-              </text>
+              {(over || (showTotals && data.total > 0)) && (
+                <text
+                  x={cx}
+                  y={scaleY(data.total) - 5}
+                  textAnchor="middle"
+                  style={{ fontSize: "10px", fontWeight: 700, fill: "var(--text-main)" }}
+                >
+                  {formatMoney(data.total, undefined, 0)}
+                </text>
+              )}
+
+              {showLabel && (
+                <>
+                  <text x={cx} y={baseY + 17} textAnchor="middle" style={{ fontSize: "11px", fill: "var(--text-muted)" }}>{mShort}</text>
+                  {showYear && (
+                    <text x={cx} y={baseY + 31} textAnchor="middle" style={{ fontSize: "10px", fill: "var(--text-light)" }}>{mYear}</text>
+                  )}
+                </>
+              )}
             </g>
           );
         })}
-
-        {/* Légende */}
-        <g transform={`translate(${width - padding.right + 20}, ${padding.top})`}>
-          <text
-            x={0}
-            y={0}
-            style={{
-              fontSize: "13px",
-              fontWeight: "700",
-              fill: "var(--text-main)",
-            }}
-          >
-            {tr("chart.jars")}
-          </text>
-          {usedJars.map((jar, i) => (
-            <g key={jar} transform={`translate(0, ${25 + i * 25})`}>
-              <rect
-                x={0}
-                y={-10}
-                width={15}
-                height={15}
-                fill={JAR_COLORS[jar] || "#999"}
-                rx={3}
-              />
-              <text
-                x={22}
-                y={0}
-                alignmentBaseline="middle"
-                style={{
-                  fontSize: "12px",
-                  fill: "var(--text-main)",
-                }}
-              >
-                {I18N_JARS[jar as keyof typeof I18N_JARS] || jar}
-              </text>
-            </g>
-          ))}
-        </g>
       </svg>
 
-      {/* Stats sous le graphique */}
-      <div style={{
-        marginTop: "20px",
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "16px",
-        justifyContent: "center",
-      }}>
-        {monthlyData.map((data, index) => (
-          <div
-            key={index}
-            style={{
-              padding: "12px 16px",
-              borderRadius: "8px",
-              background: "var(--bg-body)",
-              border: "1px solid var(--border-color)",
-              minWidth: "140px",
-            }}
-          >
-            <div style={{
-              fontSize: "11px",
-              color: "var(--text-muted)",
-              marginBottom: "6px",
-              fontWeight: "600",
-            }}>
-              {formatMonth(data.month)}
-            </div>
-            <div style={{
-              fontSize: "18px",
-              fontWeight: "700",
-              color: "#FF3B30",
-              marginBottom: "8px",
-            }}>
-              {formatMoney(data.total, undefined, 2)}
-            </div>
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "4px",
-            }}>
-              {usedJars.map(jar => {
-                const amount = data.jars[jar] || 0;
-                if (amount === 0) return null;
-                return (
-                  <div
-                    key={jar}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      fontSize: "11px",
-                    }}
-                  >
-                    <span style={{
-                      color: JAR_COLORS[jar],
-                      fontWeight: "600",
-                    }}>
-                      {jar}
-                    </span>
-                    <span style={{
-                      color: "var(--text-muted)",
-                    }}>
-                      {formatMoney(amount, undefined, 0)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      {/* Légende sous le graphique */}
+      <div className="mchart-legend">
+        {usedJars.map((jar) => (
+          <span key={jar} className="mchart-legend-item">
+            <span className="mchart-swatch" style={{ background: JAR_COLORS[jar] || "#999" }} />
+            {jarName(jar)}
+          </span>
         ))}
       </div>
+
+      {scale.capped && (
+        <p className="mchart-note">{tr("chart.capped", { months: cappedMonths })}</p>
+      )}
+
+      <table className="mchart-table">
+        <thead>
+          <tr>
+            <th>{tr("chart.month")}</th>
+            <th className="num">{tr("chart.total")}</th>
+            <th>{tr("chart.jars")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {monthlyData.map((data) => (
+            <tr key={data.month} className={data.total === 0 ? "empty" : undefined}>
+              <td>{formatMonth(data.month)}</td>
+              <td className="num strong">{data.total === 0 ? "—" : formatMoney(data.total, undefined, 2)}</td>
+              <td>
+                {data.total === 0 ? "—" : usedJars.filter((j) => (data.jars[j] || 0) > 0).map((jar) => (
+                  <span key={jar} className="mchart-chip">
+                    <b style={{ color: JAR_COLORS[jar] }}>{jar}</b> {formatMoney(data.jars[jar], undefined, 0)}
+                  </span>
+                ))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>{tr("chart.total")}</td>
+            <td className="num strong">{formatMoney(grandTotal, undefined, 2)}</td>
+            <td>
+              {usedJars.map((jar) => (
+                <span key={jar} className="mchart-chip">
+                  <b style={{ color: JAR_COLORS[jar] }}>{jar}</b> {formatMoney(monthlyData.reduce((s, d) => s + (d.jars[jar] || 0), 0), undefined, 0)}
+                </span>
+              ))}
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 };
 
 /**
- * Grouper par mois et par jar
+ * Grouper par mois et par jarre, en gardant les mois sans saisie (total 0).
  */
 function groupByMonthAndJar(transactions: SearchSpendingResult[]): MonthlyJarData[] {
   const monthMap = new Map<string, { [jarKey: string]: number }>();
 
   transactions.forEach(t => {
-    try {
-      const date = new Date(t.date);
-      if (isNaN(date.getTime())) {
-        console.warn("Date invalide:", t.date);
-        return;
-      }
-
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const jar = t.jar?.toUpperCase() || 'AUTRE';
-      const amount = t.amount || 0;
-
-      if (!monthMap.has(monthKey)) {
-        monthMap.set(monthKey, {});
-      }
-
-      const monthData = monthMap.get(monthKey)!;
-      monthData[jar] = (monthData[jar] || 0) + amount;
-    } catch (e) {
-      console.error("Erreur traitement transaction:", t, e);
-    }
+    const date = new Date(t.date);
+    if (isNaN(date.getTime())) return;
+    const monthKey = monthKeyOf(date);
+    const jar = t.jar?.toUpperCase() || "AUTRE";
+    const monthData = monthMap.get(monthKey) ?? {};
+    monthData[jar] = (monthData[jar] || 0) + (t.amount || 0);
+    monthMap.set(monthKey, monthData);
   });
 
-  // Convertir en tableau
-  const result = Array.from(monthMap.entries())
-    .map(([month, jars]) => {
-      const total = Object.values(jars).reduce((sum, val) => sum + val, 0);
-      return {
-        month,
-        jars,
-        total,
-      };
-    })
-    .sort((a, b) => a.month.localeCompare(b.month));
-
-  return result;
+  return fillMonthKeys(Array.from(monthMap.keys())).map((month) => {
+    const jars = monthMap.get(month) ?? {};
+    return { month, jars, total: Object.values(jars).reduce((sum, val) => sum + val, 0) };
+  });
 }
 
 /**
- * Obtenir les jars utilisés (triés par importance)
+ * Obtenir les jarres utilisées (triées par importance)
  */
 function getUsedJars(monthlyData: MonthlyJarData[]): string[] {
   const jarTotals = new Map<string, number>();
@@ -456,25 +274,7 @@ function getUsedJars(monthlyData: MonthlyJarData[]): string[] {
     });
   });
 
-  // Trier par montant total décroissant
   return Array.from(jarTotals.entries())
     .sort((a, b) => b[1] - a[1])
     .map(([jar]) => jar);
-}
-
-/**
- * Générer graduations Y
- */
-function generateYTicks(min: number, max: number, count: number): number[] {
-  const range = max - min;
-  const step = Math.ceil(range / count / 100) * 100; // Arrondir à 100
-
-  if (step === 0) return [0, max];
-
-  const ticks: number[] = [];
-  for (let i = 0; i <= count; i++) {
-    ticks.push(min + i * step);
-  }
-
-  return ticks;
 }

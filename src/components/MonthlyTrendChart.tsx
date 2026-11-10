@@ -2,8 +2,10 @@
 import React from "react";
 import { SearchSpendingResult } from "../types";
 
-import { currencySymbol as curSym, formatMoney, formatPercent } from "../baseCurrency";
+import { formatMoney } from "../baseCurrency";
 import { t as tr, useLang, localeTag } from "../i18n";
+import { axisScale, fillMonthKeys, labelStep, monthKeyOf, ratioOf } from "../monthlyChart";
+
 interface MonthlyTrendChartProps {
   transactions: SearchSpendingResult[];
 }
@@ -18,9 +20,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
   transactions,
 }) => {
   useLang();
-  console.log("📊 MonthlyTrendChart - Transactions reçues:", transactions?.length);
 
-  // Vérifier que les transactions existent
   if (!transactions || transactions.length === 0) {
     return (
       <div style={{
@@ -41,10 +41,7 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
     );
   }
 
-  // Grouper les transactions par mois
   const monthlyData = groupByMonth(transactions);
-  
-  console.log("📊 Données mensuelles:", monthlyData);
 
   if (monthlyData.length === 0) {
     return (
@@ -61,349 +58,169 @@ export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
     );
   }
 
-  // Dimensions du graphique
-  const width = 800;
-  const height = 400;
-  const padding = { top: 40, right: 40, bottom: 60, left: 80 };
+  // Dimensions petites : sur un téléphone le graphique est réduit à la largeur de l'écran, les textes restent lisibles.
+  const width = 480;
+  const height = 270;
+  const padding = { top: 34, right: 22, bottom: 46, left: 62 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  // Trouver min/max pour l'échelle
-  const maxAmount = Math.max(...monthlyData.map(d => d.total));
-  const minAmount = 0;
+  // Échelle Y : plafonnée si un mois dépasse très nettement les autres
+  const scale = axisScale(monthlyData.map((d) => d.total));
+  const yTicks = scale.ticks;
+  const scaleY = (value: number) => padding.top + chartHeight - ratioOf(value, scale.max) * chartHeight;
 
-  // Échelle Y (montant)
-  const scaleY = (value: number) => {
-    const ratio = (value - minAmount) / (maxAmount - minAmount);
-    return padding.top + chartHeight - (ratio * chartHeight);
-  };
-
-  // Échelle X (mois)
   const scaleX = (index: number) => {
-    if (monthlyData.length === 1) {
-      return padding.left + chartWidth / 2;
-    }
+    if (monthlyData.length === 1) return padding.left + chartWidth / 2;
     return padding.left + (index * chartWidth / (monthlyData.length - 1));
   };
 
-  // Créer le path pour la ligne
   const linePath = monthlyData
-    .map((data, index) => {
-      const x = scaleX(index);
-      const y = scaleY(data.total);
-      return index === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
-    })
+    .map((data, index) => `${index === 0 ? "M" : "L"} ${scaleX(index)} ${scaleY(data.total)}`)
     .join(" ");
+  const areaPath = `${linePath} L ${scaleX(monthlyData.length - 1)} ${padding.top + chartHeight} L ${scaleX(0)} ${padding.top + chartHeight} Z`;
 
-  // Créer le path pour l'aire sous la ligne (gradient)
-  const areaPath = `
-    ${linePath}
-    L ${scaleX(monthlyData.length - 1)} ${padding.top + chartHeight}
-    L ${padding.left} ${padding.top + chartHeight}
-    Z
-  `;
-
-  // Générer les graduations Y
-  const yTicks = generateYTicks(minAmount, maxAmount, 5);
-
-  // Formater les mois pour affichage
   const formatMonth = (monthStr: string) => {
     try {
-      const [year, month] = monthStr.split('-');
+      const [year, month] = monthStr.split("-");
       const date = new Date(parseInt(year), parseInt(month) - 1);
-      return date.toLocaleDateString(localeTag(), { month: 'short', year: 'numeric' });
+      return date.toLocaleDateString(localeTag(), { month: "short", year: "numeric" });
     } catch (e) {
       return monthStr;
     }
   };
+  const step = labelStep(monthlyData.length);
+  const countLabel = (n: number) => tr(n > 1 ? "stats.txN" : "stats.tx1", { n });
+  const grandTotal = monthlyData.reduce((sum, d) => sum + d.total, 0);
+  const grandCount = monthlyData.reduce((sum, d) => sum + d.count, 0);
+  const cappedMonths = scale.overflow
+    .map((i) => `${formatMonth(monthlyData[i].month)} (${formatMoney(monthlyData[i].total, undefined, 0)})`)
+    .join(", ");
 
   return (
-    <div style={{
-      width: "100%",
-      overflowX: "auto",
-      padding: "20px 0",
-    }}>
+    <div className="mchart">
+      <h4 className="mchart-title">{tr("chart.trendTitle")}</h4>
       <svg
-        width={width}
-        height={height}
+        width="100%"
         viewBox={`0 0 ${width} ${height}`}
-        style={{ maxWidth: "100%", height: "auto" }}
+        role="img"
+        aria-label={tr("chart.trendTitle")}
+        style={{ maxWidth: width * 1.6, height: "auto", display: "block", margin: "0 auto" }}
       >
-        {/* Titre */}
-        <text
-          x={width / 2}
-          y={20}
-          textAnchor="middle"
-          style={{
-            fontSize: "18px",
-            fontWeight: "700",
-            fill: "var(--text-main)",
-          }}
-        >
-          {tr("chart.trendTitle")}
-        </text>
-
-        {/* Grille horizontale */}
+        {/* Grille horizontale et graduations */}
         {yTicks.map((tick, i) => (
           <g key={i}>
-            <line
-              x1={padding.left}
-              y1={scaleY(tick)}
-              x2={width - padding.right}
-              y2={scaleY(tick)}
-              stroke="#E5E5EA"
-              strokeWidth="1"
-            />
-            <text
-              x={padding.left - 10}
-              y={scaleY(tick)}
-              textAnchor="end"
-              alignmentBaseline="middle"
-              style={{
-                fontSize: "12px",
-                fill: "var(--text-muted)",
-              }}
-            >
-              {tick.toLocaleString(localeTag())}
+            <line x1={padding.left} y1={scaleY(tick)} x2={width - padding.right} y2={scaleY(tick)} stroke="var(--border-color)" strokeWidth="1" />
+            <text x={padding.left - 8} y={scaleY(tick)} textAnchor="end" dominantBaseline="middle" style={{ fontSize: "11px", fill: "var(--text-muted)" }}>
+              {formatMoney(tick, undefined, 0)}
             </text>
           </g>
         ))}
 
-        {/* Grille verticale */}
-        {monthlyData.map((data, i) => (
-          <line
-            key={i}
-            x1={scaleX(i)}
-            y1={padding.top}
-            x2={scaleX(i)}
-            y2={padding.top + chartHeight}
-            stroke="#E5E5EA"
-            strokeWidth="1"
-            opacity="0.5"
-          />
-        ))}
-
         {/* Axe X */}
-        <line
-          x1={padding.left}
-          y1={padding.top + chartHeight}
-          x2={width - padding.right}
-          y2={padding.top + chartHeight}
-          stroke="#8E8E93"
-          strokeWidth="2"
-        />
+        <line x1={padding.left} y1={padding.top + chartHeight} x2={width - padding.right} y2={padding.top + chartHeight} stroke="var(--text-light)" strokeWidth="1.5" />
 
-        {/* Axe Y */}
-        <line
-          x1={padding.left}
-          y1={padding.top}
-          x2={padding.left}
-          y2={padding.top + chartHeight}
-          stroke="#8E8E93"
-          strokeWidth="2"
-        />
-
-        {/* Label axe Y */}
-        <text
-          x={20}
-          y={height / 2}
-          textAnchor="middle"
-          transform={`rotate(-90, 20, ${height / 2})`}
-          style={{
-            fontSize: "14px",
-            fontWeight: "600",
-            fill: "var(--text-muted)",
-          }}
-        >
-          {tr("chart.spendAmount", { cur: curSym() })}
-        </text>
-
-        {/* Label axe X */}
-        <text
-          x={width / 2}
-          y={height - 10}
-          textAnchor="middle"
-          style={{
-            fontSize: "14px",
-            fontWeight: "600",
-            fill: "var(--text-muted)",
-          }}
-        >
-          {tr("chart.month")}
-        </text>
-
-        {/* Gradient pour l'aire */}
         <defs>
           <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stopColor="#007AFF" stopOpacity="0.3" />
             <stop offset="100%" stopColor="#007AFF" stopOpacity="0.05" />
           </linearGradient>
         </defs>
+        <path d={areaPath} fill="url(#areaGradient)" />
+        <path d={linePath} fill="none" stroke="#007AFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
 
-        {/* Aire sous la ligne */}
-        <path
-          d={areaPath}
-          fill="url(#areaGradient)"
-        />
-
-        {/* Ligne de tendance */}
-        <path
-          d={linePath}
-          fill="none"
-          stroke="#007AFF"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-
-        {/* Points sur la ligne */}
         {monthlyData.map((data, index) => {
           const x = scaleX(index);
           const y = scaleY(data.total);
-
+          const over = scale.overflow.includes(index);
+          const [mShort, mYear] = formatMonth(data.month).split(" ");
+          const showLabel = index % step === 0;
+          const showYear = index === 0 || data.month.endsWith("-01");
           return (
-            <g key={index}>
-              {/* Point */}
-              <circle
-                cx={x}
-                cy={y}
-                r="5"
-                fill="white"
-                stroke="#007AFF"
-                strokeWidth="3"
-                style={{ cursor: "pointer" }}
-              >
-                <title>
-                  {formatMonth(data.month)}: {formatMoney(data.total, undefined, 2)} ({tr(data.count > 1 ? "stats.txN" : "stats.tx1", { n: data.count })})
-                </title>
+            <g key={data.month}>
+              <circle cx={x} cy={y} r={data.count === 0 ? 3 : 4.5} fill="var(--bg-card)" stroke={data.count === 0 ? "var(--text-light)" : "#007AFF"} strokeWidth="2.5">
+                <title>{formatMonth(data.month)} : {formatMoney(data.total, undefined, 2)} ({countLabel(data.count)})</title>
               </circle>
-
-              {/* Label mois */}
-              <text
-                x={x}
-                y={padding.top + chartHeight + 20}
-                textAnchor="middle"
-                style={{
-                  fontSize: "11px",
-                  fill: "var(--text-muted)",
-                }}
-              >
-                {formatMonth(data.month).split(' ')[0]}
-              </text>
-              <text
-                x={x}
-                y={padding.top + chartHeight + 35}
-                textAnchor="middle"
-                style={{
-                  fontSize: "10px",
-                  fill: "var(--text-muted)",
-                }}
-              >
-                {formatMonth(data.month).split(' ')[1]}
-              </text>
+              {over && (
+                <>
+                  {/* Cassure : l'axe est coupé ici, la vraie valeur est écrite au-dessus */}
+                  <path d={`M ${x - 9} ${y + 12} l 6 -4 l 6 4 l 6 -4`} fill="none" stroke="var(--bg-card)" strokeWidth="4" />
+                  <path d={`M ${x - 9} ${y + 12} l 6 -4 l 6 4 l 6 -4`} fill="none" stroke="#007AFF" strokeWidth="1.5" />
+                  <text
+                    x={Math.min(Math.max(x, padding.left + 24), width - padding.right - 24)}
+                    y={y - 10}
+                    textAnchor="middle"
+                    style={{ fontSize: "11px", fontWeight: 700, fill: "var(--text-main)" }}
+                  >
+                    {formatMoney(data.total, undefined, 0)}
+                  </text>
+                </>
+              )}
+              {showLabel && (
+                <>
+                  <text x={x} y={padding.top + chartHeight + 17} textAnchor="middle" style={{ fontSize: "11px", fill: "var(--text-muted)" }}>{mShort}</text>
+                  {showYear && (
+                    <text x={x} y={padding.top + chartHeight + 31} textAnchor="middle" style={{ fontSize: "10px", fill: "var(--text-light)" }}>{mYear}</text>
+                  )}
+                </>
+              )}
             </g>
           );
         })}
       </svg>
 
-      {/* Légende sous le graphique */}
-      <div style={{
-        marginTop: "20px",
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "16px",
-        justifyContent: "center",
-      }}>
-        {monthlyData.map((data, index) => (
-          <div
-            key={index}
-            style={{
-              padding: "8px 12px",
-              borderRadius: "8px",
-              background: "var(--bg-body)",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <div style={{
-              fontSize: "11px",
-              color: "var(--text-muted)",
-              marginBottom: "2px",
-            }}>
-              {formatMonth(data.month)}
-            </div>
-            <div style={{
-              fontSize: "16px",
-              fontWeight: "700",
-              color: "#007AFF",
-            }}>
-              {formatMoney(data.total, undefined, 2)}
-            </div>
-            <div style={{
-              fontSize: "10px",
-              color: "var(--text-muted)",
-              marginTop: "2px",
-            }}>
-              {tr(data.count > 1 ? "stats.txN" : "stats.tx1", { n: data.count })}
-            </div>
-          </div>
-        ))}
-      </div>
+      {scale.capped && (
+        <p className="mchart-note">{tr("chart.capped", { months: cappedMonths })}</p>
+      )}
+
+      <table className="mchart-table">
+        <thead>
+          <tr>
+            <th>{tr("chart.month")}</th>
+            <th className="num">{tr("chart.total")}</th>
+            <th className="num">{tr("chart.colTx")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {monthlyData.map((data) => (
+            <tr key={data.month} className={data.count === 0 ? "empty" : undefined}>
+              <td>{formatMonth(data.month)}</td>
+              <td className="num strong">{data.count === 0 ? "—" : formatMoney(data.total, undefined, 2)}</td>
+              <td className="num">{data.count === 0 ? "—" : data.count}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>{tr("chart.total")}</td>
+            <td className="num strong">{formatMoney(grandTotal, undefined, 2)}</td>
+            <td className="num">{grandCount}</td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 };
 
 /**
- * Grouper les transactions par mois
+ * Grouper les transactions par mois, en gardant les mois sans saisie (total 0).
  */
 function groupByMonth(transactions: SearchSpendingResult[]): MonthlyData[] {
   const monthMap = new Map<string, { total: number; count: number }>();
 
   transactions.forEach(t => {
-    try {
-      const date = new Date(t.date);
-      if (isNaN(date.getTime())) {
-        console.warn("Date invalide:", t.date);
-        return;
-      }
-      
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
-      const current = monthMap.get(monthKey) || { total: 0, count: 0 };
-      current.total += t.amount || 0;
-      current.count += 1;
-
-      monthMap.set(monthKey, current);
-    } catch (e) {
-      console.error("Erreur traitement transaction:", t, e);
-    }
+    const date = new Date(t.date);
+    if (isNaN(date.getTime())) return;
+    const monthKey = monthKeyOf(date);
+    const current = monthMap.get(monthKey) || { total: 0, count: 0 };
+    current.total += t.amount || 0;
+    current.count += 1;
+    monthMap.set(monthKey, current);
   });
 
-  // Convertir en tableau et trier par date
-  const result = Array.from(monthMap.entries())
-    .map(([month, data]) => ({
-      month,
-      total: data.total,
-      count: data.count,
-    }))
-    .sort((a, b) => a.month.localeCompare(b.month));
-
-  return result;
-}
-
-/**
- * Générer les graduations de l'axe Y
- */
-function generateYTicks(min: number, max: number, count: number): number[] {
-  const range = max - min;
-  const step = Math.ceil(range / count / 1000) * 1000; // Arrondir au millier
-  
-  if (step === 0) return [0, max];
-  
-  const ticks: number[] = [];
-
-  for (let i = 0; i <= count; i++) {
-    ticks.push(min + i * step);
-  }
-
-  return ticks;
+  return fillMonthKeys(Array.from(monthMap.keys())).map((month) => ({
+    month,
+    total: monthMap.get(month)?.total ?? 0,
+    count: monthMap.get(month)?.count ?? 0,
+  }));
 }

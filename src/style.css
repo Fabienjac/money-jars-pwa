@@ -4264,3 +4264,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .rules-hint { display: block; margin-top: 6px; font-size: 12px; font-weight: 400; color: var(--text-muted); line-height: 1.4; }
 
 .acc-intro { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+
+/* Graphiques mensuels : titre, légende, tableau compact */
+.mchart { width: 100%; padding: 8px 0 0; }
+.mchart-title { margin: 0 0 8px; font-size: 16px; font-weight: 700; color: var(--text-main); text-align: center; text-wrap: balance; }
+.mchart-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; margin: 8px 0 0; font-size: 12px; color: var(--text-main); }
+.mchart-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.mchart-swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.mchart-note { margin: 10px 0 0; font-size: 12px; line-height: 1.4; color: var(--text-muted); text-align: center; }
+.mchart-table { width: 100%; margin-top: 14px; border-collapse: collapse; font-size: 13px; color: var(--text-main); }
+.mchart-table th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border-color); }
+.mchart-table td { padding: 7px 8px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+.mchart-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mchart-table .strong { font-weight: 700; }
+.mchart-table tr.empty td { color: var(--text-light); }
+.mchart-table tfoot td { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--border-color); }
+.mchart-chip { display: inline-block; margin: 0 10px 2px 0; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
