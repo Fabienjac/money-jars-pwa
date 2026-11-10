@@ -70,6 +70,8 @@ const en: Record<keyof typeof fr, string> = {
   "qsf.newSupplier": "New: “{name}”",
   "qsf.last": "Last: {amount}",
   "qsf.noTag": "No tag",
+  "qsf.jarFrom": "Paying from:",
+  "qsf.tagsHint": "Tap a tag to add or remove it.",
   "qsf.edit": "Edit",
   "qsf.today": "Today",
   "qsf.errSupplier": "❌ Merchant required",

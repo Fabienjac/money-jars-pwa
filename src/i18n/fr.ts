@@ -68,6 +68,8 @@ const fr = {
   "qsf.newSupplier": "Nouveau : « {name} »",
   "qsf.last": "Dernier : {amount}",
   "qsf.noTag": "Aucun tag",
+  "qsf.jarFrom": "Je puise dans :",
+  "qsf.tagsHint": "Touche un tag pour l'ajouter ou le retirer.",
   "qsf.edit": "Modifier",
   "qsf.today": "Aujourd'hui",
   "qsf.errSupplier": "❌ Fournisseur requis",

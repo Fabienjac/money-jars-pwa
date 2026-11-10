@@ -199,34 +199,44 @@ export const JarBarChart: React.FC<JarBarChartProps> = ({ transactions }) => {
         <p className="mchart-note">{tr("chart.capped", { months: cappedMonths })}</p>
       )}
 
-      <table className="mchart-table">
+      <table className="mchart-table mchart-table--jars">
         <thead>
           <tr>
             <th>{tr("chart.month")}</th>
             <th className="num">{tr("chart.total")}</th>
-            <th>{tr("chart.jars")}</th>
           </tr>
         </thead>
         <tbody>
-          {monthlyData.map((data) => (
-            <tr key={data.month} className={data.total === 0 ? "empty" : undefined}>
-              <td>{formatMonth(data.month)}</td>
-              <td className="num strong">{data.total === 0 ? "—" : formatMoney(data.total, undefined, 2)}</td>
-              <td>
-                {data.total === 0 ? "—" : usedJars.filter((j) => (data.jars[j] || 0) > 0).map((jar) => (
-                  <span key={jar} className="mchart-chip">
-                    <b style={{ color: JAR_COLORS[jar] }}>{jar}</b> {formatMoney(data.jars[jar], undefined, 0)}
-                  </span>
-                ))}
-              </td>
-            </tr>
-          ))}
+          {monthlyData.map((data) => {
+            const parts = usedJars.filter((j) => (data.jars[j] || 0) > 0);
+            return (
+              <React.Fragment key={data.month}>
+                <tr className={`mchart-main${data.total === 0 ? " empty" : ""}${parts.length > 0 ? " has-sub" : ""}`}>
+                  <td>{formatMonth(data.month)}</td>
+                  <td className="num strong">{data.total === 0 ? "—" : formatMoney(data.total, undefined, 2)}</td>
+                </tr>
+                {parts.length > 0 && (
+                  <tr className="mchart-sub">
+                    <td colSpan={2}>
+                      {parts.map((jar) => (
+                        <span key={jar} className="mchart-chip">
+                          <b style={{ color: JAR_COLORS[jar] }}>{jar}</b> {formatMoney(data.jars[jar], undefined, 0)}
+                        </span>
+                      ))}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
         <tfoot>
-          <tr>
+          <tr className="mchart-main has-sub">
             <td>{tr("chart.total")}</td>
             <td className="num strong">{formatMoney(grandTotal, undefined, 2)}</td>
-            <td>
+          </tr>
+          <tr className="mchart-sub">
+            <td colSpan={2}>
               {usedJars.map((jar) => (
                 <span key={jar} className="mchart-chip">
                   <b style={{ color: JAR_COLORS[jar] }}>{jar}</b> {formatMoney(monthlyData.reduce((s, d) => s + (d.jars[jar] || 0), 0), undefined, 0)}

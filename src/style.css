@@ -4280,3 +4280,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .mchart-table tr.empty td { color: var(--text-light); }
 .mchart-table tfoot td { font-weight: 700; border-bottom: 0; border-top: 2px solid var(--border-color); }
 .mchart-chip { display: inline-block; margin: 0 10px 2px 0; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+/* Saisie rapide : jarre nommée ; quand les détails sont ouverts, le clavier se range pour leur laisser la place */
+.qsf-jar-caption { flex-shrink: 0; padding: 2px 14px 0; font-size: 12px; color: var(--text-muted); }
+.qsf-jar-caption b { color: var(--text-main); }
+.qsf-screen--details .qsf-numpad { display: none; }
+.qsf-screen--details .qsf-details { min-height: 180px; }
+.qsf-tags-hint { flex-basis: 100%; margin: 2px 0 0; font-size: 11px; color: var(--text-light); }
+
+/* Tableau par jarre : les jarres d'un mois passent sur une ligne à elles, sous le mois */
+.mchart-table--jars tr.has-sub > td { border-bottom: 0; padding-bottom: 2px; }
+.mchart-table--jars tr.mchart-sub > td { padding-top: 0; padding-bottom: 8px; line-height: 1.6; }
+.mchart-table--jars tfoot tr.mchart-main > td { border-top: 2px solid var(--border-color); }
+.mchart-table--jars tfoot tr.mchart-sub > td { border-top: 0; border-bottom: 0; font-weight: 400; }

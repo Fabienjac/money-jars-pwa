@@ -10,7 +10,7 @@ import { loadPreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 import { loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
 import { useExchangeRate } from "../hooks/useExchangeRate";
 import { useBaseCurrency, formatMoney } from "../baseCurrency";
-import { useT, t as tr, localeTag } from "../i18n";
+import { useT, t as tr, localeTag, JAR_LABELS as I18N_JARS } from "../i18n";
 import {
   Supplier,
   buildSuppliers,
@@ -296,7 +296,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const canSubmit = !loading && !!amount && supplier.trim().length > 0;
 
   return (
-    <div className="qsf-screen">
+    <div className={`qsf-screen${detailsOpen ? " qsf-screen--details" : ""}`}>
       {/* Header */}
       <div className="qsf-header">
         <button type="button" className="qsf-close" onClick={onClose} aria-label={t("qsf.close")}>✕</button>
@@ -408,12 +408,17 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
         )}
       </div>
 
-      {/* Jars */}
-      <div className="qsf-jars">
+      {/* Jarres : la jarre choisie est nommée, pour comprendre que les tuiles servent à choisir où l'on puise */}
+      <div className="qsf-jar-caption">
+        {t("qsf.jarFrom")} <b>{JAR_LABELS[jar].emoji} {I18N_JARS[jar] ?? jar}</b>
+      </div>
+      <div className="qsf-jars" role="radiogroup" aria-label={t("qsf.jarFrom")}>
         {(Object.keys(JAR_LABELS) as JarKey[]).map((jarKey) => (
           <button
             key={jarKey}
             type="button"
+            role="radio"
+            aria-checked={jar === jarKey}
             className={`qsf-jar${jar === jarKey ? " qsf-jar--active" : ""}`}
             style={{ "--jar-color": JAR_LABELS[jarKey].color } as React.CSSProperties}
             onClick={() => { touched.current.jar = true; setAppliedRule(null); setJar(jarKey); }}
@@ -490,6 +495,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
                       {tag.emoji} {tag.label}
                     </button>
                   ))}
+                  <span className="qsf-tags-hint">{t("qsf.tagsHint")}</span>
                 </div>
               </div>
             )}
