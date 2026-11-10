@@ -666,6 +666,7 @@ const SettingsView: React.FC = () => {
       <SettingsAccordion id="accounts" title={t("set.spendAccounts")} summary={sumAccounts} open={isOpen("accounts")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.spendAccounts")}</h3>
+        <p className="acc-intro">{t("set.spendAccountsDesc")}</p>
         {accountsLoading && (
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>{t("set.loading")}</p>
         )}
@@ -787,6 +788,7 @@ const SettingsView: React.FC = () => {
       <SettingsAccordion id="revaccounts" title={t("set.revAccounts")} summary={sumRevAccounts} open={isOpen("revaccounts")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.revAccounts")}</h3>
+        <p className="acc-intro">{t("set.revAccountsDesc")}</p>
 
         {revenueAccounts.length > 0 && (
           <div className="accounts-grid">

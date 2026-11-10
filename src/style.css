@@ -4262,3 +4262,5 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .qsf-rule-hint span { min-width: 0; overflow-wrap: anywhere; }
 .qsf-rule-hint button { flex-shrink: 0; border: none; background: none; padding: 4px 6px; font-family: inherit; font-size: 13px; font-weight: 700; color: #007AFF; cursor: pointer; }
 .rules-hint { display: block; margin-top: 6px; font-size: 12px; font-weight: 400; color: var(--text-muted); line-height: 1.4; }
+
+.acc-intro { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: var(--text-muted); }
