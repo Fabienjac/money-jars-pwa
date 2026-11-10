@@ -4339,3 +4339,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .start-link { display: block; margin-top: 6px; padding: 4px 0; border: 0; background: none; color: var(--jar-nec, #007AFF); font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer; text-align: left; }
 .start-extra { display: flex; flex-direction: column; gap: 2px; margin: 16px 4px 0; }
 .start-hide { display: block; margin: 18px auto 0; padding: 8px 14px; border: 0; background: none; color: var(--text-muted); font-family: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; }
+
+/* Accueil vide : invitation à faire le tour (« Pour démarrer ») */
+.home-tour { display: flex; flex-direction: column; gap: 10px; margin: 0 0 16px; padding: 16px 18px; border-radius: 20px; background: var(--bg-card); box-shadow: var(--shadow-sm); border: 2px solid var(--jar-nec, #007AFF); }
+.home-tour-text { display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 1.45; color: var(--text-muted); }
+.home-tour-text strong { font-size: 17px; color: var(--text-main); }
+.home-tour-btn { padding: 12px 16px; border: 0; border-radius: 14px; background: var(--jar-nec, #007AFF); color: #fff; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.home-tour-skip { align-self: center; padding: 2px 6px; border: 0; background: none; color: var(--text-muted); font-family: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }

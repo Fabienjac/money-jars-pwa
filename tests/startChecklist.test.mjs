@@ -68,3 +68,17 @@ test("chaque étape a ses textes en français et en anglais", async () => {
     assert.ok(typeof en[k] === "string" && en[k].trim(), `en manque : ${k}`);
   }
 });
+
+test("shouldShowHomeTour : compte récent resté vide, liste non masquée", async () => {
+  const { shouldShowHomeTour, isRecentAccount } = await loadTs("src/startChecklist.ts");
+  const now = Date.parse("2026-11-10T12:00:00Z");
+  const day = 24 * 3600 * 1000;
+  const base = { createdAt: new Date(now - 2 * day).toISOString(), now, dismissed: false, spendings: 0, revenues: 0 };
+  assert.equal(shouldShowHomeTour(base), true);
+  assert.equal(shouldShowHomeTour({ ...base, spendings: 1 }), false);   // dès la première saisie, il disparaît
+  assert.equal(shouldShowHomeTour({ ...base, revenues: 1 }), false);
+  assert.equal(shouldShowHomeTour({ ...base, dismissed: true }), false);
+  assert.equal(shouldShowHomeTour({ ...base, spendings: null }), false); // lecture impossible : rien d'affiché
+  assert.equal(shouldShowHomeTour({ ...base, createdAt: new Date(now - 90 * day).toISOString() }), false); // compte ancien
+  assert.equal(isRecentAccount("n'importe quoi", now), false);
+});

@@ -1277,6 +1277,10 @@ const en: Record<keyof typeof fr, string> = {
   "start.install.desc": "On iPhone: tap Share then “Add to Home Screen”. On Android: menu ⋮ then “Install app”.",
   "start.install.action": "Done",
   "start.install.undo": "Not done",
+  "start.homeTitle": "New here?",
+  "start.homeText": "Follow the guide: 7 steps, in order, to get started.",
+  "start.homeBtn": "Take the 2-minute tour",
+  "start.homeSkip": "No thanks, I'll manage",
 };
 
 export default en;

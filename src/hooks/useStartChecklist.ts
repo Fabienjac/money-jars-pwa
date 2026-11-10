@@ -45,5 +45,5 @@ export function useStartChecklist(userId: string | null, active: boolean) {
   const setHidden = useCallback((on: boolean) => { setStartHidden(on); setHiddenState(on); }, []);
   const markInstalled = useCallback((on: boolean) => { setInstallMarked(on); setInstalledState(on || isInstalledApp()); }, []);
 
-  return { loaded, steps, progress, next, hidden, setHidden, installed, markInstalled };
+  return { loaded, counts, steps, progress, next, hidden, setHidden, installed, markInstalled };
 }

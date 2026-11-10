@@ -1275,6 +1275,10 @@ const fr = {
   "start.install.desc": "Sur iPhone : touche Partager puis « Sur l'écran d'accueil ». Sur Android : menu ⋮ puis « Installer l'application ».",
   "start.install.action": "C'est fait",
   "start.install.undo": "Ce n'est pas fait",
+  "start.homeTitle": "Nouveau ici ?",
+  "start.homeText": "Suis le guide : 7 étapes, dans l'ordre, pour bien démarrer.",
+  "start.homeBtn": "Faire le tour en 2 minutes",
+  "start.homeSkip": "Non merci, je me débrouille",
 } as const;
 
 export default fr;

@@ -60,10 +60,26 @@ export function nextStep(steps: StepState[]): StepId | null {
   return (todo.find((s) => !s.later) ?? todo[0])?.id ?? null;
 }
 
+/** Compte créé il y a moins de RECENT_DAYS jours (date illisible : non). */
+export function isRecentAccount(createdAt: string | null | undefined, now: number): boolean {
+  const t = createdAt ? Date.parse(createdAt) : NaN;
+  if (!Number.isFinite(t)) return false;
+  return now - t < RECENT_DAYS * 24 * 3600 * 1000;
+}
+
 /** Entrée « Pour démarrer » dans Plus : compte récent, liste ni terminée ni masquée. */
 export function shouldShowEntry(o: { createdAt: string | null | undefined; now: number; dismissed: boolean; complete: boolean }): boolean {
   if (o.dismissed || o.complete) return false;
-  const t = o.createdAt ? Date.parse(o.createdAt) : NaN;
-  if (!Number.isFinite(t)) return false;
-  return o.now - t < RECENT_DAYS * 24 * 3600 * 1000;
+  return isRecentAccount(o.createdAt, o.now);
+}
+
+/**
+ * Bouton « Faire le tour en 2 minutes » sur l'accueil : compte récent resté vide (aucune dépense, aucun revenu), liste
+ * non masquée. Dès la première saisie il disparaît. Compteur inconnu (lecture impossible) : on ne montre rien.
+ */
+export function shouldShowHomeTour(o: {
+  createdAt: string | null | undefined; now: number; dismissed: boolean; spendings: number | null; revenues: number | null;
+}): boolean {
+  if (o.dismissed || !isRecentAccount(o.createdAt, o.now)) return false;
+  return o.spendings === 0 && o.revenues === 0;
 }

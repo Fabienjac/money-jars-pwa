@@ -31,7 +31,8 @@ import { OPEN_HISTORY_EVENT } from "./historyPreset";
 import HelpView from "./components/HelpView";
 import StartView from "./components/StartView";
 import { useStartChecklist } from "./hooks/useStartChecklist";
-import { shouldShowEntry, type StepId } from "./startChecklist";
+import { shouldShowEntry, shouldShowHomeTour, isRecentAccount, type StepId } from "./startChecklist";
+import { startHidden } from "./startFlags";
 import { FORCE_OPEN_KEY } from "./settingsAccordion";
 import { OPEN_HELP_EVENT, isHelpTopic, type HelpTopicId } from "./helpTopics";
 import { OPEN_ANALYTICS_EVENT } from "./analyticsState";
@@ -120,7 +121,13 @@ function App() {
   }, []);
 
   // Liste « Pour démarrer » : compteurs lus quand Plus ou la liste est affiché ; l'adresse /#demarrer l'ouvre toujours
-  const startList = useStartChecklist(user?.id ?? null, section === "more" || section === "start");
+  // Sur l'accueil, on ne lit les compteurs que pour un compte récent dont la liste n'est pas masquée
+  const homeTourCandidate = section === "home" && isRecentAccount(user?.created_at, Date.now()) && !startHidden();
+  const startList = useStartChecklist(user?.id ?? null, section === "more" || section === "start" || homeTourCandidate);
+  const showHomeTour = homeTourCandidate && startList.loaded && shouldShowHomeTour({
+    createdAt: user?.created_at, now: Date.now(), dismissed: startList.hidden,
+    spendings: startList.counts.spendings, revenues: startList.counts.revenues,
+  });
   const showStartEntry = startList.loaded && shouldShowEntry({
     createdAt: user?.created_at, now: Date.now(), dismissed: startList.hidden, complete: startList.progress.complete,
   });
@@ -409,6 +416,16 @@ function App() {
           {/* ✅ MODIFICATION : Utiliser JarsViewV2 */}
           {section === "home" && (
             <>
+              {showHomeTour && (
+                <section className="home-tour" aria-label={t("start.homeTitle")}>
+                  <div className="home-tour-text">
+                    <strong>{t("start.homeTitle")}</strong>
+                    <span>{t("start.homeText")}</span>
+                  </div>
+                  <button type="button" className="home-tour-btn" onClick={() => setSection("start")}>{t("start.homeBtn")}</button>
+                  <button type="button" className="home-tour-skip" onClick={() => startList.setHidden(true)}>{t("start.homeSkip")}</button>
+                </section>
+              )}
               <JarsViewV2
                 onOpenRevenue={() => setShowQuickRevenue(true)}
                 onOpenSettings={() => setSection("settings")}
