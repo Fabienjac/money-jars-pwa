@@ -1297,6 +1297,7 @@ const fr = {
   "life.focusEdit": "Courbe verte : {name} · modifier",
   "life.focusTitle": "Catégories suivies",
   "life.focusHelp": "Coche jusqu'à {max} étiquettes : la courbe verte regroupe leurs dépenses. Une dépense qui porte plusieurs de ces étiquettes n'est comptée qu'une fois.",
+  "err.invalidJar": "Jarre invalide : choisis l'une des six jarres.",
 } as const;
 
 export default fr;

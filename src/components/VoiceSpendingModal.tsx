@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { appendSpending, fetchEntryRules } from "../api";
 import { markVoiceUsed } from "../startFlags";
+import { normalizeJar } from "../jarValidation";
 import { applyRuleToDraft, describeRule, findBestRule, spendingPatch, type EntryRule } from "../entryRules";
 import { getBaseCurrency, currencySymbol, formatMoney } from "../baseCurrency";
 import { getRateToBase } from "../exchangeRate";
@@ -133,7 +134,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || tr("vc.errHttp", { status: res.status }));
-      let result = data as ParsedSpending;
+      let result = { ...(data as ParsedSpending), jar: normalizeJar((data as ParsedSpending).jar) ?? "NEC" };
       setAppliedRule(null);
       touched.current = { jar: false, account: false, tags: false };
       try {

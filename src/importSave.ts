@@ -3,6 +3,15 @@
 // Isolé de App.tsx (et sans dépendance au réseau) pour pouvoir être testé avec de faux services.
 import type { RevenueRow, SpendingRow } from "./types";
 
+// Jarre suggérée par l'analyse du fichier : si ce n'est pas l'une des six clés (un tag, un mot…), la dépense va dans
+// la jarre par défaut plutôt que d'être refusée. (Même liste que jarValidation.ts, recopiée ici : ce module reste
+// sans dépendance pour être testé seul.)
+const VALID_JARS = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"] as const;
+function jarOrDefault(raw: unknown): (typeof VALID_JARS)[number] {
+  const k = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  return (VALID_JARS as readonly string[]).includes(k) ? (k as (typeof VALID_JARS)[number]) : "NEC";
+}
+
 type SaveResult = { ok: boolean; error?: string };
 
 export interface ImportSaveDeps {
@@ -84,7 +93,7 @@ export async function saveImportedTransactions(
         if (!Number.isFinite(amount)) { fail(i, t, "invalid amount"); continue; }
         result = await deps.appendSpending({
           date,
-          jar: t.suggestedJar || "NEC",
+          jar: jarOrDefault(t.suggestedJar),
           account: t.suggestedAccount || "",
           amount,
           description: t.description || "",

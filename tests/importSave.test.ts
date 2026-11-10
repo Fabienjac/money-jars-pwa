@@ -136,3 +136,17 @@ test("revenus en USDT (4 lettres) : converti, pas pris pour la devise de référ
   assert.equal(revenues[0].amount, 92);
   assert.equal(revenues[0].value, "100 USDT");
 });
+
+test("une jarre suggérée qui n'en est pas une (un tag, un mot) tombe sur la jarre par défaut", async () => {
+  const { deps, spendings } = makeDeps();
+  await saveImportedTransactions(
+    [
+      { date: "2026-02-02", description: "A", amount: 2.03, suggestedJar: "VIE_QUOTIDIENNE" as never },
+      { date: "2026-02-03", description: "B", amount: 5, suggestedJar: "play" as never },
+      { date: "2026-02-04", description: "C", amount: 6 },
+    ],
+    "spending",
+    deps
+  );
+  assert.deepEqual(spendings.map((r) => r.jar), ["NEC", "PLAY", "NEC"]);
+});

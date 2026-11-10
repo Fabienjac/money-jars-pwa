@@ -99,7 +99,7 @@ const TagStatsView: React.FC = () => {
         setAllTransactions(sp);
         setAllRevenues(rev);
         setAllTransfers(xfers ?? []);
-        setOneOffTags(Array.from(new Set([EXCEPTIONAL_TAG_ID, ...(prefs?.extraordinaryTags ?? [])])));
+        setOneOffTags(Array.from(new Set(prefs?.extraordinaryTags ?? [])));
       } catch (err) {
         console.error("Erreur chargement données:", err);
       } finally {

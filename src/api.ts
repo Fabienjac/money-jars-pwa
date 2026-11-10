@@ -18,6 +18,7 @@ import { fetchAllPages, type PageResult } from "./paginate";
 import { rowToRule, ruleToRow, type EntryRule, type RuleRow } from "./entryRules";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
 import { EXCEPTIONAL_TAG_ID, planExceptionalSeed, shouldSeedDefaultTags } from "./lifestyleSeed";
+import { normalizeJar } from "./jarValidation";
 import { addTagTo } from "./exceptional";
 import type { AccountTransfer } from "./accountTransfers";
 import { adjustmentTotals, isJarKey, round2, transferDeltas, type JarAdjustment, type JarTransfer } from "./jarTransfers";
@@ -77,11 +78,13 @@ function clearCache(...keys: string[]) {
 export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const jar = normalizeJar(row.jar);
+  if (!jar) return { ok: false, error: t("err.invalidJar") };
 
   const { error } = await supabase.from("transactions_spending").insert({
     user_id:      user.id,
     date:         toISO(row.date),
-    jar:          row.jar,
+    jar,
     account:      row.account,
     amount:       row.amount,
     description:  row.description,
@@ -98,9 +101,11 @@ export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; e
 export async function updateSpending(rowIndex: number, row: SpendingRow): Promise<{ ok: boolean; error?: string }> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
+  const jar = normalizeJar(row.jar);
+  if (!jar) return { ok: false, error: t("err.invalidJar") };
   const { error } = await supabase.from("transactions_spending").update({
     date:         toISO(row.date),
-    jar:          row.jar,
+    jar,
     account:      row.account,
     amount:       row.amount,
     description:  row.description,

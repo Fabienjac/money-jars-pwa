@@ -111,3 +111,41 @@ test("trésorerie négative : 0 mois", () => {
   const a = computeAutonomy({ NEC: { net: -300 } }, rows, [], today);
   assert.equal(a.liquidRegular, 0);
 });
+
+test("fenêtre de 30 jours : le premier jour compte même quand un changement d'heure tombe dans la fenêtre", () => {
+  // Heure d'Europe centrale : le 25 octobre 2026, l'heure recule d'une heure. Du 12 octobre au 10 novembre = 30 jours.
+  const previous = process.env.TZ;
+  process.env.TZ = "Europe/Paris";
+  try {
+    const now = new Date(2026, 10, 10, 15, 0);
+    const rows = [
+      { date: "2026-10-12", amount: 7.39, tags: "" },   // premier jour de la fenêtre (minuit)
+      { date: "2026-10-11", amount: 100, tags: "" },    // veille : hors fenêtre
+      { date: "2026-11-10", amount: 10, tags: "" },     // aujourd'hui
+      { date: "2026-11-11", amount: 50, tags: "" },     // demain : daté du futur, ignoré
+    ];
+    const b = burnRates(rows, [], now);
+    assert.equal(b.regular, 17.39);
+  } finally {
+    if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
+  }
+});
+
+test("le jour du passage à l'heure d'été (23 h), une dépense de demain reste exclue", () => {
+  const previous = process.env.TZ;
+  process.env.TZ = "Europe/Paris";
+  try {
+    const now = new Date(2026, 2, 28, 15, 0); // 28 mars 2026, veille du passage à l'heure d'été (29 mars)
+    const sunday = new Date(2026, 2, 29, 12, 0);
+    const rows = [
+      { date: "2026-03-28", amount: 20, tags: "" },
+      { date: "2026-03-29", amount: 99, tags: "" },     // demain
+    ];
+    assert.equal(burnRates(rows, [], now).regular, 20);
+    // et le dimanche lui-même (journée de 23 h) : la dépense du lundi est exclue
+    const rows2 = [{ date: "2026-03-29", amount: 20, tags: "" }, { date: "2026-03-30", amount: 99, tags: "" }];
+    assert.equal(burnRates(rows2, [], sunday).regular, 20);
+  } finally {
+    if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
+  }
+});

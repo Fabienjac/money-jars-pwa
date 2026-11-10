@@ -1299,6 +1299,7 @@ const en: Record<keyof typeof fr, string> = {
   "life.focusEdit": "Green curve: {name} · edit",
   "life.focusTitle": "Categories followed",
   "life.focusHelp": "Tick up to {max} tags: the green curve groups their spending. An expense carrying several of these tags is counted only once.",
+  "err.invalidJar": "Invalid jar: choose one of the six jars.",
 };
 
 export default en;

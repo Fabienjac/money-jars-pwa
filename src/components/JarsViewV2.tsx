@@ -278,8 +278,9 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
         // Prélèvements attendus dans les 30 jours (abonnements détectés), pour la ligne de la carte « Ce mois »
         const upcomingList = upcomingCharges(detectRecurring(all, now, new Set(dismissedSubs)), now, 30);
         setUpcoming(upcomingList.length > 0 ? { total: totalUpcoming(upcomingList), count: upcomingList.length } : null);
-        setOneOffTagIds([EXCEPTIONAL_TAG_ID, ...prefs.extraordinaryTags]);
-        setMonthSplit(splitOneOff(currentMonthTxns, [EXCEPTIONAL_TAG_ID, ...prefs.extraordinaryTags]));
+        // Les dépenses « extraordinaires » sont celles des étiquettes que la personne a cochées (comme le Train de vie)
+        setOneOffTagIds(prefs.extraordinaryTags);
+        setMonthSplit(splitOneOff(currentMonthTxns, prefs.extraordinaryTags));
 
         // Toutes les transactions pour l'overlay de tag sur le graphique
         setAllTransactionsForChart(all);

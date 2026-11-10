@@ -60,7 +60,10 @@ export function burnRates(
   today: Date
 ): BurnRates {
   const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-  const from30 = t0 - 29 * DAY;
+  // Jours calendaires, pas 24 h × n : un changement d'heure (fin octobre, fin mars) décalerait la borne d'une heure et
+  // ferait sortir de la fenêtre les dépenses datées de son premier jour (minuit).
+  const from30 = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 29).getTime();
+  const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).getTime() - 1;
   const from12m = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate() + 1).getTime();
 
   const last30: typeof rows = [];
@@ -70,7 +73,7 @@ export function burnRates(
     const d = parseAppDate(r.date);
     if (!d) continue;
     const ts = d.getTime();
-    if (ts > t0 + DAY - 1) continue; // dépense datée du futur : ignorée
+    if (ts > endOfToday) continue; // dépense datée du futur : ignorée
     if (ts >= from12m) {
       last12m.push(r);
       if (ts < earliest) earliest = ts;
@@ -79,7 +82,7 @@ export function burnRates(
   }
 
   // Mois couverts : de la première dépense de la fenêtre à aujourd'hui, plafonné à 12, plancher 1.
-  const spanDays = earliest === Infinity ? 0 : (t0 - earliest) / DAY + 1;
+  const spanDays = earliest === Infinity ? 0 : Math.round((t0 - earliest) / DAY) + 1;
   const monthsCovered = Math.max(1, Math.min(12, spanDays / 30.4375));
   const all12 = last12m.reduce((s, r) => s + (r.amount || 0), 0);
 
