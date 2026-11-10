@@ -4352,3 +4352,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .life-dev-title { margin-bottom: 4px; font-weight: 700; color: var(--text-muted); }
 .life-dev-row { display: flex; flex-direction: column; gap: 0; margin-top: 6px; }
 .hist-verify { margin: 0 20px 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--text-light); background: var(--bg-card); font-size: 13px; line-height: 1.5; color: var(--text-main); }
+
+/* Le zoom est autorisé (accessibilité) : sur écran tactile, les champs font au moins 16 px, sinon iOS zoome à la
+   prise de focus et ne dézoome pas. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: 16px !important; }
+}

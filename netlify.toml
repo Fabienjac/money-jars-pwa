@@ -17,3 +17,16 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# En-têtes de sécurité. La politique de contenu est en mode « rapport » (Report-Only) : elle signale dans la console du
+# navigateur ce qu'elle bloquerait, sans rien bloquer. À passer en « Content-Security-Policy » une fois la console
+# restée muette pendant quelques jours d'usage normal.
+# Domaines appelés depuis le navigateur : Supabase, Frankfurter (taux de change), CoinGecko (cours des cryptos).
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), geolocation=(), payment=(), usb=(), microphone=(self)"
+    Content-Security-Policy-Report-Only = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.frankfurter.dev https://api.frankfurter.app https://api.coingecko.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
