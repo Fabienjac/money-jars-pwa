@@ -10,6 +10,7 @@ import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
 import { loadTags } from "../tagsUtils";
 import { formatMoney as formatMoneyBase } from "../baseCurrency";
 import { t, useT, localeTag, monthShort } from "../i18n";
+import HelpHint from "./HelpHint";
 
 function todayISO(): string {
   const d = new Date();
@@ -219,7 +220,7 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
     <section style={{ padding: "0 16px 12px" }}>
       <div style={cardStyle}>
         <div style={{ fontSize: "11px", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "4px" }}>
-          {t("life.title")}
+          {t("life.title")} <HelpHint topic="lifestyle" more />
         </div>
         <div style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>{t("life.subtitle")}</div>
 

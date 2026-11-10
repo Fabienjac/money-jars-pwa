@@ -4,7 +4,7 @@
 /** Événement qui ouvre l'écran Aide sur un sujet (détail : { topic }). */
 export const OPEN_HELP_EVENT = "mjars:openHelp";
 
-export type HelpTopicId = "accounts" | "transfer" | "jars" | "rules" | "tags";
+export type HelpTopicId = "accounts" | "transfer" | "jars" | "rules" | "tags" | "home" | "lifestyle" | "autonomy";
 
 export interface HelpTopic {
   id: HelpTopicId;
@@ -19,6 +19,9 @@ export const HELP_TOPICS: HelpTopic[] = [
   { id: "jars", icon: "🏺", paragraphs: 2 },
   { id: "rules", icon: "⚡", paragraphs: 4 },
   { id: "tags", icon: "🏷️", paragraphs: 3 },
+  { id: "home", icon: "📊", paragraphs: 2 },
+  { id: "lifestyle", icon: "🧭", paragraphs: 4 },
+  { id: "autonomy", icon: "🛟", paragraphs: 3 },
 ];
 
 export function isHelpTopic(x: unknown): x is HelpTopicId {

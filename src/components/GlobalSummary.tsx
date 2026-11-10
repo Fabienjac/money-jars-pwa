@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { fetchTotals } from "../api";
 import { formatMoney as formatMoneyBase } from "../baseCurrency";
 import { localeTag, useT } from "../i18n";
+import HelpHint from "./HelpHint";
 import type { TotalsResponse } from "../types";
 
 function formatMoney(value: number | null | undefined, digits = 2): string {
@@ -33,7 +34,7 @@ const GlobalSummary: React.FC = () => {
 
   return (
     <section className="jars-v2-summary global-summary">
-      <h3 className="jars-v2-summary-title">{t("home.quickSummary")}</h3>
+      <h3 className="jars-v2-summary-title">{t("home.quickSummary")} <HelpHint topic="home" more /></h3>
       <p className="jars-v2-summary-scope">{t("home.summaryScope")}</p>
       <div className="jars-v2-summary-grid">
         <div className="summary-item summary-revenues">

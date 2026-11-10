@@ -17,6 +17,7 @@ import AutonomyCard from "./AutonomyCard";
 
 import { formatMoney as formatMoneyBase, formatPercent } from "../baseCurrency";
 import { t, useT, type TKey, localeTag, monthShort, monthLong, JAR_LABELS, JAR_EMPTY_COPY } from "../i18n";
+import HelpHint from "./HelpHint";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
   FFA: "🌱",
@@ -787,7 +788,7 @@ const JarsViewV2: React.FC<JarsViewV2Props> = ({ onOpenRevenue, onOpenSettings }
             </div>
           </div>
 
-          <p className="jars-legend">{t("home.jarsLegend")}</p>
+          <p className="jars-legend">{t("home.jarsLegend")} <HelpHint topic="home" more /></p>
 
           {jarsMode === "month" ? (
             <>

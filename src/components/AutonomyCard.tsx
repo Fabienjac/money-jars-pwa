@@ -5,6 +5,7 @@ import { fetchTotals } from "../api";
 import { computeAutonomy } from "../autonomy";
 import { formatMoney } from "../baseCurrency";
 import { localeTag, t, useT } from "../i18n";
+import HelpHint from "./HelpHint";
 import type { SearchSpendingResult, TotalsResponse } from "../types";
 
 interface Props {
@@ -72,7 +73,7 @@ const AutonomyCard: React.FC<Props> = ({ rows, oneOffTagIds }) => {
         border: "1px solid var(--border-color)", boxShadow: "var(--shadow-md)",
       }}>
         <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-main)", marginBottom: "10px" }}>
-          🛟 {t("auto.title")}
+          🛟 {t("auto.title")} <HelpHint topic="autonomy" more />
         </div>
 
         <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
