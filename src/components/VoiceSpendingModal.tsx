@@ -63,9 +63,22 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
 
   // ── Dictée vocale ──────────────────────────────────────────────────────────
 
+  /** Arrête une écoute en cours et ne l'écoute plus (jamais deux reconnaissances en même temps, micro libéré). */
+  const dropRecognition = useCallback(() => {
+    const r = recognitionRef.current;
+    if (!r) return;
+    r.onstart = r.onresult = r.onend = r.onerror = null;
+    try { r.abort(); } catch { /* déjà arrêtée */ }
+    recognitionRef.current = null;
+  }, []);
+
+  // Fermeture de la fenêtre : le micro ne reste pas ouvert
+  useEffect(() => dropRecognition, [dropRecognition]);
+
   const startRecording = useCallback(() => {
     const SR = getSpeechRecognition();
     if (!SR) return;
+    dropRecognition();
 
     const rec = new SR();
     rec.lang = getLang() === "fr" ? "fr-FR" : "en-US";
@@ -99,7 +112,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
 
     recognitionRef.current = rec;
     rec.start();
-  }, []);
+  }, [dropRecognition]);
 
   const stopRecording = useCallback(() => {
     recognitionRef.current?.stop();
@@ -280,9 +293,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
             ) : (
               <>
                 <button
-                  onMouseDown={startRecording}
-                  onTouchStart={e => { e.preventDefault(); startRecording(); }}
-                  onClick={step === "recording" ? stopRecording : (step === "idle" ? startRecording : undefined)}
+                  onClick={step === "recording" ? stopRecording : startRecording}
                   style={{
                     width: 88, height: 88, borderRadius: "50%", border: "none",
                     background: step === "recording"
