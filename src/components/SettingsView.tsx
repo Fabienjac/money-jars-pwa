@@ -39,7 +39,7 @@ import JarTransfers from "./JarTransfers";
 import AccountTransfers from "./AccountTransfers";
 import SettingsAccordion from "./SettingsAccordion";
 import EntryRulesSettings from "./EntryRulesSettings";
-import { SEEN_KEY, OPEN_KEY, initialOpenIds, parseOpenIds, toggleOpenId, percentsSummary } from "../settingsAccordion";
+import { SEEN_KEY, OPEN_KEY, FORCE_OPEN_KEY, initialOpenIds, parseOpenIds, toggleOpenId, percentsSummary } from "../settingsAccordion";
 import { useT, useLang, JAR_LABELS } from "../i18n";
 import type { TKey } from "../i18n";
 import HelpHint from "./HelpHint";
@@ -509,11 +509,14 @@ const SettingsView: React.FC = () => {
       stored = parseOpenIds(sessionStorage.getItem(OPEN_KEY));
       // Arrivée depuis le rappel de janvier de l'accueil : le bloc des transferts doit être ouvert
       if (sessionStorage.getItem("mjars:scrollToTransfers")) forced.push("xfer");
+      const force = sessionStorage.getItem(FORCE_OPEN_KEY);
+      if (force) forced.push(force);
     } catch { /* stockage indisponible : valeurs par défaut */ }
     return initialOpenIds({ seen, stored, forced });
   });
   useEffect(() => {
     try { localStorage.setItem(SEEN_KEY, "1"); } catch { /* sans importance */ }
+    try { sessionStorage.removeItem(FORCE_OPEN_KEY); } catch { /* sans importance */ } // l'ouverture forcée ne vaut qu'une fois
   }, []);
   useEffect(() => {
     try { sessionStorage.setItem(OPEN_KEY, JSON.stringify(openIds)); } catch { /* sans importance */ }

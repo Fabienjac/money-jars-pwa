@@ -1528,3 +1528,23 @@ export async function fetchDismissedSubscriptions(): Promise<string[]> {
 export async function saveDismissedSubscriptions(keys: string[]): Promise<void> {
   await saveColumnMappingToSheet(DISMISSED_SUBS_KEY, { keys });
 }
+
+/**
+ * Compteurs de la liste « Pour démarrer » : combien de comptes, de revenus, de dépenses et de règles écrites à la main.
+ * Lecture « head » (aucune ligne ramenée). `null` : lecture impossible, l'étape reste à faire.
+ */
+export async function fetchStartCounts(): Promise<{ accounts: number | null; revenues: number | null; spendings: number | null; manualRules: number | null }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { accounts: null, revenues: null, spendings: null, manualRules: null };
+  const count = async (table: string): Promise<number | null> => {
+    try {
+      const { count: n, error } = await supabase.from(table).select("*", { count: "exact", head: true }).eq("user_id", user.id);
+      return error ? null : (n ?? 0);
+    } catch { return null; }
+  };
+  const [accounts, revenues, spendings, rules] = await Promise.all([
+    count("accounts"), count("transactions_revenue"), count("transactions_spending"),
+    fetchEntryRules().then((r) => r.filter((x) => x.origin === "manual").length).catch(() => null),
+  ]);
+  return { accounts, revenues, spendings, manualRules: rules };
+}

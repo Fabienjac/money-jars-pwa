@@ -8,6 +8,8 @@
 export const SEEN_KEY = "mjars:settingsSeen";
 /** sessionStorage : blocs ouverts pendant la session (liste JSON d'identifiants). */
 export const OPEN_KEY = "mjars:settingsOpen";
+/** sessionStorage : un bloc à ouvrir d'office à la prochaine arrivée (lien venu de « Pour démarrer »), lu une seule fois. */
+export const FORCE_OPEN_KEY = "mjars:settingsForceOpen";
 /** Bloc ouvert au tout premier passage. */
 export const FIRST_VISIT_OPEN = ["jars"];
 

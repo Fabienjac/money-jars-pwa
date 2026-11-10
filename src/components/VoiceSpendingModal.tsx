@@ -2,6 +2,7 @@
 // Modal de saisie vocale d'une dépense — Web Speech API + Gemini + appendSpending
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { appendSpending, fetchEntryRules } from "../api";
+import { markVoiceUsed } from "../startFlags";
 import { applyRuleToDraft, describeRule, findBestRule, spendingPatch, type EntryRule } from "../entryRules";
 import { getBaseCurrency, currencySymbol, formatMoney } from "../baseCurrency";
 import { getRateToBase } from "../exchangeRate";
@@ -192,6 +193,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       // appendSpending ne lève pas d'erreur : il renvoie { ok: false } (non connecté, refus de la base…)
       if (!res.ok) throw new Error(res.error || tr("vc.errSave"));
       updateStreak();
+      markVoiceUsed();
       window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
       setStep("done");
       setSaved(true);

@@ -12,10 +12,13 @@ interface MoreViewProps {
   onImport: () => void;
   onOpenSettings: () => void;
   onOpenHelp?: () => void;
+  /** Liste « Pour démarrer » : progression, ou null quand elle n'est pas (ou plus) proposée. */
+  start?: { done: number; total: number } | null;
+  onOpenStart?: () => void;
   jarAlerts?: JarAlert[];
 }
 
-const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, onOpenSettings, onOpenHelp, jarAlerts = [] }) => {
+const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, onOpenSettings, onOpenHelp, start = null, onOpenStart, jarAlerts = [] }) => {
   const t = useT();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   return (
@@ -48,6 +51,16 @@ const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, o
       </section>
     )}
     <div className="more-list">
+      {start && onOpenStart && (
+        <button type="button" className="more-item" onClick={onOpenStart}>
+          <span className="more-item-icon">🚀</span>
+          <span className="more-item-text">
+            <span className="more-item-label">{t("more.start")}</span>
+            <span className="more-item-sub">{t("more.startSub", { done: start.done, total: start.total })}</span>
+          </span>
+          <span className="more-item-chevron">›</span>
+        </button>
+      )}
       <PushAlertsRow />
       <button type="button" className="more-item" onClick={onImport}>
         <span className="more-item-icon">📂</span>

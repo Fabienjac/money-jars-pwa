@@ -29,6 +29,10 @@ import { updateStreak } from "./streakUtils";
 import { saveImportedTransactions } from "./importSave";
 import { OPEN_HISTORY_EVENT } from "./historyPreset";
 import HelpView from "./components/HelpView";
+import StartView from "./components/StartView";
+import { useStartChecklist } from "./hooks/useStartChecklist";
+import { shouldShowEntry, type StepId } from "./startChecklist";
+import { FORCE_OPEN_KEY } from "./settingsAccordion";
 import { OPEN_HELP_EVENT, isHelpTopic, type HelpTopicId } from "./helpTopics";
 import { OPEN_ANALYTICS_EVENT } from "./analyticsState";
 import "./style.css";
@@ -47,7 +51,7 @@ const SuspenseFallback = () => (
   </div>
 );
 
-type Section = "home" | "history" | "analytics" | "more" | "settings" | "help";
+type Section = "home" | "history" | "analytics" | "more" | "settings" | "help" | "start";
 
 function App() {
   const { user, loading: authLoading } = useAuth();
@@ -114,6 +118,38 @@ function App() {
       window.removeEventListener(OPEN_ANALYTICS_EVENT, openAnalytics);
     };
   }, []);
+
+  // Liste « Pour démarrer » : compteurs lus quand Plus ou la liste est affiché ; l'adresse /#demarrer l'ouvre toujours
+  const startList = useStartChecklist(user?.id ?? null, section === "more" || section === "start");
+  const showStartEntry = startList.loaded && shouldShowEntry({
+    createdAt: user?.created_at, now: Date.now(), dismissed: startList.hidden, complete: startList.progress.complete,
+  });
+  useEffect(() => {
+    const openStart = () => {
+      if (window.location.hash === "#demarrer") {
+        setSection("start");
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    };
+    openStart();
+    window.addEventListener("hashchange", openStart);
+    return () => window.removeEventListener("hashchange", openStart);
+  }, []);
+  const openSettingsBlock = (id: string) => {
+    try { sessionStorage.setItem(FORCE_OPEN_KEY, id); } catch { /* sans importance */ }
+    setSection("settings");
+  };
+  const handleStartAction = (id: StepId) => {
+    switch (id) {
+      case "jars": openSettingsBlock("jars"); break;
+      case "accounts": openSettingsBlock("accounts"); break;
+      case "rule": openSettingsBlock("rules"); break;
+      case "revenue": setShowQuickRevenue(true); break;
+      case "spending": setShowQuickSpending(true); break;
+      case "voice": setVoiceOpen(true); break;
+      case "install": break; // pas d'écran à ouvrir : la personne coche l'étape elle-même
+    }
+  };
 
   // « En savoir plus » d'un « ? » : ouvre l'écran Aide sur ce sujet (et ferme les formulaires plein écran éventuels)
   useEffect(() => {
@@ -397,8 +433,29 @@ function App() {
               onImport={() => setImporterOpen(true)}
               onOpenSettings={() => setSection("settings")}
               onOpenHelp={() => { setHelpTopic(null); setSection("help"); }}
+              start={showStartEntry ? { done: startList.progress.done, total: startList.progress.total } : null}
+              onOpenStart={() => setSection("start")}
               jarAlerts={jarAlerts}
             />
+          )}
+          {section === "start" && (
+            <>
+              <button type="button" className="back-link" onClick={() => setSection("more")}>
+                ‹ {t("nav.more")}
+              </button>
+              <StartView
+                loaded={startList.loaded}
+                steps={startList.steps}
+                progress={startList.progress}
+                next={startList.next}
+                installed={startList.installed}
+                onAction={handleStartAction}
+                onToggleInstalled={startList.markInstalled}
+                onImport={() => setImporterOpen(true)}
+                onHelp={() => { setHelpTopic(null); setSection("help"); }}
+                onHide={() => { startList.setHidden(true); setSection("more"); }}
+              />
+            </>
           )}
           {section === "help" && (
             <>
