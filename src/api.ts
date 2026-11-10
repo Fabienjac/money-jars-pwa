@@ -14,7 +14,7 @@ import type {
   JarKey,
 } from "./types";
 import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
-import { fetchAllPages } from "./paginate";
+import { fetchAllPages, type PageResult } from "./paginate";
 import { rowToRule, ruleToRow, type EntryRule, type RuleRow } from "./entryRules";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
 import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
@@ -166,19 +166,32 @@ function mapSpendingRow(r: SpendingDbRow): SearchSpendingResult {
  * Toutes les dépenses (filtrées par libellé si `q`), lues page par page : Supabase tronque en silence à 1000 lignes
  * par requête. Du plus récent au plus ancien ; l'ordre sur `id` rend les pages stables.
  */
+/**
+ * Lecture complète du plus récent au plus ancien. À date égale, on classe par date de création (la dernière saisie
+ * d'abord) : l'identifiant est un UUID aléatoire, il ne dit rien de l'ordre. Si la colonne created_at manque (base
+ * pas à jour), on retombe sur l'ancien classement.
+ */
+async function readNewestFirst<T>(build: (from: number, to: number, byCreated: boolean) => PromiseLike<PageResult<T>>): Promise<T[]> {
+  try {
+    return await fetchAllPages<T>((from, to) => build(from, to, true));
+  } catch (e) {
+    if (e instanceof Error && /created_at/i.test(e.message)) return fetchAllPages<T>((from, to) => build(from, to, false));
+    throw e;
+  }
+}
+
 export async function fetchAllSpendings(q = ""): Promise<SearchSpendingResult[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
-  const rows = await fetchAllPages((from, to) => {
+  const rows = await readNewestFirst((from, to, byCreated) => {
     let query = supabase
       .from("transactions_spending")
       .select("id, date, jar, account, amount, description, tags, subscription")
       .eq("user_id", user.id);
     if (q.trim()) query = query.ilike("description", `%${q.trim()}%`);
-    return query
-      .order("date", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to);
+    let ordered = query.order("date", { ascending: false });
+    if (byCreated) ordered = ordered.order("created_at", { ascending: false });
+    return ordered.order("id", { ascending: false }).range(from, to);
   });
   return rows.map((r) => mapSpendingRow(r as SpendingDbRow));
 }
@@ -321,16 +334,15 @@ function mapRevenueRow(r: RevenueDbRow): SearchRevenueResult {
 export async function fetchAllRevenues(q = ""): Promise<SearchRevenueResult[]> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
-  const rows = await fetchAllPages((from, to) => {
+  const rows = await readNewestFirst((from, to, byCreated) => {
     let query = supabase
       .from("transactions_revenue")
       .select("id, date, source, amount, value, crypto_quantity, method, rate, crypto_address, destination, income_type, tags")
       .eq("user_id", user.id);
     if (q.trim()) query = query.ilike("source", `%${q.trim()}%`);
-    return query
-      .order("date", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to);
+    let ordered = query.order("date", { ascending: false });
+    if (byCreated) ordered = ordered.order("created_at", { ascending: false });
+    return ordered.order("id", { ascending: false }).range(from, to);
   });
   return rows.map((r) => mapRevenueRow(r as RevenueDbRow));
 }
