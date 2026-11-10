@@ -4293,3 +4293,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .mchart-table--jars tr.mchart-sub > td { padding-top: 0; padding-bottom: 8px; line-height: 1.6; }
 .mchart-table--jars tfoot tr.mchart-main > td { border-top: 2px solid var(--border-color); }
 .mchart-table--jars tfoot tr.mchart-sub > td { border-top: 0; border-bottom: 0; font-weight: 400; }
+
+/* Saisie rapide : tags « autres » et création d'un tag */
+.qsf-tag--more { border-style: dashed; color: var(--text-muted); }
+.qsf-newtag { flex-basis: 100%; display: flex; gap: 6px; align-items: center; }
+.qsf-newtag-emoji, .qsf-newtag-name { min-width: 0; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-body); color: var(--text-main); font-size: 14px; font-family: inherit; }
+.qsf-newtag-emoji { width: 46px; text-align: center; flex: 0 0 auto; }
+.qsf-newtag-name { flex: 1; }
+.qsf-newtag-ok { flex: 0 0 auto; padding: 7px 12px; border: none; border-radius: 10px; background: var(--jar-ffa, #34C759); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; }
+.qsf-newtag-cancel { flex: 0 0 auto; padding: 7px 9px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-card); color: var(--text-muted); cursor: pointer; }
+.qsf-tags-hint--msg { color: var(--text-main); font-weight: 600; }

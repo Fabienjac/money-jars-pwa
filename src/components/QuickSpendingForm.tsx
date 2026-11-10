@@ -1,11 +1,12 @@
 // src/components/QuickSpendingForm.tsx
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { appendSpending, getAccounts, searchSpendings, fetchEntryRules } from "../api";
+import { appendSpending, getAccounts, searchSpendings, fetchEntryRules, saveTags as saveTagsApi } from "../api";
 import { findBestRule, spendingPatch, describeRule, type EntryRule } from "../entryRules";
 import { updateStreak } from "../streakUtils";
 import { JarKey } from "../types";
 import { loadAccounts } from "../accountsUtils";
-import { tagsToString, loadTags } from "../tagsUtils";
+import { tagsToString, loadTags, setCachedTags } from "../tagsUtils";
+import { createTag, splitTags } from "../tagCreate";
 import { loadPreferredCurrencies, getCurrencyInfo } from "../currencyUtils";
 import { loadLastExpenseCurrency, saveLastExpenseCurrency } from "../currencySettings";
 import { useExchangeRate } from "../hooks/useExchangeRate";
@@ -156,11 +157,13 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
   const frequent = useMemo(() => topSuppliers(suppliers, 6), [suppliers]);
   const search = useMemo(() => searchSuppliers(suppliers, supplier), [suppliers, supplier]);
   const typing = supplier.trim().length > 0 && !picked;
-  const tagPresets = useMemo(
-    () => loadTags().filter(t => t.favori !== false).map(t => ({ id: t.id, emoji: t.emoji, label: t.name })),
-    []
-  );
-  const allTags = useMemo(() => loadTags(), []);
+  const [allTags, setAllTags] = useState(() => loadTags());
+  const { shown: shownTags, others: otherTags } = useMemo(() => splitTags(allTags, selectedTags), [allTags, selectedTags]);
+  const [showOtherTags, setShowOtherTags] = useState(false);
+  const [newTagOpen, setNewTagOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagEmoji, setNewTagEmoji] = useState("🏷️");
+  const [tagMsg, setTagMsg] = useState<string | null>(null);
   const tagLabel = (id: string) => allTags.find((x) => x.id === id)?.name ?? id;
 
   /** Cherche la règle de ce texte et remplit les champs que la personne n'a pas choisis (forceAll : choix d'une suggestion de l'historique). */
@@ -229,6 +232,29 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
     setSelectedTags(prev =>
       prev.includes(tagId) ? prev.filter(t => t !== tagId) : [...prev, tagId]
     );
+  };
+
+  const closeNewTag = () => { setNewTagOpen(false); setNewTagName(""); setNewTagEmoji("🏷️"); };
+
+  /** Crée un tag depuis la saisie (ou retrouve celui qui existe déjà sous ce nom) et le sélectionne. */
+  const handleCreateTag = async () => {
+    const r = createTag(newTagName, newTagEmoji, allTags);
+    if (r.kind === "error") { setTagMsg(t(r.reason === "empty" ? "qsf.tagErrEmpty" : "qsf.tagErrLong")); return; }
+    touched.current.tags = true;
+    setAppliedRule(null);
+    if (r.kind === "existing") {
+      setTagMsg(t("qsf.tagExists", { name: r.tag.name }));
+      setSelectedTags(prev => (prev.includes(r.tag.id) ? prev : [...prev, r.tag.id]));
+      closeNewTag();
+      return;
+    }
+    const updated = [...allTags, r.tag];
+    setAllTags(updated);
+    setCachedTags(updated);
+    setSelectedTags(prev => [...prev, r.tag.id]);
+    setTagMsg(null);
+    closeNewTag();
+    try { await saveTagsApi(updated); } catch { setTagMsg(t("qsf.tagSaveErr")); }
   };
 
   const handleSubmit = async () => {
@@ -481,24 +507,56 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
               </select>
             </label>
 
-            {tagPresets.length > 0 && (
-              <div className="qsf-field qsf-field--wrap">
-                <span className="qsf-field-icon">🏷️</span>
-                <div className="qsf-tags-wrap">
-                  {tagPresets.map((tag) => (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      className={`qsf-tag${selectedTags.includes(tag.id) ? " qsf-tag--active" : ""}`}
-                      onClick={() => toggleTag(tag.id)}
-                    >
-                      {tag.emoji} {tag.label}
-                    </button>
-                  ))}
-                  <span className="qsf-tags-hint">{t("qsf.tagsHint")}</span>
-                </div>
+            <div className="qsf-field qsf-field--wrap">
+              <span className="qsf-field-icon">🏷️</span>
+              <div className="qsf-tags-wrap">
+                {[...shownTags, ...(showOtherTags ? otherTags : [])].map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    className={`qsf-tag${selectedTags.includes(tag.id) ? " qsf-tag--active" : ""}`}
+                    aria-pressed={selectedTags.includes(tag.id)}
+                    onClick={() => toggleTag(tag.id)}
+                  >
+                    {tag.emoji} {tag.name}
+                  </button>
+                ))}
+                {otherTags.length > 0 && (
+                  <button type="button" className="qsf-tag qsf-tag--more" onClick={() => setShowOtherTags(v => !v)}>
+                    {showOtherTags ? t("qsf.tagsFewer") : t("qsf.tagsMore", { n: otherTags.length })}
+                  </button>
+                )}
+                {!newTagOpen && (
+                  <button type="button" className="qsf-tag qsf-tag--more" onClick={() => { setTagMsg(null); setNewTagOpen(true); }}>
+                    {t("qsf.newTag")}
+                  </button>
+                )}
+                {newTagOpen && (
+                  <div className="qsf-newtag">
+                    <input
+                      className="qsf-newtag-emoji"
+                      value={newTagEmoji}
+                      maxLength={4}
+                      aria-label={t("qsf.tagEmoji")}
+                      onChange={(e) => setNewTagEmoji(e.target.value)}
+                    />
+                    <input
+                      className="qsf-newtag-name"
+                      value={newTagName}
+                      maxLength={40}
+                      autoFocus
+                      placeholder={t("qsf.tagNamePh")}
+                      onChange={(e) => { setNewTagName(e.target.value); setTagMsg(null); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateTag(); } }}
+                    />
+                    <button type="button" className="qsf-newtag-ok" onClick={handleCreateTag}>{t("qsf.tagCreate")}</button>
+                    <button type="button" className="qsf-newtag-cancel" onClick={closeNewTag} aria-label={t("common.cancel")}>✕</button>
+                  </div>
+                )}
+                {tagMsg && <span className="qsf-tags-hint qsf-tags-hint--msg" role="status">{tagMsg}</span>}
+                <span className="qsf-tags-hint">{t("qsf.tagsHint")}</span>
               </div>
-            )}
+            </div>
 
             <label className="qsf-field">
               <input
