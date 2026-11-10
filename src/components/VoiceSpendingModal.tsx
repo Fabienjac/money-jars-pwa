@@ -2,7 +2,7 @@
 // Modal de saisie vocale d'une dépense — Web Speech API + Gemini + appendSpending
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { appendSpending, fetchEntryRules } from "../api";
-import { applyRuleToDraft, describeRule, findBestRule, type EntryRule } from "../entryRules";
+import { applyRuleToDraft, describeRule, findBestRule, spendingPatch, type EntryRule } from "../entryRules";
 import { getBaseCurrency, currencySymbol, formatMoney } from "../baseCurrency";
 import { getRateToBase } from "../exchangeRate";
 import { updateStreak } from "../streakUtils";
@@ -54,6 +54,9 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
   const rulesRef = useRef<Promise<EntryRule[]>>(Promise.resolve([]));
   useEffect(() => { rulesRef.current = fetchEntryRules().catch(() => [] as EntryRule[]); }, []);
   const [appliedRule, setAppliedRule] = useState<{ summary: string; prev: ParsedSpending } | null>(null);
+  const rulesListRef = useRef<EntryRule[]>([]);
+  // Champs que la personne a choisis elle-même sur l'écran de confirmation : une règle ne les remplace plus
+  const touched = useRef({ jar: false, account: false, tags: false });
   const accounts = loadAccounts();
 
   const hasSpeechAPI = !!getSpeechRecognition();
@@ -118,9 +121,11 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       if (!res.ok || data.error) throw new Error(data.error || tr("vc.errHttp", { status: res.status }));
       let result = data as ParsedSpending;
       setAppliedRule(null);
+      touched.current = { jar: false, account: false, tags: false };
       try {
         // Une règle de la personne l'emporte sur la devinette de l'IA : d'abord sur la description, sinon sur la phrase dite
         const rules = await rulesRef.current;
+        rulesListRef.current = rules;
         const rule = findBestRule(result.description || "", rules, "spending") ?? findBestRule(text, rules, "spending");
         if (rule) {
           const applied = applyRuleToDraft(result, rule, loadAccounts().map((a) => a.name), [...JAR_KEYS]);
@@ -163,7 +168,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
         description = `${parsed.description} (${parsed.amount} ${cur})`;
         amount = Math.round(parsed.amount * rate * 100) / 100;
       }
-      await appendSpending({
+      const res = await appendSpending({
         date: parsed.date,
         description,
         amount,
@@ -171,6 +176,8 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
         account: parsed.account,
         tags: parsed.tags.join(","),
       });
+      // appendSpending ne lève pas d'erreur : il renvoie { ok: false } (non connecté, refus de la base…)
+      if (!res.ok) throw new Error(res.error || tr("vc.errSave"));
       updateStreak();
       window.dispatchEvent(new CustomEvent("mjars:transactionSaved"));
       setStep("done");
@@ -183,6 +190,41 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       setErrorMsg(e.message || tr("vc.errSave"));
       setStep("error");
     }
+  };
+
+  // ── Corrections faites sur l'écran de confirmation ─────────────────────────
+
+  const handleConfirmChange = (p: ParsedSpending) => {
+    const prev = parsed;
+    if (prev) {
+      if (p.jar !== prev.jar) touched.current.jar = true;
+      if (p.account !== prev.account) touched.current.account = true;
+      if (p.tags.join(",") !== prev.tags.join(",")) touched.current.tags = true;
+    }
+    // La description a été corrigée à la main (la voix a mal compris le nom du commerce) : on cherche à nouveau une règle
+    if (prev && p.description !== prev.description) {
+      const rule = findBestRule(p.description, rulesListRef.current, "spending");
+      if (rule) {
+        const raw = spendingPatch(rule, touched.current, loadAccounts().map((a) => a.name), [...JAR_KEYS]);
+        // seulement ce qui change vraiment (un champ déjà identique n'est pas rappelé dans le bandeau)
+        const patch = {
+          ...(raw.jar !== undefined && raw.jar !== p.jar ? { jar: raw.jar } : {}),
+          ...(raw.account !== undefined && raw.account !== p.account ? { account: raw.account } : {}),
+          ...(raw.tags !== undefined && raw.tags.join(",") !== p.tags.join(",") ? { tags: raw.tags } : {}),
+        };
+        if (patch.jar || patch.account || patch.tags) {
+          const tagName = (id: string) => loadTags().find((x) => x.id === id)?.name ?? id;
+          setAppliedRule({
+            summary: describeRule({ ...rule, jar: patch.jar, account: patch.account, tags: patch.tags ?? [] }, tagName),
+            prev: p,
+          });
+          setParsed({ ...p, ...patch });
+          return;
+        }
+      }
+    }
+    setAppliedRule(null);
+    setParsed(p);
   };
 
   // ── Formatage date pour affichage ──────────────────────────────────────────
@@ -327,7 +369,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
           {appliedRule && (
             <div className="qsf-rule-hint" role="status" style={{ margin: "0 0 12px" }}>
               <span>⚡ {tr("rules.applied", { summary: appliedRule.summary })}</span>
-              <button type="button" onClick={() => { setParsed(appliedRule.prev); setAppliedRule(null); }}>{tr("rules.undo")}</button>
+              <button type="button" onClick={() => { setParsed(appliedRule.prev); setAppliedRule(null); touched.current = { jar: true, account: true, tags: true }; }}>{tr("rules.undo")}</button>
             </div>
           )}
           <ConfirmForm
@@ -337,7 +379,7 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
             transcript={transcript}
             onSave={handleSave}
             onRetry={() => { setTranscript(""); setParsed(null); setStep("idle"); }}
-            onChange={(p) => { setParsed(p); setAppliedRule(null); }}
+            onChange={handleConfirmChange}
             formatDateDisplay={formatDateDisplay}
           />
           </>
