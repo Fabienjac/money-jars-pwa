@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planExceptionalSeed } from "../src/lifestyleSeed.ts";
+import { planExceptionalSeed, shouldSeedDefaultTags } from "../src/lifestyleSeed.ts";
 
 const tag = (id: string) => ({ id, name: id, emoji: "🏷️", color: "#000" });
 
@@ -19,4 +19,10 @@ test("l'étiquette existe déjà : pas de doublon, mais présélection si rien n
 
 test("l'utilisateur a déjà choisi ses étiquettes : son choix est respecté", () => {
   assert.deepEqual(planExceptionalSeed([tag("loisirs")], ["voyage"], false), { addTag: true, selectTag: false, markDone: true });
+});
+
+test("étiquettes par défaut : compte neuf (aucune étiquette dans le cloud, jamais mises en place) seulement", () => {
+  assert.equal(shouldSeedDefaultTags([], false), true);
+  assert.equal(shouldSeedDefaultTags([tag("loisirs")], false), false);   // l'utilisateur a déjà ses étiquettes
+  assert.equal(shouldSeedDefaultTags([], true), false);                  // il les a toutes supprimées exprès : on ne les remet pas
 });

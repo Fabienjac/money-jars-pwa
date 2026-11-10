@@ -1288,7 +1288,7 @@ const en: Record<keyof typeof fr, string> = {
   "help.lifestyle.title": "Lifestyle",
   "help.lifestyle.short": "What you spend on average per day, without one-off expenses. The arrow compares your last 30 days with your average since the start of the year.",
   "help.lifestyle.p1": "Your lifestyle is what you spend on average **per day** to live, not counting one-off expenses: those you mark with an exceptional tag (by default “Exceptional”), such as a trip or a big purchase.",
-  "help.lifestyle.p2": "The curve shows, week after week, your average over the last 30 days.",
+  "help.lifestyle.p2": "The pink curve shows, week after week, your average over the last 30 days. The green curve follows **food**, set apart so you can see what it weighs in your daily spending.",
   "help.lifestyle.p3": "The arrow (for example “+14%”) compares your last 30 days with your average since the start of the year. Pointing up, you spend more than usual.",
   "help.lifestyle.p4": "With less than 30 days of data, the figure is not reliable yet.",
   "help.autonomy.title": "Autonomy",

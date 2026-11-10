@@ -1286,7 +1286,7 @@ const fr = {
   "help.lifestyle.title": "Le train de vie",
   "help.lifestyle.short": "Ce que tu dépenses en moyenne par jour, sans les dépenses exceptionnelles. La flèche compare tes 30 derniers jours à ta moyenne depuis le début de l'année.",
   "help.lifestyle.p1": "Ton train de vie, c'est ce que tu dépenses en moyenne **par jour** pour vivre, sans compter les dépenses exceptionnelles : celles que tu marques avec un tag exceptionnel (par défaut « Exceptionnel »), comme un voyage ou un gros achat.",
-  "help.lifestyle.p2": "La courbe montre, semaine après semaine, ta moyenne des 30 derniers jours.",
+  "help.lifestyle.p2": "La courbe rose montre, semaine après semaine, ta moyenne des 30 derniers jours. La courbe verte suit **l'alimentation**, mise à part pour que tu voies ce qu'elle pèse dans ta dépense quotidienne.",
   "help.lifestyle.p3": "La flèche (par exemple « +14 % ») compare tes 30 derniers jours à ta moyenne depuis le début de l'année. Vers le haut, tu dépenses plus qu'à ton habitude.",
   "help.lifestyle.p4": "Avec moins de 30 jours de données, le calcul n'est pas encore fiable.",
   "help.autonomy.title": "L'autonomie",

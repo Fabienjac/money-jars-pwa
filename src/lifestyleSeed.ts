@@ -27,3 +27,14 @@ export function planExceptionalSeed(tags: Tag[], extraordinary: string[], alread
     markDone: true,
   };
 }
+
+/**
+ * Un compte neuf n'a encore aucune étiquette dans le cloud : les étiquettes par défaut n'existent que dans l'app, et
+ * « Exceptionnel » ne peut donc pas être coché pour le train de vie. On les enregistre une seule fois.
+ * @param cloudTags       étiquettes lues dans le cloud (vide = compte neuf, ou étiquettes toutes supprimées)
+ * @param alreadySeeded   les étiquettes par défaut ont déjà été enregistrées un jour (on ne les remet pas après une
+ *                        suppression volontaire)
+ */
+export function shouldSeedDefaultTags(cloudTags: Tag[], alreadySeeded: boolean): boolean {
+  return cloudTags.length === 0 && !alreadySeeded;
+}

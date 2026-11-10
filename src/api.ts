@@ -17,7 +17,7 @@ import { AutoTagRule, saveCachedRules, loadCachedRules } from "./autoTagRules";
 import { fetchAllPages, type PageResult } from "./paginate";
 import { rowToRule, ruleToRow, type EntryRule, type RuleRow } from "./entryRules";
 import { getDefaultTags, setCachedTags, type Tag } from "./tagsUtils";
-import { EXCEPTIONAL_TAG_ID, planExceptionalSeed } from "./lifestyleSeed";
+import { EXCEPTIONAL_TAG_ID, planExceptionalSeed, shouldSeedDefaultTags } from "./lifestyleSeed";
 import { addTagTo } from "./exceptional";
 import type { AccountTransfer } from "./accountTransfers";
 import { adjustmentTotals, isJarKey, round2, transferDeltas, type JarAdjustment, type JarTransfer } from "./jarTransfers";
@@ -816,7 +816,8 @@ export async function saveTags(tags: import("./tagsUtils").Tag[]): Promise<void>
     favori:    t.favori,
   }));
 
-  await supabase.from("tags").upsert(rows, { onConflict: "user_id,tag_id" });
+  const { error } = await supabase.from("tags").upsert(rows, { onConflict: "user_id,tag_id" });
+  if (error) throw new Error(error.message);
 }
 
 // ── Comptes ────────────────────────────────────────────────────────────────────
@@ -1394,6 +1395,41 @@ export async function fetchLifestylePrefs(): Promise<{ extraordinaryTags: string
 
 export async function saveLifestylePrefs(prefs: { extraordinaryTags: string[] }): Promise<void> {
   await saveColumnMappingToSheet(LIFESTYLE_PREFS_KEY, prefs);
+}
+
+// ── Étiquettes par défaut d'un compte neuf : enregistrées une seule fois dans le cloud ─────────────
+const DEFAULT_TAGS_SEEDED_KEY = "default_tags_seeded";
+let defaultTagsInFlight: Promise<Tag[] | null> | null = null;
+
+/**
+ * Compte neuf (aucune étiquette dans le cloud) : enregistre les étiquettes par défaut, « Exceptionnel » comprise, pour
+ * qu'elles existent vraiment (saisie, analyses, train de vie). Une seule fois, mémorisé dans le cloud : après une
+ * suppression volontaire de toutes les étiquettes, on ne les remet pas. En cas d'erreur de lecture ou d'écriture, on
+ * ne marque rien et on réessaiera au prochain démarrage. Renvoie la liste enregistrée, ou null.
+ */
+export function seedDefaultTagsIfNeeded(tags: Tag[]): Promise<Tag[] | null> {
+  if (tags.length > 0) return Promise.resolve(null);
+  if (!defaultTagsInFlight) {
+    defaultTagsInFlight = seedDefaultTags(tags).catch(() => null).finally(() => { defaultTagsInFlight = null; });
+  }
+  return defaultTagsInFlight;
+}
+
+async function seedDefaultTags(tags: Tag[]): Promise<Tag[] | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data, error } = await supabase
+    .from("column_mappings")
+    .select("mapping_key")
+    .eq("user_id", user.id)
+    .eq("mapping_key", DEFAULT_TAGS_SEEDED_KEY);
+  if (error || !data) return null;
+  if (!shouldSeedDefaultTags(tags, data.length > 0)) return null;
+  const defaults = getDefaultTags();
+  await saveTags(defaults);
+  await saveColumnMappingToSheet(DEFAULT_TAGS_SEEDED_KEY, { done: true });
+  setCachedTags(defaults);
+  return defaults;
 }
 
 // ── Étiquette « Exceptionnel » : mise en place unique ─────────────────────────

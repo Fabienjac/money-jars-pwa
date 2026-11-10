@@ -21,7 +21,7 @@ import { useOffline } from "./hooks/useOffline";
 import { useJarAlerts } from "./hooks/useJarAlerts";
 import { useAuth } from "./contexts/AuthContext";
 import { loadAccounts } from "./accountsUtils";
-import { getAccounts, fetchTagsFromSheet, seedExceptionalTagIfNeeded, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings, appendSpending, appendRevenue } from "./api";
+import { getAccounts, fetchTagsFromSheet, seedDefaultTagsIfNeeded, seedExceptionalTagIfNeeded, fetchTotals, fetchAnalytics, fetchNetWorth, searchSpendings, appendSpending, appendRevenue } from "./api";
 import { setCachedTags } from "./tagsUtils";
 import type { Account } from "./types";
 import { offlineManager } from "./offlineManager";
@@ -219,7 +219,10 @@ function App() {
   useEffect(() => {
     if (!userId) return;
     fetchTagsFromSheet()
-      .then(async tags => {
+      .then(async fetched => {
+        // Compte neuf : les étiquettes par défaut n'existent que dans l'app ; on les enregistre une seule fois
+        const defaults = fetched.length === 0 ? await seedDefaultTagsIfNeeded(fetched) : null;
+        const tags = defaults ?? fetched;
         if (tags.length > 0) setCachedTags(tags);
         // Étiquette « Exceptionnel » pour l'indicateur « train de vie » (une seule fois par utilisateur)
         const withSeed = await seedExceptionalTagIfNeeded(tags);
