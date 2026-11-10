@@ -1,7 +1,8 @@
 // src/components/VoiceSpendingModal.tsx
 // Modal de saisie vocale d'une dépense — Web Speech API + Gemini + appendSpending
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { appendSpending } from "../api";
+import { appendSpending, fetchEntryRules } from "../api";
+import { applyRuleToDraft, describeRule, findBestRule, type EntryRule } from "../entryRules";
 import { getBaseCurrency, currencySymbol, formatMoney } from "../baseCurrency";
 import { getRateToBase } from "../exchangeRate";
 import { updateStreak } from "../streakUtils";
@@ -49,6 +50,10 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
 
   const recognitionRef = useRef<any>(null);
   const tags = loadTags();
+  // Règles automatiques de la personne : chargées dès l'ouverture, appliquées après l'analyse de la phrase
+  const rulesRef = useRef<Promise<EntryRule[]>>(Promise.resolve([]));
+  useEffect(() => { rulesRef.current = fetchEntryRules().catch(() => [] as EntryRule[]); }, []);
+  const [appliedRule, setAppliedRule] = useState<{ summary: string; prev: ParsedSpending } | null>(null);
   const accounts = loadAccounts();
 
   const hasSpeechAPI = !!getSpeechRecognition();
@@ -111,7 +116,25 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || tr("vc.errHttp", { status: res.status }));
-      setParsed(data as ParsedSpending);
+      let result = data as ParsedSpending;
+      setAppliedRule(null);
+      try {
+        // Une règle de la personne l'emporte sur la devinette de l'IA : d'abord sur la description, sinon sur la phrase dite
+        const rules = await rulesRef.current;
+        const rule = findBestRule(result.description || "", rules, "spending") ?? findBestRule(text, rules, "spending");
+        if (rule) {
+          const applied = applyRuleToDraft(result, rule, loadAccounts().map((a) => a.name), [...JAR_KEYS]);
+          if (applied) {
+            const tagName = (id: string) => loadTags().find((x) => x.id === id)?.name ?? id;
+            setAppliedRule({
+              summary: describeRule({ ...rule, jar: applied.patch.jar, account: applied.patch.account, tags: applied.patch.tags ?? [] }, tagName),
+              prev: result,
+            });
+            result = applied.draft;
+          }
+        }
+      } catch { /* règles indisponibles : on garde la proposition de l'IA */ }
+      setParsed(result);
       setStep("confirm");
     } catch (e: any) {
       setErrorMsg(e.message || tr("vc.errAnalyze"));
@@ -300,6 +323,13 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
 
         {/* ═══ ÉTAPE 3 : Confirmation ═══ */}
         {step === "confirm" && parsed && (
+          <>
+          {appliedRule && (
+            <div className="qsf-rule-hint" role="status" style={{ margin: "0 0 12px" }}>
+              <span>⚡ {tr("rules.applied", { summary: appliedRule.summary })}</span>
+              <button type="button" onClick={() => { setParsed(appliedRule.prev); setAppliedRule(null); }}>{tr("rules.undo")}</button>
+            </div>
+          )}
           <ConfirmForm
             parsed={parsed}
             tags={tags}
@@ -307,9 +337,10 @@ export const VoiceSpendingModal: React.FC<Props> = ({ onClose, onSaved }) => {
             transcript={transcript}
             onSave={handleSave}
             onRetry={() => { setTranscript(""); setParsed(null); setStep("idle"); }}
-            onChange={setParsed}
+            onChange={(p) => { setParsed(p); setAppliedRule(null); }}
             formatDateDisplay={formatDateDisplay}
           />
+          </>
         )}
 
         {/* ═══ ÉTAPE 4 : Sauvegarde ═══ */}

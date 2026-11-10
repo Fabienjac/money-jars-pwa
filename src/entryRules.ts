@@ -96,6 +96,25 @@ export function spendingPatch(
   return patch;
 }
 
+/**
+ * Applique la règle de la personne à un brouillon (saisie vocale : l'IA a deviné jarre, compte et tags, la règle écrite
+ * par la personne est plus fiable). Renvoie le brouillon corrigé et ce qui a changé, ou null si la règle ne change rien.
+ */
+export function applyRuleToDraft<T extends { jar: string; account: string; tags: string[] }>(
+  draft: T,
+  rule: EntryRule,
+  accountNames: string[],
+  validJars: string[],
+): { draft: T; patch: SpendingPatch } | null {
+  const patch = spendingPatch(rule, { jar: false, account: false, tags: false }, accountNames, validJars);
+  const changes =
+    (patch.jar !== undefined && patch.jar !== draft.jar) ||
+    (patch.account !== undefined && patch.account !== draft.account) ||
+    (patch.tags !== undefined && patch.tags.join(",") !== draft.tags.join(","));
+  if (!changes) return null;
+  return { draft: { ...draft, ...patch }, patch };
+}
+
 /** « NEC · Carte bancaire · alimentaire » : résumé d'une règle pour l'écran. */
 export function describeRule(rule: EntryRule, tagName: (id: string) => string = (id) => id): string {
   const parts: string[] = [];

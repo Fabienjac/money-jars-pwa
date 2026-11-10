@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./_load.mjs";
 
-const { normalizeKeyword, foldText, keywordMatches, findBestRule, resolveAccountName, spendingPatch, describeRule, rowToRule, ruleToRow, legacyToRules, distinctLabels } =
+const { normalizeKeyword, foldText, keywordMatches, findBestRule, resolveAccountName, spendingPatch, describeRule, rowToRule, ruleToRow, legacyToRules, distinctLabels, applyRuleToDraft } =
   await loadTs("src/entryRules.ts");
 
 const rule = (keyword, extra = {}) => ({ keyword, mode: "spending", tags: [], origin: "manual", ...extra });
@@ -123,4 +123,26 @@ test("distinctLabels : sans doublon de casse, écriture la plus fréquente, plus
   // même fréquence pour deux écritures : celle avec majuscule
   assert.deepEqual(distinctLabels(["salaire", "Salaire"]), ["Salaire"]);
   assert.deepEqual(distinctLabels([]), []);
+});
+
+test("applyRuleToDraft : la règle de la personne corrige ce que l'IA a deviné", () => {
+  const names = ["Carte bancaire", "Espèces"];
+  const jars = ["NEC", "PLAY"];
+  const draft = { description: "Carrefour", jar: "PLAY", account: "Espèces", tags: ["loisirs"] };
+  const r = rule("carrefour", { jar: "NEC", account: "carte bancaire", tags: ["alimentaire"] });
+  const out = applyRuleToDraft(draft, r, names, jars);
+  assert.deepEqual(out.draft, { description: "Carrefour", jar: "NEC", account: "Carte bancaire", tags: ["alimentaire"] });
+  assert.deepEqual(out.patch, { jar: "NEC", account: "Carte bancaire", tags: ["alimentaire"] });
+  assert.equal(draft.jar, "PLAY"); // le brouillon d'origine n'est pas modifié
+});
+
+test("applyRuleToDraft : rien à changer, ou règle inutilisable → null", () => {
+  const names = ["Carte bancaire"];
+  const jars = ["NEC"];
+  const same = { jar: "NEC", account: "Carte bancaire", tags: ["a"] };
+  assert.equal(applyRuleToDraft(same, rule("x", { jar: "NEC", account: "Carte bancaire", tags: ["a"] }), names, jars), null);
+  assert.equal(applyRuleToDraft(same, rule("x", { jar: "ZZZ", account: "Fantôme" }), names, jars), null);
+  // règle partielle : seulement la jarre
+  const out = applyRuleToDraft({ jar: "PLAY", account: "Carte bancaire", tags: ["a"] }, rule("x", { jar: "NEC" }), names, ["NEC", "PLAY"]);
+  assert.deepEqual(out.draft, { jar: "NEC", account: "Carte bancaire", tags: ["a"] });
 });
