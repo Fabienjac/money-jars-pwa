@@ -60,6 +60,21 @@ export function isExtraordinary(tags: string | null | undefined, extraordinaryTa
   return splitTags(tags).some((id) => extraordinaryTags.has(id));
 }
 
+/** Une ou plusieurs étiquettes à suivre. Une dépense compte dès qu'elle porte l'une d'elles, et une seule fois. */
+export type TagFocus = string | readonly string[];
+
+/** Un focus est actif s'il désigne au moins une étiquette. */
+export function focusActive(focus: TagFocus | undefined): focus is TagFocus {
+  return typeof focus === "string" ? focus !== "" : !!focus && focus.length > 0;
+}
+
+/** La dépense (ses étiquettes « a,b,c ») entre-t-elle dans le focus ? Sans focus, toutes les dépenses comptent. */
+export function matchesFocus(tags: string | null | undefined, focus: TagFocus | undefined): boolean {
+  if (!focusActive(focus)) return true;
+  const own = splitTags(tags);
+  return typeof focus === "string" ? own.includes(focus) : focus.some((id) => own.includes(id));
+}
+
 /** Date à partir de laquelle charger les dépenses : début d'année, ou 29 jours avant aujourd'hui s'il est plus tôt (janvier). */
 export function lifestyleFetchFrom(today: string): string | null {
   const t = dayNumber(today);
@@ -70,8 +85,8 @@ export function lifestyleFetchFrom(today: string): string | null {
 }
 
 export interface LifestyleOptions {
-  /** Ne compter que les dépenses portant cette étiquette (ex. « alimentaire »). */
-  tagId?: string;
+  /** Ne compter que les dépenses portant cette étiquette, ou l'une de ces étiquettes (ex. « alimentaire »). */
+  tagId?: TagFocus;
   /** Début de période imposé (AAAA-MM-JJ), pour comparer une étiquette sur la même période que le total. */
   start?: string;
 }
@@ -87,7 +102,7 @@ export function computeLifestyle(
   const jan1 = dayNumber(`${today.slice(0, 4)}-01-01`)!;
 
   const dated = rows
-    .filter((r) => !options.tagId || splitTags(r.tags).includes(options.tagId))
+    .filter((r) => matchesFocus(r.tags, options.tagId))
     .map((r) => ({ d: dayNumber(r.date), amount: Number(r.amount), extra: isExtraordinary(r.tags, extraordinaryTags) }))
     .filter((r): r is { d: number; amount: number; extra: boolean } => r.d != null && Number.isFinite(r.amount) && r.d <= t);
 
@@ -178,7 +193,7 @@ export function rollingAverageSeries(
   rows: readonly LifestyleRow[],
   extraordinaryTags: ReadonlySet<string>,
   today: string,
-  tagId?: string
+  tagId?: TagFocus
 ): RollingPoint[] {
   const t = dayNumber(today);
   if (t == null) return [];
@@ -191,7 +206,7 @@ export function rollingAverageSeries(
     const amount = Number(r.amount);
     if (d == null || d > t || !Number.isFinite(amount)) continue;
     if (isExtraordinary(r.tags, extraordinaryTags)) continue;
-    if (tagId && !splitTags(r.tags).includes(tagId)) continue;
+    if (!matchesFocus(r.tags, tagId)) continue;
     daily.set(d, (daily.get(d) ?? 0) + amount);
   }
 
@@ -215,7 +230,7 @@ export function rollingAverageAt(
   rows: readonly LifestyleRow[],
   extraordinaryTags: ReadonlySet<string>,
   date: string,
-  tagId?: string
+  tagId?: TagFocus
 ): number | null {
   const end = dayNumber(date);
   if (end == null) return null;
@@ -225,7 +240,7 @@ export function rollingAverageAt(
     const amount = Number(r.amount);
     if (d == null || d > end || d <= end - 30 || !Number.isFinite(amount)) continue;
     if (isExtraordinary(r.tags, extraordinaryTags)) continue;
-    if (tagId && !splitTags(r.tags).includes(tagId)) continue;
+    if (!matchesFocus(r.tags, tagId)) continue;
     sum += amount;
   }
   return sum / 30;
@@ -264,12 +279,12 @@ export function trendLine(
   rows: readonly LifestyleRow[],
   extraordinaryTags: ReadonlySet<string>,
   today: string,
-  tagId?: string
+  tagId?: TagFocus
 ): TrendLine | null {
   const total = computeLifestyle(rows, extraordinaryTags, today);
   if (!total || !total.last30) return null;
-  const own = tagId ? computeLifestyle(rows, extraordinaryTags, today, { tagId, start: total.startDate }) : total;
-  const perDay30 = tagId ? computeLifestyle(rows, extraordinaryTags, today, { tagId })?.last30?.perDay ?? 0 : total.last30.perDay;
+  const own = focusActive(tagId) ? computeLifestyle(rows, extraordinaryTags, today, { tagId, start: total.startDate }) : total;
+  const perDay30 = focusActive(tagId) ? computeLifestyle(rows, extraordinaryTags, today, { tagId })?.last30?.perDay ?? 0 : total.last30.perDay;
   const yearAvg = own?.perDay ?? 0;
   const deltaYear = yearAvg > 0 ? ((perDay30 - yearAvg) / yearAvg) * 100 : null;
 
@@ -313,7 +328,7 @@ export function monthlyAverages(
   rows: readonly LifestyleRow[],
   extraordinaryTags: ReadonlySet<string>,
   today: string,
-  options: { tagId?: string; count?: number; since?: string } = {}
+  options: { tagId?: TagFocus; count?: number; since?: string } = {}
 ): MonthAverage[] {
   const t = dayNumber(today);
   if (t == null) return [];
@@ -328,7 +343,7 @@ export function monthlyAverages(
     const amount = Number(r.amount);
     if (d == null || d > t || !Number.isFinite(amount)) continue;
     if (isExtraordinary(r.tags, extraordinaryTags)) continue;
-    if (options.tagId && !splitTags(r.tags).includes(options.tagId)) continue;
+    if (!matchesFocus(r.tags, options.tagId)) continue;
     daily.set(d, (daily.get(d) ?? 0) + amount);
   }
 

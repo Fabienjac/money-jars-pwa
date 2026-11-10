@@ -1288,7 +1288,7 @@ const en: Record<keyof typeof fr, string> = {
   "help.lifestyle.title": "Lifestyle",
   "help.lifestyle.short": "What you spend on average per day, without one-off expenses. The arrow compares your last 30 days with your average since the start of the year.",
   "help.lifestyle.p1": "Your lifestyle is what you spend on average **per day** to live, not counting one-off expenses: those you mark with an exceptional tag (by default “Exceptional”), such as a trip or a big purchase.",
-  "help.lifestyle.p2": "The pink curve shows, week after week, your average over the last 30 days. The green curve follows **food**, set apart so you can see what it weighs in your daily spending.",
+  "help.lifestyle.p2": "The pink curve shows, week after week, your average over the last 30 days. The green curve follows **a category you choose**, food by default, so you can see what it weighs in your daily spending. Tap “Green curve: … · edit” to group up to 3.",
   "help.lifestyle.p3": "The arrow (for example “+14%”) compares your last 30 days with your average since the start of the year. Pointing up, you spend more than usual.",
   "help.lifestyle.p4": "With less than 30 days of data, the figure is not reliable yet.",
   "help.autonomy.title": "Autonomy",
@@ -1296,6 +1296,9 @@ const en: Record<keyof typeof fr, string> = {
   "help.autonomy.p1": "It is how long you could last **with no income at all**: available money divided by what you spend per month.",
   "help.autonomy.p2": "“Available” covers the Necessities, Education, Gift and Fun jars. “All jars” adds Financial Freedom and Long-Term Savings.",
   "help.autonomy.p3": "“Current pace” is your last 30 days without one-off expenses. “With one-offs” is the monthly average over 12 months, everything included.",
+  "life.focusEdit": "Green curve: {name} · edit",
+  "life.focusTitle": "Categories followed",
+  "life.focusHelp": "Tick up to {max} tags: the green curve groups their spending. An expense carrying several of these tags is counted only once.",
 };
 
 export default en;

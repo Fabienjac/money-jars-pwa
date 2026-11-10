@@ -1286,7 +1286,7 @@ const fr = {
   "help.lifestyle.title": "Le train de vie",
   "help.lifestyle.short": "Ce que tu dépenses en moyenne par jour, sans les dépenses exceptionnelles. La flèche compare tes 30 derniers jours à ta moyenne depuis le début de l'année.",
   "help.lifestyle.p1": "Ton train de vie, c'est ce que tu dépenses en moyenne **par jour** pour vivre, sans compter les dépenses exceptionnelles : celles que tu marques avec un tag exceptionnel (par défaut « Exceptionnel »), comme un voyage ou un gros achat.",
-  "help.lifestyle.p2": "La courbe rose montre, semaine après semaine, ta moyenne des 30 derniers jours. La courbe verte suit **l'alimentation**, mise à part pour que tu voies ce qu'elle pèse dans ta dépense quotidienne.",
+  "help.lifestyle.p2": "La courbe rose montre, semaine après semaine, ta moyenne des 30 derniers jours. La courbe verte suit **une catégorie que tu choisis**, l'alimentation par défaut, pour que tu voies ce qu'elle pèse dans ta dépense quotidienne. Touche « Courbe verte : … · modifier » pour en regrouper jusqu'à 3.",
   "help.lifestyle.p3": "La flèche (par exemple « +14 % ») compare tes 30 derniers jours à ta moyenne depuis le début de l'année. Vers le haut, tu dépenses plus qu'à ton habitude.",
   "help.lifestyle.p4": "Avec moins de 30 jours de données, le calcul n'est pas encore fiable.",
   "help.autonomy.title": "L'autonomie",
@@ -1294,6 +1294,9 @@ const fr = {
   "help.autonomy.p1": "C'est le temps que tu tiendrais **sans aucun revenu** : l'argent disponible divisé par ce que tu dépenses par mois.",
   "help.autonomy.p2": "« Disponible » regroupe les jarres Nécessités, Éducation, Don / Gift et Fun / Play. « Toutes les jarres » ajoute Liberté Financière et Épargne Long Terme.",
   "help.autonomy.p3": "« Rythme courant » correspond à tes 30 derniers jours sans les dépenses exceptionnelles. « Avec exceptionnelles » est la moyenne mensuelle sur 12 mois, tout compris.",
+  "life.focusEdit": "Courbe verte : {name} · modifier",
+  "life.focusTitle": "Catégories suivies",
+  "life.focusHelp": "Coche jusqu'à {max} étiquettes : la courbe verte regroupe leurs dépenses. Une dépense qui porte plusieurs de ces étiquettes n'est comptée qu'une fois.",
 } as const;
 
 export default fr;

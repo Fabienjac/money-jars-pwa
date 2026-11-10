@@ -2,11 +2,12 @@
 // comparée aux 30 derniers jours. Les dépenses extraordinaires sont celles portant une étiquette cochée
 // dans le panneau de réglage (voyage, gros achat…). Calcul : src/lifestyle.ts.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs, fetchExceptionalDismissed, saveExceptionalDismissed, markSpendingExceptional, type SpendingLite } from "../api";
+import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs, fetchLifestyleFocus, saveLifestyleFocus, fetchExceptionalDismissed, saveExceptionalDismissed, markSpendingExceptional, type SpendingLite } from "../api";
 import { computeLifestyle, lifestyleFetchFrom, monthlyAverages, rollingAverageSeries, tagTotalsThisYear, trendLine, type MonthAverage, type TrendLine } from "../lifestyle";
 import DailyAverageChart from "./DailyAverageChart";
 import { suggestExceptional } from "../exceptional";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
+import { MAX_FOCUS, focusLabel, normalizeFocus, toggleFocus } from "../lifestyleFocus";
 import { loadTags } from "../tagsUtils";
 import { formatMoney as formatMoneyBase } from "../baseCurrency";
 import { t, useT, localeTag, monthShort } from "../i18n";
@@ -108,6 +109,8 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
   const [error, setError] = useState(false);
   const [extraTags, setExtraTags] = useState<string[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [focusRaw, setFocusRaw] = useState<unknown>(undefined); // étiquettes suivies par la courbe verte (choix enregistré)
+  const [focusOpen, setFocusOpen] = useState(false);
   const [tagsVersion, setTagsVersion] = useState(0); // les étiquettes de l'utilisateur ont changé (nom à rafraîchir)
 
   const load = useCallback(async () => {
@@ -118,11 +121,12 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
       // La courbe a besoin des 30 jours qui précèdent le 7 janvier pour que ses premiers points soient justes
       const chartFrom = beforeJan1(today, 30);
       const from = base < chartFrom ? base : chartFrom;
-      const [data, prefs, dismissedIds] = await Promise.all([fetchSpendingsSince(from), fetchLifestylePrefs(), fetchExceptionalDismissed()]);
+      const [data, prefs, dismissedIds, focus] = await Promise.all([fetchSpendingsSince(from), fetchLifestylePrefs(), fetchExceptionalDismissed(), fetchLifestyleFocus()]);
       setRows(data);
       setDataFrom(from);
       setExtraTags(prefs.extraordinaryTags);
       setDismissed(dismissedIds);
+      setFocusRaw(focus);
       setError(false);
     } catch {
       setError(true);
@@ -149,17 +153,24 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
   const today = todayISO();
   const stats = useMemo(() => (rows ? computeLifestyle(rows, extraSet, today) : null), [rows, extraSet, today]);
   const tagTotals = useMemo(() => (rows ? tagTotalsThisYear(rows, today) : {}), [rows, today]);
+  // Étiquettes suivies par la courbe verte : le choix enregistré, sinon l'alimentation. Une étiquette est « connue » si elle
+  // est dans la liste de la personne OU portée par ses dépenses (le panneau propose les deux).
+  const knownTagIds = useMemo(
+    () => [...loadTags().map((tg) => tg.id), ...Object.keys(tagTotals)],
+    [tagsVersion, tagTotals] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const focusIds = useMemo(() => normalizeFocus(focusRaw, knownTagIds), [focusRaw, knownTagIds]);
   // Courbe hors dépenses extraordinaires (et alimentation par-dessus)
   const chartPoints = useMemo(() => (rows ? rollingAverageSeries(rows, extraSet, today) : []), [rows, extraSet, today]);
-  const foodPoints = useMemo(() => (rows ? rollingAverageSeries(rows, extraSet, today, "alimentaire") : []), [rows, extraSet, today]);
+  const foodPoints = useMemo(() => (rows ? rollingAverageSeries(rows, extraSet, today, focusIds) : []), [rows, extraSet, today, focusIds]);
   const foodNow = foodPoints.length > 0 ? foodPoints[foodPoints.length - 1].avg : 0;
   const totalNow = chartPoints.length > 0 ? chartPoints[chartPoints.length - 1].avg : 0;
   // Évolution des dépenses courantes et de l'alimentation (30 derniers jours vs moyenne de l'année et vs il y a 3 mois)
   const trendAll = useMemo(() => (rows ? trendLine(rows, extraSet, today) : null), [rows, extraSet, today]);
-  const trendFood = useMemo(() => (rows ? trendLine(rows, extraSet, today, "alimentaire") : null), [rows, extraSet, today]);
+  const trendFood = useMemo(() => (rows ? trendLine(rows, extraSet, today, focusIds) : null), [rows, extraSet, today, focusIds]);
   // Moyenne par jour, mois par mois (6 mois)
   const monthsAll = useMemo(() => (rows ? monthlyAverages(rows, extraSet, today, { since: dataFrom }) : []), [rows, extraSet, today, dataFrom]);
-  const monthsFood = useMemo(() => (rows ? monthlyAverages(rows, extraSet, today, { since: dataFrom, tagId: "alimentaire" }) : []), [rows, extraSet, today, dataFrom]);
+  const monthsFood = useMemo(() => (rows ? monthlyAverages(rows, extraSet, today, { since: dataFrom, tagId: focusIds }) : []), [rows, extraSet, today, dataFrom, focusIds]);
 
   // Grosses dépenses pas encore étiquetées : on propose de les marquer « Exceptionnel »
   const suggestions = useMemo(
@@ -211,6 +222,16 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
       .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
   }, [tagTotals, extraTags, tagsVersion]);
 
+  const tagInfo = (id: string) => loadTags().find((tg) => tg.id === id);
+  const focusName = focusLabel(focusIds, (id) => tagInfo(id)?.name ?? (id === "alimentaire" ? t("life.rowFood") : id));
+  const focusEmoji = focusIds.length === 1 ? (tagInfo(focusIds[0])?.emoji ?? (focusIds[0] === "alimentaire" ? "🥗" : "🎯")) : "🎯";
+  const focusChoices = tagChoices.filter((tg) => !extraSet.has(tg.id));
+  const toggleFocusTag = (id: string) => {
+    const next = toggleFocus(focusIds, id);
+    setFocusRaw(next); // immédiat ; l'enregistrement cloud se fait en arrière-plan
+    saveLifestyleFocus(next).catch(() => {});
+  };
+
   const statusLabel = stats?.status === "up" ? t("life.statusUp") : stats?.status === "down" ? t("life.statusDown") : t("life.statusStable");
   const statusColor = stats?.status === "up" ? "var(--warn-text)" : "var(--ok-text)";
   const statusBg = stats?.status === "up" ? "rgba(255,149,0,0.12)" : "rgba(52,199,89,0.12)";
@@ -238,7 +259,7 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
                   <svg width="16" height="6" aria-hidden="true" style={{ overflow: "visible" }}>
                     <line x1="0" y1="3" x2="16" y2="3" stroke="#84CC16" strokeWidth="2" strokeDasharray="4 2" />
                   </svg>
-                  🥗 {t("life.rowFood")} <strong>{money(foodNow, 2)}{t("life.perDayShort")}</strong>
+                  {focusEmoji} {focusName} <strong>{money(foodNow, 2)}{t("life.perDayShort")}</strong>
                 </span>
               )}
               <span className="life-chart-note">{t("life.chartNote")}</span>
@@ -264,7 +285,7 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
             {stats.last30 && trendAll ? (
               <div className="life-trends">
                 <TrendRow name={t("life.rowCurrent")} trend={trendAll} months={monthsAll} color="#FF2D78" />
-                {trendFood && trendFood.perDay30 > 0 && <TrendRow name={`🥗 ${t("life.rowFood")}`} trend={trendFood} months={monthsFood} color="#84CC16" />}
+                {trendFood && trendFood.perDay30 > 0 && <TrendRow name={`${focusEmoji} ${focusName}`} trend={trendFood} months={monthsFood} color="#84CC16" />}
               </div>
             ) : (
               <div style={{ flex: "1 1 130px", minWidth: 0 }}>
@@ -321,6 +342,42 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
               ))}
             </ul>
             {suggestError && <p className="life-suggest-error" role="alert">{t("life.suggestError")}</p>}
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="life-link life-edit"
+          aria-expanded={focusOpen}
+          onClick={() => setFocusOpen((v) => !v)}
+        >
+          {t("life.focusEdit", { name: focusName })}
+        </button>
+
+        {focusOpen && (
+          <div className="life-panel" role="group" aria-label={t("life.focusTitle")}>
+            <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-main)", marginBottom: "4px" }}>{t("life.focusTitle")}</div>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "0 0 8px" }}>{t("life.focusHelp", { max: MAX_FOCUS })}</p>
+            {focusChoices.length === 0 ? (
+              <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: 0 }}>{t("life.noTags")}</p>
+            ) : (
+              focusChoices.map((tg) => {
+                const checked = focusIds.includes(tg.id);
+                const locked = checked ? focusIds.length === 1 : focusIds.length >= MAX_FOCUS;
+                return (
+                  <label key={tg.id} className="life-tag-row" style={locked ? { opacity: 0.55 } : undefined}>
+                    <input type="checkbox" checked={checked} disabled={locked} onChange={() => toggleFocusTag(tg.id)} />
+                    <span className="life-tag-name">
+                      <span aria-hidden="true">{tg.emoji}</span> {tg.name}
+                    </span>
+                    <span className="life-tag-amount">{tg.total > 0 ? t("life.tagYtd", { amount: money(tg.total, 0) }) : ""}</span>
+                  </label>
+                );
+              })
+            )}
+            <button type="button" className="life-link life-close" onClick={() => setFocusOpen(false)}>
+              {t("life.close")}
+            </button>
           </div>
         )}
 

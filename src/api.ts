@@ -1397,6 +1397,23 @@ export async function saveLifestylePrefs(prefs: { extraordinaryTags: string[] })
   await saveColumnMappingToSheet(LIFESTYLE_PREFS_KEY, prefs);
 }
 
+// Étiquettes que la courbe verte du train de vie suit (par défaut l'alimentation), même stockage.
+const LIFESTYLE_FOCUS_KEY = "lifestyle_focus";
+
+/** Choix enregistré (liste d'identifiants non vérifiée : voir normalizeFocus), ou undefined s'il n'y en a pas. */
+export async function fetchLifestyleFocus(): Promise<unknown> {
+  try {
+    const mappings = await fetchColumnMappings();
+    return (mappings[LIFESTYLE_FOCUS_KEY] as { tagIds?: unknown } | undefined)?.tagIds;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveLifestyleFocus(tagIds: string[]): Promise<void> {
+  await saveColumnMappingToSheet(LIFESTYLE_FOCUS_KEY, { tagIds });
+}
+
 // ── Étiquettes par défaut d'un compte neuf : enregistrées une seule fois dans le cloud ─────────────
 const DEFAULT_TAGS_SEEDED_KEY = "default_tags_seeded";
 let defaultTagsInFlight: Promise<Tag[] | null> | null = null;
