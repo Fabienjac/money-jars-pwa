@@ -129,3 +129,43 @@ export function computeAutonomy(
     totalWithOneOff: monthsOfRunway(treasury.total, burn.withOneOff),
   };
 }
+
+export interface Shortfall {
+  /** Montant dont les jarres courantes (niveau 1) sont à découvert, en valeur positive. */
+  amount: number;
+  /** La jarre courante la plus en négatif et son solde (négatif). */
+  worstJar: string;
+  worstJarNet: number;
+  /**
+   * Revenus à générer pour remettre ces jarres à zéro : une partie de chaque revenu va aux autres jarres (épargne)
+   * selon la répartition, donc il en faut plus que le découvert. null si la répartition ne le permet pas.
+   */
+  incomeNeeded: number | null;
+}
+
+/**
+ * Les jarres courantes (NEC + EDUC + GIFT + PLAY) sont-elles à découvert, toutes ensembles ? Un solde très négatif
+ * d'une seule jarre efface les soldes positifs des autres dans le total. null si le total courant est positif ou nul.
+ * @param split  répartition en % par jarre (celle des Réglages)
+ */
+export function liquidShortfall(
+  jars: Record<string, JarBalanceLite | undefined>,
+  split: Record<string, number | undefined>
+): Shortfall | null {
+  const bal = (k: string) => {
+    const j = jars[k];
+    return j ? (j.net || 0) - (j.settled || 0) : 0;
+  };
+  const liquid = LIQUID_JARS.reduce((sum, k) => sum + bal(k), 0);
+  if (!(liquid < -0.005)) return null;
+  let worstJar: string = LIQUID_JARS[0];
+  for (const k of LIQUID_JARS) if (bal(k) < bal(worstJar)) worstJar = k;
+  const liquidShare = LIQUID_JARS.reduce((sum, k) => sum + Math.max(0, Number(split[k]) || 0), 0) / 100;
+  const amount = round2(-liquid);
+  return {
+    amount,
+    worstJar,
+    worstJarNet: round2(bal(worstJar)),
+    incomeNeeded: liquidShare > 0 ? Math.ceil(amount / liquidShare) : null,
+  };
+}

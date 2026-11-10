@@ -2,9 +2,9 @@
 // Calcul : src/autonomy.ts. Niveau 1 = NEC + EDUC + Don + Play ; niveau 2 = les six jarres.
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchTotals } from "../api";
-import { computeAutonomy } from "../autonomy";
+import { computeAutonomy, liquidShortfall } from "../autonomy";
 import { formatMoney } from "../baseCurrency";
-import { localeTag, t, useT } from "../i18n";
+import { JAR_LABELS, localeTag, t, useT } from "../i18n";
 import HelpHint from "./HelpHint";
 import type { SearchSpendingResult, TotalsResponse } from "../types";
 
@@ -62,6 +62,8 @@ const AutonomyCard: React.FC<Props> = ({ rows, oneOffTagIds }) => {
 
   const { treasury, burn } = result;
   const money = (n: number) => formatMoney(n, undefined, 0);
+  // Jarres courantes à découvert : on le dit en clair (au lieu d'un « 0,0 mois » sans explication)
+  const shortfall = totals ? liquidShortfall(totals.jars, totals.split) : null;
   const cell = (months: number | null) => (
     <span style={{ fontWeight: 700, color: tone(months), fontVariantNumeric: "tabular-nums" }}>{formatRunway(months)}</span>
   );
@@ -82,9 +84,22 @@ const AutonomyCard: React.FC<Props> = ({ rows, oneOffTagIds }) => {
           </span>
           <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>{t("auto.headline")}</span>
         </div>
+        <div style={{ fontSize: "13px", color: "var(--text-main)", marginTop: "6px" }}>
+          {t("auto.withSavings", { months: formatRunway(result.totalRegular) })}
+        </div>
         <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "4px" }}>
           {t("auto.detail", { liquid: money(treasury.liquid), burn: money(burn.regular) })}
         </div>
+        {shortfall && (
+          <div style={{ fontSize: "12px", color: "var(--warn-text)", marginTop: "6px", lineHeight: 1.45 }}>
+            {t("auto.shortfall", {
+              amount: money(shortfall.amount),
+              jar: JAR_LABELS[shortfall.worstJar as keyof typeof JAR_LABELS] ?? shortfall.worstJar,
+              jarAmount: money(shortfall.worstJarNet),
+            })}
+            {shortfall.incomeNeeded != null && <> {t("auto.shortfallIncome", { income: money(shortfall.incomeNeeded) })}</>}
+          </div>
+        )}
 
         <button
           type="button"

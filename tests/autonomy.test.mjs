@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./_load.mjs";
 
-const { treasuryLevels, burnRates, monthsOfRunway, computeAutonomy } = await loadTs("src/autonomy.ts");
+const { treasuryLevels, burnRates, monthsOfRunway, computeAutonomy, liquidShortfall } = await loadTs("src/autonomy.ts");
 
 const today = new Date(2026, 10, 9, 12, 0); // 9 novembre 2026
 const jars = {
@@ -148,4 +148,33 @@ test("le jour du passage à l'heure d'été (23 h), une dépense de demain reste
   } finally {
     if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
   }
+});
+
+test("liquidShortfall : un gros découvert d'une jarre efface les soldes positifs des autres (cas réel)", () => {
+  const jarsReal = {
+    NEC: { net: 1997.03, settled: 0 }, FFA: { net: 4937.81, settled: 0 }, LTSS: { net: 4937.81, settled: 0 },
+    PLAY: { net: -10929.53, settled: 0 }, EDUC: { net: 4735.84, settled: 0 }, GIFT: { net: 731.11, settled: 0 },
+  };
+  const split = { NEC: 55, FFA: 10, LTSS: 10, PLAY: 10, EDUC: 10, GIFT: 5 };
+  const s = liquidShortfall(jarsReal, split);
+  assert.equal(s.amount, 3465.55);           // 1997,03 + 4735,84 + 731,11 − 10929,53
+  assert.equal(s.worstJar, "PLAY");
+  assert.equal(s.worstJarNet, -10929.53);
+  // 80 % de chaque revenu va aux jarres courantes (55 + 10 + 10 + 5) : il faut 3465,55 / 0,8 = 4331,94 → 4332 €
+  assert.equal(s.incomeNeeded, 4332);
+});
+
+test("liquidShortfall : rien à signaler quand les jarres courantes sont positives, même si l'une est négative", () => {
+  const split = { NEC: 55, FFA: 10, LTSS: 10, PLAY: 10, EDUC: 10, GIFT: 5 };
+  assert.equal(liquidShortfall({ NEC: { net: 5000 }, PLAY: { net: -2000 }, EDUC: { net: 100 } }, split), null);
+  assert.equal(liquidShortfall({}, split), null);
+  assert.equal(liquidShortfall({ NEC: { net: 0 } }, split), null);
+});
+
+test("liquidShortfall : les déficits effacés (« repartir de zéro ») ne comptent pas comme de l'argent, et répartition inconnue", () => {
+  // le solde de NEC contient 500 € de déficit effacé : il vaut 100 − 500 = −400
+  const s = liquidShortfall({ NEC: { net: 100, settled: 500 } }, { NEC: 0 });
+  assert.equal(s.amount, 400);
+  assert.equal(s.worstJar, "NEC");
+  assert.equal(s.incomeNeeded, null);        // 0 % des revenus vont aux jarres courantes : impossible à combler par des revenus
 });
