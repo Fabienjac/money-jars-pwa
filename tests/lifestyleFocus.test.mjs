@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadTs } from "./_load.mjs";
 
-const { computeLifestyle, matchesFocus, focusActive, rollingAverageSeries } = await loadTs("src/lifestyle.ts");
+const { computeLifestyle, matchesFocus, focusActive, rollingAverageSeries, windowStats } = await loadTs("src/lifestyle.ts");
 const { DEFAULT_FOCUS, MAX_FOCUS, normalizeFocus, toggleFocus, focusLabel } = await loadTs("src/lifestyleFocus.ts");
 
 const none = new Set();
@@ -82,4 +82,21 @@ test("focusLabel", () => {
   const names = { alimentaire: "Alimentation", restaurant: "Restaurant" };
   assert.equal(focusLabel(["alimentaire", "restaurant"], (id) => names[id]), "Alimentation + Restaurant");
   assert.equal(focusLabel(["alimentaire"], (id) => names[id]), "Alimentation");
+});
+
+test("windowStats : somme et nombre des dépenses des 30 derniers jours, égale au dernier point de la courbe × 30", () => {
+  const rows = [];
+  for (let d = 1; d <= 30; d++) rows.push(row(`2026-03-${String(d).padStart(2, "0")}`, 10 + d, d % 3 === 0 ? "alimentaire,restaurant" : d % 3 === 1 ? "alimentaire" : "transport"));
+  rows.push(row("2026-03-20", 500, "alimentaire,voyage")); // extraordinaire : exclue
+  rows.push(row("2026-01-30", 70, "alimentaire"));          // hors fenêtre de 30 jours
+  const extra = new Set(["voyage"]);
+  for (const focus of [undefined, "alimentaire", ["alimentaire", "restaurant"], ["transport"]]) {
+    const w = windowStats(rows, extra, "2026-03-30", focus);
+    const last = rollingAverageSeries(rows, extra, "2026-03-30", focus).at(-1).avg;
+    assert.ok(Math.abs(w.sum / 30 - last) < 1e-9, `focus ${JSON.stringify(focus)}`);
+  }
+  const w = windowStats(rows, extra, "2026-03-30", ["alimentaire", "restaurant"]);
+  assert.equal(w.from, "2026-03-01");
+  assert.equal(w.to, "2026-03-30");
+  assert.equal(w.count, 20); // 10 « alimentaire seul » + 10 « alimentaire,restaurant » ; la dépense à 500 € (voyage) est exclue
 });

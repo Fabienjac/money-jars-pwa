@@ -38,3 +38,10 @@ test("lecture sans effacement (initialisation jouée deux fois par React), puis 
   clearPreset(s);
   assert.equal(peekPreset(s), null);
 });
+
+test("étiquettes à inclure / exclure : listes de textes valides seulement", () => {
+  assert.deepEqual(sanitizePreset({ from: "2026-10-12", tags: ["alimentaire", "restaurant"], excludeTags: ["exceptionnel"] }),
+    { from: "2026-10-12", tags: ["alimentaire", "restaurant"], excludeTags: ["exceptionnel"] });
+  assert.deepEqual(sanitizePreset({ from: "2026-10-12", tags: "alimentaire", excludeTags: [3, null, ""] }), { from: "2026-10-12" });
+  assert.equal(sanitizePreset({ tags: [] }), null);
+});

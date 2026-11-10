@@ -14,6 +14,7 @@ import { Account } from "../types";
 
 import { supabase } from "../lib/supabase";
 import { clearPreset, peekPreset } from "../historyPreset";
+import { isExtraordinary, matchesFocus } from "../lifestyle";
 import { cacheVersion, invalidateHistoryCache, readHistoryCache, rememberHistoryRows, writeHistoryCache } from "../historyCache";
 import { currencySymbol as curSym, formatMoney } from "../baseCurrency";
 import { useT, t as tr, localeTag } from "../i18n";
@@ -129,6 +130,10 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const [typeFilter, setTypeFilter] = useState("all");
   const [destinationFilter, setDestinationFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState(preset?.tag ?? "all");
+  // Contrôle des chiffres du train de vie : uniquement sur le serveur de développement, jamais dans la version publique
+  const [verify, setVerify] = useState<{ tags: string[]; excludeTags: string[] } | null>(() =>
+    import.meta.env.DEV && preset && (preset.tags || preset.excludeTags) ? { tags: preset.tags ?? [], excludeTags: preset.excludeTags ?? [] } : null
+  );
   const [minAmountRaw, setMinAmountRaw] = useState(preset?.minAmount ?? ""); // montant minimum saisi (« 100 »)
   const [sort, setSort] = useState<SortKey>("dateDesc");
 
@@ -257,6 +262,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     sortRows(
       spendings.filter(s => {
         if (!inBounds(parseDate(s.date), periodRange)) return false;
+        if (verify && (!matchesFocus(s.tags, verify.tags) || isExtraordinary(s.tags, new Set(verify.excludeTags)))) return false;
         if (jarFilter !== "all" && s.jar !== jarFilter) return false;
         if (accountFilter !== "all" && s.account !== accountFilter) return false;
         if (!matchesTag(tagsFromString(s.tags), tagFilter)) return false;
@@ -265,7 +271,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
       }),
       sort, (s) => timeOf(s.date), (s) => s.amount || 0
     ),
-    [spendings, periodRange, jarFilter, accountFilter, tagFilter, minAmount, query, sort]
+    [spendings, periodRange, jarFilter, accountFilter, tagFilter, minAmount, query, sort, verify]
   );
 
   const filteredRevenues = useMemo(() =>
@@ -1240,6 +1246,24 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
               )}
             </div>
           </div>
+
+          {import.meta.env.DEV && verify && mode === "spending" && (() => {
+            const from = customFrom ? new Date(`${customFrom}T00:00:00`) : null;
+            const to = customTo ? new Date(`${customTo}T00:00:00`) : null;
+            const days = from && to ? Math.round((to.getTime() - from.getTime()) / 86400000) + 1 : null;
+            const names = verify.tags.map((id) => getTagById(id)?.name ?? id).join(" + ") || "toutes";
+            return (
+              <div className="hist-verify">
+                <strong>🔧 Contrôle (développement seulement)</strong>
+                <div>Étiquettes : {names} · hors extraordinaires · {customFrom} → {customTo}</div>
+                <div>
+                  {filteredSpendings.length} dépenses = {money(totalFiltered)}{days ? ` ÷ ${days} j = ` : ""}
+                  {days ? <strong>{money(totalFiltered / days)}{t("life.perDayShort")}</strong> : null}
+                </div>
+                <button type="button" className="life-link" onClick={() => setVerify(null)}>Retirer ce contrôle</button>
+              </div>
+            );
+          })()}
 
           {/* Summary bar */}
           {!loading && (mode === "spending" ? filteredSpendings.length : filteredRevenues.length) > 0 && (

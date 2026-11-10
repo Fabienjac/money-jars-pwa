@@ -4346,3 +4346,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .home-tour-text strong { font-size: 17px; color: var(--text-main); }
 .home-tour-btn { padding: 12px 16px; border: 0; border-radius: 14px; background: var(--jar-nec, #007AFF); color: #fff; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
 .home-tour-skip { align-self: center; padding: 2px 6px; border: 0; background: none; color: var(--text-muted); font-family: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+
+/* Contrôle des chiffres : visible seulement sur le serveur de développement */
+.life-dev { margin: 12px 0 0; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--text-light); background: var(--bg-body); font-size: 12px; line-height: 1.5; color: var(--text-main); }
+.life-dev-title { margin-bottom: 4px; font-weight: 700; color: var(--text-muted); }
+.life-dev-row { display: flex; flex-direction: column; gap: 0; margin-top: 6px; }
+.hist-verify { margin: 0 20px 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--text-light); background: var(--bg-card); font-size: 13px; line-height: 1.5; color: var(--text-main); }

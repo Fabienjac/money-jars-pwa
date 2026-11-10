@@ -14,6 +14,10 @@ export interface HistoryPreset {
   jar?: string;
   /** Montant minimum saisi. */
   minAmount?: string;
+  /** Contrôle des chiffres du train de vie (développement) : une dépense entre si elle porte l'une de ces étiquettes… */
+  tags?: string[];
+  /** … et sort si elle porte l'une de celles-ci (dépenses extraordinaires). */
+  excludeTags?: string[];
 }
 
 export interface StorageLike {
@@ -34,6 +38,15 @@ export function sanitizePreset(raw: unknown): HistoryPreset | null {
   if (typeof r.tag === "string" && r.tag.length > 0 && r.tag.length <= 64) out.tag = r.tag;
   if (typeof r.jar === "string" && /^[A-Z]{2,6}$/.test(r.jar)) out.jar = r.jar;
   if (typeof r.minAmount === "string" && /^\d+([.,]\d+)?$/.test(r.minAmount.trim())) out.minAmount = r.minAmount.trim();
+  const ids = (v: unknown): string[] | null => {
+    if (!Array.isArray(v)) return null;
+    const list = v.filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 64).slice(0, 20);
+    return list.length > 0 ? list : null;
+  };
+  const tags = ids(r.tags);
+  if (tags) out.tags = tags;
+  const excludeTags = ids(r.excludeTags);
+  if (excludeTags) out.excludeTags = excludeTags;
   return Object.keys(out).length > 0 ? out : null;
 }
 

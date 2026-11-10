@@ -246,6 +246,41 @@ export function rollingAverageAt(
   return sum / 30;
 }
 
+export interface WindowStats {
+  /** Premier et dernier jour de la fenêtre (AAAA-MM-JJ) : les 30 jours qui se terminent à `today`, jour courant inclus. */
+  from: string;
+  to: string;
+  /** Somme des dépenses retenues (hors extraordinaires, limitées au focus) et leur nombre. */
+  sum: number;
+  count: number;
+}
+
+/**
+ * Ce qui entre dans la moyenne sur 30 jours affichée par la carte : la somme, divisée par 30, donne exactement le
+ * dernier point de rollingAverageSeries. Sert à contrôler les chiffres (somme et liste des dépenses concernées).
+ */
+export function windowStats(
+  rows: readonly LifestyleRow[],
+  extraordinaryTags: ReadonlySet<string>,
+  today: string,
+  focus?: TagFocus
+): WindowStats | null {
+  const end = dayNumber(today);
+  if (end == null) return null;
+  let sum = 0;
+  let count = 0;
+  for (const r of rows) {
+    const d = dayNumber(r.date);
+    const amount = Number(r.amount);
+    if (d == null || d > end || d <= end - 30 || !Number.isFinite(amount)) continue;
+    if (isExtraordinary(r.tags, extraordinaryTags)) continue;
+    if (!matchesFocus(r.tags, focus)) continue;
+    sum += amount;
+    count++;
+  }
+  return { from: isoFromDayNumber(end - 29), to: today, sum, count };
+}
+
 /** Date AAAA-MM-JJ située `days` jours avant `date` ; null si `date` est invalide. */
 export function daysBefore(date: string, days: number): string | null {
   const n = dayNumber(date);

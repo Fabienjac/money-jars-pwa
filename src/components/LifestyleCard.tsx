@@ -3,7 +3,8 @@
 // dans le panneau de réglage (voyage, gros achat…). Calcul : src/lifestyle.ts.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchSpendingsSince, fetchLifestylePrefs, saveLifestylePrefs, fetchLifestyleFocus, saveLifestyleFocus, fetchExceptionalDismissed, saveExceptionalDismissed, markSpendingExceptional, type SpendingLite } from "../api";
-import { computeLifestyle, lifestyleFetchFrom, monthlyAverages, rollingAverageSeries, tagTotalsThisYear, trendLine, type MonthAverage, type TrendLine } from "../lifestyle";
+import { computeLifestyle, lifestyleFetchFrom, monthlyAverages, rollingAverageSeries, tagTotalsThisYear, trendLine, windowStats, type MonthAverage, type TrendLine } from "../lifestyle";
+import { OPEN_HISTORY_EVENT, savePreset } from "../historyPreset";
 import DailyAverageChart from "./DailyAverageChart";
 import { suggestExceptional } from "../exceptional";
 import { EXCEPTIONAL_TAG_ID } from "../lifestyleSeed";
@@ -226,6 +227,16 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
   const focusName = focusLabel(focusIds, (id) => tagInfo(id)?.name ?? (id === "alimentaire" ? t("life.rowFood") : id));
   const focusEmoji = focusIds.length === 1 ? (tagInfo(focusIds[0])?.emoji ?? (focusIds[0] === "alimentaire" ? "🥗" : "🎯")) : "🎯";
   const focusChoices = tagChoices.filter((tg) => !extraSet.has(tg.id));
+  // Contrôle des chiffres (serveur de développement seulement, absent de la version publique) : ouvre l'Historique
+  // filtré sur exactement les dépenses de la fenêtre de 30 jours, hors extraordinaires
+  const openVerify = (focus: readonly string[] | undefined) => {
+    const w = rows ? windowStats(rows, extraSet, today, focus) : null;
+    if (!w) return;
+    try {
+      savePreset({ from: w.from, to: w.to, tags: focus ? [...focus] : undefined, excludeTags: extraTags.length > 0 ? extraTags : undefined }, sessionStorage);
+    } catch { /* sans importance */ }
+    window.dispatchEvent(new CustomEvent(OPEN_HISTORY_EVENT));
+  };
   const toggleFocusTag = (id: string) => {
     const next = toggleFocus(focusIds, id);
     setFocusRaw(next); // immédiat ; l'enregistrement cloud se fait en arrière-plan
@@ -342,6 +353,24 @@ const LifestyleCard: React.FC<{ lastImportLabel?: string }> = ({ lastImportLabel
               ))}
             </ul>
             {suggestError && <p className="life-suggest-error" role="alert">{t("life.suggestError")}</p>}
+          </div>
+        )}
+
+        {import.meta.env.DEV && rows && (
+          <div className="life-dev">
+            <div className="life-dev-title">🔧 Contrôle des chiffres (développement seulement)</div>
+            {[{ label: t("life.rowCurrent"), focus: undefined as readonly string[] | undefined }, { label: `${focusEmoji} ${focusName}`, focus: focusIds as readonly string[] | undefined }].map((line) => {
+              const w = windowStats(rows, extraSet, today, line.focus);
+              if (!w) return null;
+              return (
+                <div key={line.label} className="life-dev-row">
+                  <span>
+                    <strong>{line.label}</strong> : {w.count} dépenses du {w.from} au {w.to}, {money(w.sum)} ÷ 30 j = <strong>{money(w.sum / 30)}{t("life.perDayShort")}</strong>
+                  </span>
+                  <button type="button" className="life-link" onClick={() => openVerify(line.focus)}>Voir les dépenses ›</button>
+                </div>
+              );
+            })}
           </div>
         )}
 
