@@ -10,6 +10,7 @@ import { describeRule, distinctLabels, legacyToRules, normalizeKeyword, type Ent
 import type { AutoRule } from "../autoRules";
 import type { Tag } from "../tagsUtils";
 import { useT } from "../i18n";
+import HelpHint from "./HelpHint";
 
 const JARS = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
 const LEARNED_SHOWN = 50;
@@ -235,7 +236,7 @@ const EntryRulesSettings: React.FC<Props> = ({ mode, accountNames, tags, knownTy
 
   return (
     <div className="rules-block" data-mode={mode}>
-      <h4 className="rules-sub-title">{t(isRevenue ? "rules.revenueTitle" : "rules.spendingTitle")}</h4>
+      <h4 className="rules-sub-title">{t(isRevenue ? "rules.revenueTitle" : "rules.spendingTitle")} <HelpHint topic="rules" more /></h4>
       <p className="settings-section-desc">{t(isRevenue ? "rules.revenueDesc" : "rules.spendingDesc")}</p>
       {message && <div className="rules-flash" role="status">{message}</div>}
 

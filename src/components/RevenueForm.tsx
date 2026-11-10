@@ -9,6 +9,7 @@ import CurrencySelector from "./CurrencySelector";
 import { useT } from "../i18n";
 import { useBaseCurrency, formatMoney, formatRevenueValue, parseRevenueValue } from "../baseCurrency";
 import { CryptoFav, loadCryptos, fetchCryptosFromCloud, detectCryptoTicker } from "../cryptoUtils";
+import HelpHint from "./HelpHint";
 
 // ── Crypto rate helper ────────────────────────────────────────────────────────
 
@@ -465,7 +466,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
 
       {/* ── Source ── */}
       <div>
-        <label htmlFor="rev-source" style={labelStyle}>{t("rev.source")}</label>
+        <label htmlFor="rev-source" style={labelStyle}>{t("rev.source")} <HelpHint topic="accounts" /></label>
         {revenueAccounts.length > 0 && (
           <div className="rsf-accounts" role="radiogroup" aria-label={t("rev.sourcesAria")} style={{ marginBottom: 8 }}>
             {revenueAccounts.map((acc) => {
@@ -576,7 +577,7 @@ const RevenueForm: React.FC<RevenueFormProps> = ({ prefill, onClearPrefill, onSu
 
       {/* ── Compte de destination (obligatoire, liste fermée : pas de doublon par faute de frappe) ── */}
       <div>
-        <label style={labelStyle}>{t("rev.destination")}</label>
+        <label style={labelStyle}>{t("rev.destination")} <HelpHint topic="accounts" /></label>
         {spendingAccounts.length === 0 && !destination ? (
           <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>
             {t("rev.noAccounts")}

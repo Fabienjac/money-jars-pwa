@@ -11,10 +11,11 @@ interface MoreViewProps {
   onToggleDark: () => void;
   onImport: () => void;
   onOpenSettings: () => void;
+  onOpenHelp?: () => void;
   jarAlerts?: JarAlert[];
 }
 
-const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, onOpenSettings, jarAlerts = [] }) => {
+const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, onOpenSettings, onOpenHelp, jarAlerts = [] }) => {
   const t = useT();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   return (
@@ -64,6 +65,16 @@ const MoreView: React.FC<MoreViewProps> = ({ darkMode, onToggleDark, onImport, o
         </span>
         <span className="more-item-chevron">›</span>
       </button>
+      {onOpenHelp && (
+        <button type="button" className="more-item" onClick={onOpenHelp}>
+          <span className="more-item-icon">❓</span>
+          <span className="more-item-text">
+            <span className="more-item-label">{t("more.help")}</span>
+            <span className="more-item-sub">{t("more.helpSub")}</span>
+          </span>
+          <span className="more-item-chevron">›</span>
+        </button>
+      )}
       <button type="button" className="more-item" onClick={() => setFeedbackOpen((v) => !v)} aria-expanded={feedbackOpen}>
         <span className="more-item-icon">💡</span>
         <span className="more-item-text">

@@ -42,6 +42,7 @@ import EntryRulesSettings from "./EntryRulesSettings";
 import { SEEN_KEY, OPEN_KEY, initialOpenIds, parseOpenIds, toggleOpenId, percentsSummary } from "../settingsAccordion";
 import { useT, useLang, JAR_LABELS } from "../i18n";
 import type { TKey } from "../i18n";
+import HelpHint from "./HelpHint";
 const JAR_EMOJIS: Record<JarKey, string> = {
   NEC: "🏺",
   FFA: "🌱",
@@ -666,7 +667,7 @@ const SettingsView: React.FC = () => {
       <SettingsAccordion id="accounts" title={t("set.spendAccounts")} summary={sumAccounts} open={isOpen("accounts")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.spendAccounts")}</h3>
-        <p className="acc-intro">{t("set.spendAccountsDesc")}</p>
+        <p className="acc-intro">{t("set.spendAccountsDesc")} <HelpHint topic="accounts" more /></p>
         {accountsLoading && (
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginBottom: "8px" }}>{t("set.loading")}</p>
         )}
@@ -788,7 +789,7 @@ const SettingsView: React.FC = () => {
       <SettingsAccordion id="revaccounts" title={t("set.revAccounts")} summary={sumRevAccounts} open={isOpen("revaccounts")} onToggle={toggleSection}>
       <section className="settings-section">
         <h3 className="settings-section-title">{t("set.revAccounts")}</h3>
-        <p className="acc-intro">{t("set.revAccountsDesc")}</p>
+        <p className="acc-intro">{t("set.revAccountsDesc")} <HelpHint topic="accounts" more /></p>
 
         {revenueAccounts.length > 0 && (
           <div className="accounts-grid">

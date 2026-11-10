@@ -28,6 +28,8 @@ import { offlineManager } from "./offlineManager";
 import { updateStreak } from "./streakUtils";
 import { saveImportedTransactions } from "./importSave";
 import { OPEN_HISTORY_EVENT } from "./historyPreset";
+import HelpView from "./components/HelpView";
+import { OPEN_HELP_EVENT, isHelpTopic, type HelpTopicId } from "./helpTopics";
 import { OPEN_ANALYTICS_EVENT } from "./analyticsState";
 import "./style.css";
 
@@ -45,13 +47,14 @@ const SuspenseFallback = () => (
   </div>
 );
 
-type Section = "home" | "history" | "analytics" | "more" | "settings";
+type Section = "home" | "history" | "analytics" | "more" | "settings" | "help";
 
 function App() {
   const { user, loading: authLoading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
   const [section, setSection] = useState<Section>("home");
+  const [helpTopic, setHelpTopic] = useState<HelpTopicId | null>(null);
   const t = useT();
   const lang = useLang();
   const baseCurrency = useBaseCurrency(); // remonte les écrans si la devise de référence change
@@ -110,6 +113,20 @@ function App() {
       window.removeEventListener(OPEN_HISTORY_EVENT, open);
       window.removeEventListener(OPEN_ANALYTICS_EVENT, openAnalytics);
     };
+  }, []);
+
+  // « En savoir plus » d'un « ? » : ouvre l'écran Aide sur ce sujet (et ferme les formulaires plein écran éventuels)
+  useEffect(() => {
+    const openHelp = (e: Event) => {
+      const topic = (e as CustomEvent<{ topic?: unknown }>).detail?.topic;
+      setHelpTopic(isHelpTopic(topic) ? topic : null);
+      setShowQuickSpending(false);
+      setShowQuickRevenue(false);
+      setVoiceOpen(false);
+      setSection("help");
+    };
+    window.addEventListener(OPEN_HELP_EVENT, openHelp);
+    return () => window.removeEventListener(OPEN_HELP_EVENT, openHelp);
   }, []);
 
   // Un clic sur une notification d'alerte ouvre l'app sur « Plus » (adresse /#alerts)
@@ -379,8 +396,17 @@ function App() {
               onToggleDark={() => setDarkMode((v) => !v)}
               onImport={() => setImporterOpen(true)}
               onOpenSettings={() => setSection("settings")}
+              onOpenHelp={() => { setHelpTopic(null); setSection("help"); }}
               jarAlerts={jarAlerts}
             />
+          )}
+          {section === "help" && (
+            <>
+              <button type="button" className="back-link" onClick={() => setSection("more")}>
+                ‹ {t("nav.more")}
+              </button>
+              <HelpView topic={helpTopic} />
+            </>
           )}
           {section === "settings" && (
             <>

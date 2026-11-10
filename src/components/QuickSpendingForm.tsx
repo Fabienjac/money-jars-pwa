@@ -20,6 +20,7 @@ import {
   cleanSupplierName,
 } from "../suppliersUtils";
 import CurrencySelector from "./CurrencySelector";
+import HelpHint from "./HelpHint";
 
 const JAR_LABELS: Record<JarKey, { label: string; emoji: string; color: string }> = {
   NEC: { label: "NEC", emoji: "🏺", color: "var(--jar-nec, #007AFF)" },
@@ -436,7 +437,7 @@ const QuickSpendingForm: React.FC<QuickSpendingFormProps> = ({ onClose, onSucces
 
       {/* Jarres : la jarre choisie est nommée, pour comprendre que les tuiles servent à choisir où l'on puise */}
       <div className="qsf-jar-caption">
-        {t("qsf.jarFrom")} <b>{JAR_LABELS[jar].emoji} {I18N_JARS[jar] ?? jar}</b>
+        {t("qsf.jarFrom")} <b>{JAR_LABELS[jar].emoji} {I18N_JARS[jar] ?? jar}</b> <HelpHint topic="jars" />
       </div>
       <div className="qsf-jars" role="radiogroup" aria-label={t("qsf.jarFrom")}>
         {(Object.keys(JAR_LABELS) as JarKey[]).map((jarKey) => (
