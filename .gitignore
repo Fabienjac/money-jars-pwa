@@ -11,6 +11,9 @@ scripts/
 # Relevés bancaires réels (données sensibles, jamais commités)
 EXEMPLE DE RELEVES/
 
+# Export du Google Sheet 2025 pour l'import (données financières réelles, jamais commitées)
+IMPORT 2025/
+
 # Build et archives locales
 dist/
 *.zip
