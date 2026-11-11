@@ -51,3 +51,21 @@ test("modification locale : la copie est mise à jour sans devenir « à jour »
   rememberHistoryRows("u1", "revenue", ["x"], 5000);
   assert.deepEqual(readHistoryCache("u1", "revenue", 5000)!.rows, ["x"]);
 });
+
+test("la copie retient jusqu'où elle remonte : limitée aux derniers mois ou complète", () => {
+  invalidateHistoryCache();
+  writeHistoryCache("u1", "spending", ["récent"], cacheVersion(), 1000, "2025-11-11");
+  assert.equal(readHistoryCache("u1", "spending")!.since, "2025-11-11");
+  writeHistoryCache("u1", "revenue", ["tout"], cacheVersion()); // sans portée : tout l'historique
+  assert.equal(readHistoryCache("u1", "revenue")!.since, null);
+});
+
+test("une modification locale garde la portée de la copie, ou l'impose quand on la donne", () => {
+  invalidateHistoryCache();
+  writeHistoryCache("u1", "spending", ["a", "b"], cacheVersion(), 1000, "2025-11-11");
+  rememberHistoryRows("u1", "spending", ["a"], 2000);
+  assert.equal(readHistoryCache("u1", "spending")!.since, "2025-11-11");
+  invalidateHistoryCache();
+  rememberHistoryRows("u1", "spending", ["a"], 2000, "2025-11-11"); // sans copie préalable : portée donnée par l'écran
+  assert.equal(readHistoryCache("u1", "spending")!.since, "2025-11-11");
+});

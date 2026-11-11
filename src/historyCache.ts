@@ -12,6 +12,8 @@ export const FRESH_MS = 20_000;
 interface Entry {
   rows: unknown[];
   at: number;
+  /** Première date (AAAA-MM-JJ) couverte par la copie ; null = tout l'historique. */
+  since: string | null;
 }
 
 let version = 0;
@@ -29,26 +31,29 @@ export function invalidateHistoryCache(): void {
   store.clear();
 }
 
-/** Copie en mémoire (ou null) ; `fresh` dit si elle a moins de FRESH_MS. */
-export function readHistoryCache<T>(user: string, kind: HistoryKind, now = Date.now()): { rows: T[]; fresh: boolean } | null {
+/**
+ * Copie en mémoire (ou null) ; `fresh` dit si elle a moins de FRESH_MS ; `since` dit jusqu'où elle remonte
+ * (null = tout l'historique : seule une copie complète convient aux écrans qui comptent sur toutes les lignes).
+ */
+export function readHistoryCache<T>(user: string, kind: HistoryKind, now = Date.now()): { rows: T[]; fresh: boolean; since: string | null } | null {
   const e = store.get(keyOf(user, kind));
   if (!e) return null;
-  return { rows: e.rows as T[], fresh: now - e.at < FRESH_MS };
+  return { rows: e.rows as T[], fresh: now - e.at < FRESH_MS, since: e.since };
 }
 
 /**
  * Enregistre le résultat d'une lecture. Refusé (false) si une écriture de données a eu lieu depuis le début de la
  * lecture : ce résultat pourrait déjà être périmé.
  */
-export function writeHistoryCache<T>(user: string, kind: HistoryKind, rows: T[], startedAtVersion: number, now = Date.now()): boolean {
+export function writeHistoryCache<T>(user: string, kind: HistoryKind, rows: T[], startedAtVersion: number, now = Date.now(), since: string | null = null): boolean {
   if (startedAtVersion !== version) return false;
-  store.set(keyOf(user, kind), { rows, at: now });
+  store.set(keyOf(user, kind), { rows, at: now, since });
   return true;
 }
 
 /** Après une modification faite sur l'écran lui-même : met la copie à jour sans relire (la date de lecture ne change pas). */
-export function rememberHistoryRows<T>(user: string, kind: HistoryKind, rows: T[], now = Date.now()): void {
+export function rememberHistoryRows<T>(user: string, kind: HistoryKind, rows: T[], now = Date.now(), since?: string | null): void {
   const k = keyOf(user, kind);
   const prev = store.get(k);
-  store.set(k, { rows, at: prev ? prev.at : now });
+  store.set(k, { rows, at: prev ? prev.at : now, since: since !== undefined ? since : prev ? prev.since : null });
 }

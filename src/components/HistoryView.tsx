@@ -1,7 +1,7 @@
 // src/components/HistoryView.tsx - VERSION REFACTORISÉE (Features 4 & 5)
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
-  fetchAllSpendings, fetchAllRevenues,
+  fetchAllSpendings, fetchAllRevenues, countHistoryBefore,
   updateSpending, updateRevenue,
   deleteSpending, deleteRevenue,
 } from "../api";
@@ -18,7 +18,7 @@ import { isExtraordinary, matchesFocus } from "../lifestyle";
 import { cacheVersion, invalidateHistoryCache, readHistoryCache, rememberHistoryRows, writeHistoryCache } from "../historyCache";
 import { currencySymbol as curSym, formatMoney } from "../baseCurrency";
 import { useT, t as tr, localeTag } from "../i18n";
-import { inBounds, parseAppDate, periodBounds, type PeriodFilter } from "../historyPeriod";
+import { historySince, inBounds, parseAppDate, periodBounds, type PeriodFilter } from "../historyPeriod";
 import {
   NO_TAG, csvNumber, dayKey, dayTotals, matchesSearch, matchesTag, parseMinAmount, passesMinAmount, sortRows, toCsv,
   type SortKey,
@@ -113,6 +113,14 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const [error, setError] = useState<string | null>(null);
   const [spendings, setSpendings] = useState<SearchSpendingResult[]>([]);
   const [revenues, setRevenues] = useState<SearchRevenueResult[]>([]);
+  // Par défaut on ne charge que les 12 derniers mois (connexion lente) ; « Charger tout l'historique » lit le reste.
+  const since = useMemo(() => historySince(new Date()), []);
+  const [fullHistory, setFullHistory] = useState(false);
+  const fullRef = useRef(false); // même valeur que fullHistory, lisible dans les rappels (doSearch)
+  const [olderCount, setOlderCount] = useState<number | null>(null); // lignes antérieures à `since` (null = inconnu)
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [slowLoad, setSlowLoad] = useState(false); // le chargement dure : on le dit (connexion lente)
+  const [savedTick, setSavedTick] = useState(0); // relevé à chaque enregistrement ailleurs : recompte les lignes anciennes
 
   // ── Filters ───────────────────────────────────────────────────────
   // Filtres venus d'un autre écran (« Voir dans l'Historique » depuis Analyses) : appliqués une seule fois à l'ouverture
@@ -166,7 +174,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const editingRef = useRef(false); // une modification est en cours : on ne remplace pas les lignes dessous
   const modeRef = useRef<Mode>("spending");
 
-  const doSearch = useCallback(async (m: Mode) => {
+  const doSearch = useCallback(async (m: Mode, full: boolean = fullRef.current) => {
     const req = ++reqRef.current;
     setError(null);
     const { data } = await supabase.auth.getSession(); // lecture locale, sans réseau
@@ -180,18 +188,29 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     };
 
     const cached = uid ? readHistoryCache<SearchSpendingResult | SearchRevenueResult>(uid, m) : null;
+    // Une copie complète en mémoire (lue par Analyses, ou après « Charger tout l'historique ») : on reste en complet,
+    // sinon la relecture limitée la remplacerait par une copie plus courte.
+    const wantFull = full || (cached != null && cached.since === null);
+    if (wantFull && !fullRef.current) { fullRef.current = true; setFullHistory(true); }
+    const range = wantFull ? {} : { from: since };
+    // Copie suffisante : complète, ou limitée quand on ne veut que les derniers mois
+    const enough = cached != null && (cached.since === null || !wantFull);
     if (cached) {
       apply(cached.rows as SearchSpendingResult[] | SearchRevenueResult[]);
       setLoading(false);
-      if (cached.fresh) return;
+      if (cached.fresh && enough) return;
     } else {
       setLoading(true);
     }
 
     const startedAt = cacheVersion();
     try {
-      const rows = m === "spending" ? await fetchAllSpendings() : await fetchAllRevenues();
-      if (uid) writeHistoryCache<unknown>(uid, m, rows, startedAt);
+      const rows = m === "spending" ? await fetchAllSpendings("", range) : await fetchAllRevenues("", range);
+      if (uid) {
+        // Une lecture limitée ne remplace jamais une copie complète (lectures concurrentes)
+        const cur = readHistoryCache<unknown>(uid, m);
+        if (wantFull || !cur || cur.since !== null) writeHistoryCache<unknown>(uid, m, rows, startedAt, Date.now(), wantFull ? null : since);
+      }
       if (req !== reqRef.current) return; // un autre chargement est parti entre-temps
       if (cached && editingRef.current) return; // rafraîchissement discret : pas pendant une modification
       apply(rows);
@@ -204,7 +223,16 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
     } finally {
       if (req === reqRef.current) setLoading(false);
     }
-  }, []);
+  }, [since]);
+
+  /** « Charger tout l'historique » (bouton, ou période choisie plus ancienne que les 12 mois chargés). */
+  const loadFullHistory = useCallback(async () => {
+    if (fullRef.current) return;
+    fullRef.current = true;
+    setFullHistory(true);
+    setLoadingAll(true);
+    try { await doSearch(modeRef.current, true); } finally { setLoadingAll(false); }
+  }, [doSearch]);
 
   // Charger les comptes depuis le Sheet au montage
   useEffect(() => {
@@ -218,7 +246,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
 
   // Une dépense ou un revenu vient d'être enregistré ailleurs (formulaire rapide, vocal…) : on relit
   useEffect(() => {
-    const reload = () => { invalidateHistoryCache(); doSearch(modeRef.current); };
+    const reload = () => { invalidateHistoryCache(); doSearch(modeRef.current); setSavedTick((n) => n + 1); };
     window.addEventListener("mjars:transactionSaved", reload);
     window.addEventListener("mjars:revenueSaved", reload);
     return () => {
@@ -228,6 +256,28 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   }, [doSearch]);
 
   useEffect(() => { editingRef.current = editingRow != null; }, [editingRow]);
+
+  // Chargement qui dépasse 4 secondes : message « connexion lente »
+  useEffect(() => {
+    if (!loading && !loadingAll) { setSlowLoad(false); return; }
+    const id = window.setTimeout(() => setSlowLoad(true), 4000);
+    return () => window.clearTimeout(id);
+  }, [loading, loadingAll]);
+
+  // Combien de lignes sont plus anciennes que les 12 mois chargés (pour proposer de les charger)
+  useEffect(() => {
+    if (fullHistory) { setOlderCount(0); return; }
+    let alive = true;
+    setOlderCount(null);
+    countHistoryBefore(mode, since).then((n) => { if (alive) setOlderCount(n); }).catch(() => { /* sans importance : pas d'invitation */ });
+    return () => { alive = false; };
+  }, [mode, fullHistory, since, savedTick]);
+
+  // Une période choisie qui remonte avant les 12 mois chargés (ex. venue d'Analyses) demande tout l'historique
+  useEffect(() => {
+    if (fullRef.current || periodFilter !== "custom") return;
+    if (customFrom ? customFrom < since : customTo !== "") loadFullHistory();
+  }, [periodFilter, customFrom, customTo, since, loadFullHistory]);
 
   // ── Computed filters ──────────────────────────────────────────────
   const periodRange = useMemo(() => periodBounds(periodFilter, new Date(), customFrom, customTo), [periodFilter, customFrom, customTo]);
@@ -372,7 +422,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
         if (!res.ok) throw new Error(res.error || t("hist.saveError"));
         const next = spendings.map(s => s === editingRow ? { ...s, ...editDraft, amount: parseFloat(editDraft.amount) } as SearchSpendingResult : s);
         setSpendings(next);
-        if (userRef.current) rememberHistoryRows(userRef.current, "spending", next);
+        if (userRef.current) rememberHistoryRows(userRef.current, "spending", next, undefined, fullRef.current ? null : since);
       } else {
         if (!editingRow.rowIndex) throw new Error(t("hist.rowMissingScript"));
         const res = await updateRevenue(editingRow.rowIndex, {
@@ -387,7 +437,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
         if (!res.ok) throw new Error(res.error || t("hist.saveError"));
         const next = revenues.map(r => r === editingRow ? { ...r, ...editDraft, amount: parseFloat(editDraft.amount) } as SearchRevenueResult : r);
         setRevenues(next);
-        if (userRef.current) rememberHistoryRows(userRef.current, "revenue", next);
+        if (userRef.current) rememberHistoryRows(userRef.current, "revenue", next, undefined, fullRef.current ? null : since);
       }
       setEditingRow(null);
     } catch (e: any) {
@@ -405,7 +455,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
       if (!res.ok) throw new Error(res.error || t("hist.unknownError"));
       const next = spendings.filter(s => s !== row);
       setSpendings(next);
-      if (userRef.current) rememberHistoryRows(userRef.current, "spending", next);
+      if (userRef.current) rememberHistoryRows(userRef.current, "spending", next, undefined, fullRef.current ? null : since);
       setExpandedCard(null);
     } catch (e: any) { alert(t("hist.error", { msg: e.message || String(e) })); }
   };
@@ -418,7 +468,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
       if (!res.ok) throw new Error(res.error || t("hist.unknownError"));
       const next = revenues.filter(r => r !== row);
       setRevenues(next);
-      if (userRef.current) rememberHistoryRows(userRef.current, "revenue", next);
+      if (userRef.current) rememberHistoryRows(userRef.current, "revenue", next, undefined, fullRef.current ? null : since);
       setExpandedCard(null);
     } catch (e: any) { alert(t("hist.error", { msg: e.message || String(e) })); }
   };
@@ -427,9 +477,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
   const generateReport = async () => {
     setReportLoading(true);
     try {
+      const [y, mo] = reportMonth.split("-").map(Number);
+      const range = { from: `${reportMonth}-01`, to: `${reportMonth}-${String(new Date(y, mo, 0).getDate()).padStart(2, "0")}` };
       const [spRes, revRes] = await Promise.all([
-        fetchAllSpendings(),
-        fetchAllRevenues(),
+        fetchAllSpendings("", range),
+        fetchAllRevenues("", range),
       ]);
       setReportSpendings(spRes.filter(s => getYearMonth(s.date) === reportMonth));
       setReportRevenues(revRes.filter(r => getYearMonth(r.date) === reportMonth));
@@ -1265,6 +1317,18 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
             );
           })()}
 
+          {/* Historique limité aux 12 derniers mois : proposer le reste */}
+          {!loading && !fullHistory && (olderCount ?? 0) > 0 && (
+            <div style={{ margin: "10px 20px 0", padding: "10px 14px", background: "var(--bg-card)", border: "1.5px solid var(--border-color)", borderRadius: 12, fontSize: 13, color: "var(--text-muted)" }}>
+              <div>
+                {t("hist.limited", { from: new Date(`${since}T00:00:00`).toLocaleDateString(localeTag(), { day: "numeric", month: "short", year: "numeric" }) })}
+              </div>
+              <button type="button" className="life-link" disabled={loadingAll} onClick={loadFullHistory} style={{ marginTop: 6 }}>
+                {loadingAll ? (slowLoad ? `${t("hist.loadingAll")} ${t("hist.slow")}` : t("hist.loadingAll")) : `${t("hist.loadAll")} (${t(olderCount === 1 ? "hist.olderOne" : "hist.olderMany", { n: olderCount ?? 0 })})`}
+              </button>
+            </div>
+          )}
+
           {/* Summary bar */}
           {!loading && (mode === "spending" ? filteredSpendings.length : filteredRevenues.length) > 0 && (
             <div style={{ padding: "10px 20px" }}>
@@ -1298,6 +1362,19 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onUseEntry, view, onImport })
           {error && (
             <div style={{ margin: "10px 20px", padding: "12px 16px", background: "#FFEDED", borderRadius: 12, color: "#FF3B30", fontSize: 14 }}>
               ⚠️ {error}
+              <div>
+                <button type="button" className="life-link" onClick={() => doSearch(mode)} style={{ marginTop: 6 }}>
+                  {t("hist.retry")}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Chargement en cours (liste encore vide) */}
+          {loading && !error && (
+            <div role="status" style={{ margin: "10px 20px", padding: "14px 16px", textAlign: "center", fontSize: 14, color: "var(--text-muted)" }}>
+              ⏳ {t("hist.loadingHistory")}
+              {slowLoad && <div style={{ fontSize: 12, marginTop: 4 }}>{t("hist.slow")}</div>}
             </div>
           )}
 

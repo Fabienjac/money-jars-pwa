@@ -54,6 +54,17 @@ export function periodBounds(filter: PeriodFilter, now: Date, customFrom = "", c
   }
 }
 
+/**
+ * Premier jour chargé par défaut dans l'Historique (« 12 derniers mois », comme le filtre de période « 1 an »),
+ * au format AAAA-MM-JJ en heure locale.
+ */
+export function historySince(now: Date): string {
+  const d = new Date(now);
+  d.setMonth(d.getMonth() - 12);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /** Une date est-elle dans les bornes ? Sans bornes, toujours vrai ; date invalide, jamais. */
 export function inBounds(date: Date | null, bounds: PeriodBounds | null): boolean {
   if (!bounds) return true;

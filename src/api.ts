@@ -1,5 +1,15 @@
 // src/api.ts — backend Supabase
 import { supabase } from "./lib/supabase";
+
+/**
+ * Utilisateur connecté, lu dans la session locale (sans réseau). supabase.auth.getUser() interroge le serveur à chaque
+ * appel : environ 2 secondes d'attente avant CHAQUE lecture sur une connexion 3G. Les requêtes portent le jeton de la
+ * session et la base applique ses règles d'accès (RLS) : l'identité revérifiée côté serveur n'apporte rien ici.
+ */
+async function currentUser() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.user ?? null;
+}
 import { EXPORT_TABLES, type ExportTables } from "./dataExport";
 import { cacheVersion, invalidateHistoryCache, readHistoryCache, writeHistoryCache, type HistoryKind } from "./historyCache";
 import { t } from "./i18n";
@@ -22,6 +32,7 @@ import { normalizeJar } from "./jarValidation";
 import { addTagTo } from "./exceptional";
 import type { AccountTransfer } from "./accountTransfers";
 import { adjustmentTotals, isJarKey, round2, transferDeltas, type JarAdjustment, type JarTransfer } from "./jarTransfers";
+import { parseDbTotals, totalsFromRows, type JarTotalsSource } from "./jarTotals";
 
 // ── Helpers dates ──────────────────────────────────────────────────────────────
 // L'app utilise DD/MM/YYYY en interne ; Supabase stocke en YYYY-MM-DD (type date)
@@ -76,7 +87,7 @@ function clearCache(...keys: string[]) {
 // ── Dépenses ───────────────────────────────────────────────────────────────────
 
 export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const jar = normalizeJar(row.jar);
   if (!jar) return { ok: false, error: t("err.invalidJar") };
@@ -99,7 +110,7 @@ export async function appendSpending(row: SpendingRow): Promise<{ ok: boolean; e
 }
 
 export async function updateSpending(rowIndex: number, row: SpendingRow): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const jar = normalizeJar(row.jar);
   if (!jar) return { ok: false, error: t("err.invalidJar") };
@@ -120,7 +131,7 @@ export async function updateSpending(rowIndex: number, row: SpendingRow): Promis
 }
 
 export async function deleteSpending(rowIndex: number): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("transactions_spending").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
@@ -134,7 +145,7 @@ export async function bulkRenameSpendingAccount(
   oldName: string,
   newName: string
 ): Promise<{ ok: boolean; count: number; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, count: 0, error: t("err.notLoggedIn") };
   const { data, error } = await supabase
     .from("transactions_spending")
@@ -185,14 +196,19 @@ async function readNewestFirst<T>(build: (from: number, to: number, byCreated: b
   }
 }
 
-export async function fetchAllSpendings(q = ""): Promise<SearchSpendingResult[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+/** Bornes facultatives (AAAA-MM-JJ, incluses) d'une lecture : sans elles, tout l'historique. */
+export interface HistoryRange { from?: string; to?: string }
+
+export async function fetchAllSpendings(q = "", range: HistoryRange = {}): Promise<SearchSpendingResult[]> {
+  const user = await currentUser();
   if (!user) return [];
   const rows = await readNewestFirst((from, to, byCreated) => {
     let query = supabase
       .from("transactions_spending")
       .select("id, date, jar, account, amount, description, tags, subscription")
       .eq("user_id", user.id);
+    if (range.from) query = query.gte("date", range.from);
+    if (range.to) query = query.lte("date", range.to);
     if (q.trim()) query = query.ilike("description", `%${q.trim()}%`);
     let ordered = query.order("date", { ascending: false });
     if (byCreated) ordered = ordered.order("created_at", { ascending: false });
@@ -202,7 +218,7 @@ export async function fetchAllSpendings(q = ""): Promise<SearchSpendingResult[]>
 }
 
 export async function searchSpendings(q: string, max = 50): Promise<{ rows: SearchSpendingResult[] }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { rows: [] };
 
   let query = supabase
@@ -236,7 +252,7 @@ export async function searchSpendings(q: string, max = 50): Promise<{ rows: Sear
 // ── Revenus ────────────────────────────────────────────────────────────────────
 
 export async function appendRevenue(row: RevenueRow): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const { error } = await supabase.from("transactions_revenue").insert({
@@ -261,7 +277,7 @@ export async function appendRevenue(row: RevenueRow): Promise<{ ok: boolean; err
 }
 
 export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("transactions_revenue").update({
     date:            toISO(row.date),
@@ -284,7 +300,7 @@ export async function updateRevenue(rowIndex: number, row: RevenueRow): Promise<
 }
 
 export async function deleteRevenue(rowIndex: number): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("transactions_revenue").delete().eq("id", rowIndex).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
@@ -298,7 +314,7 @@ export async function bulkRenameRevenueSource(
   oldName: string,
   newName: string
 ): Promise<{ ok: boolean; count: number; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, count: 0, error: t("err.notLoggedIn") };
   const { data, error } = await supabase
     .from("transactions_revenue")
@@ -336,14 +352,16 @@ function mapRevenueRow(r: RevenueDbRow): SearchRevenueResult {
 }
 
 /** Tous les revenus (filtrés par source si `q`), lus page par page (voir fetchAllSpendings). */
-export async function fetchAllRevenues(q = ""): Promise<SearchRevenueResult[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+export async function fetchAllRevenues(q = "", range: HistoryRange = {}): Promise<SearchRevenueResult[]> {
+  const user = await currentUser();
   if (!user) return [];
   const rows = await readNewestFirst((from, to, byCreated) => {
     let query = supabase
       .from("transactions_revenue")
       .select("id, date, source, amount, value, crypto_quantity, method, rate, crypto_address, destination, income_type, tags")
       .eq("user_id", user.id);
+    if (range.from) query = query.gte("date", range.from);
+    if (range.to) query = query.lte("date", range.to);
     if (q.trim()) query = query.ilike("source", `%${q.trim()}%`);
     let ordered = query.order("date", { ascending: false });
     if (byCreated) ordered = ordered.order("created_at", { ascending: false });
@@ -360,11 +378,27 @@ async function readAllCached<T>(kind: HistoryKind, fetcher: () => Promise<T[]>):
   const { data } = await supabase.auth.getSession(); // lecture locale, sans réseau
   const uid = data.session?.user.id ?? null;
   const cached = uid ? readHistoryCache<T>(uid, kind) : null;
-  if (cached && cached.fresh) return cached.rows;
+  // Ces lectures servent des écrans qui comptent sur TOUTES les lignes : une copie limitée aux derniers mois
+  // (Historique sur connexion lente) ne convient pas.
+  if (cached && cached.fresh && cached.since === null) return cached.rows;
   const startedAt = cacheVersion();
   const rows = await fetcher();
   if (uid) writeHistoryCache<T>(uid, kind, rows, startedAt);
   return rows;
+}
+
+/** Nombre de lignes datées avant `beforeISO` (AAAA-MM-JJ) : une requête minuscule, sans rapatrier les lignes. */
+export async function countHistoryBefore(kind: HistoryKind, beforeISO: string): Promise<number> {
+  const { data } = await supabase.auth.getSession(); // lecture locale, sans réseau
+  const uid = data.session?.user.id;
+  if (!uid) return 0;
+  const { count, error } = await supabase
+    .from(kind === "spending" ? "transactions_spending" : "transactions_revenue")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", uid)
+    .lt("date", beforeISO);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 export function fetchAllSpendingsCached(): Promise<SearchSpendingResult[]> {
@@ -380,7 +414,7 @@ export function fetchAllRevenuesCached(): Promise<SearchRevenueResult[]> {
  * Une table qui n'existe pas encore (SQL pas exécuté) compte pour vide : l'export reste possible.
  */
 export async function fetchExportTables(): Promise<{ email: string | null; tables: ExportTables }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) throw new Error(t("err.notLoggedIn"));
   const tables: ExportTables = {};
   for (const name of EXPORT_TABLES) {
@@ -444,7 +478,7 @@ export async function openBillingPortal(): Promise<{ ok: true; url: string } | {
 }
 
 export async function searchRevenues(q: string, max = 50): Promise<{ rows: SearchRevenueResult[] }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { rows: [] };
 
   let query = supabase
@@ -481,6 +515,43 @@ export async function searchRevenues(q: string, max = 50): Promise<{ rows: Searc
 
 // ── Totaux (calculés depuis les transactions) ──────────────────────────────────
 
+/**
+ * Totaux calculés par la base (fonction my_jar_totals, voir supabase/jar_totals.sql) : quelques chiffres au lieu de
+ * toutes les lignes depuis le début, ce qui ne grossit plus avec les années. null si la fonction n'existe pas encore.
+ */
+async function readTotalsFromDb(): Promise<JarTotalsSource | null> {
+  try {
+    const { data, error } = await supabase.rpc("my_jar_totals");
+    if (error) return null;
+    return parseDbTotals(data);
+  } catch {
+    return null;
+  }
+}
+
+/** Repli : toutes les lignes, lues page par page (Supabase tronque à 1000 lignes par requête, sans erreur). */
+async function readTotalsFromRows(userId: string): Promise<JarTotalsSource> {
+  const [spendings, revenues] = await Promise.all([
+    fetchAllPages((from, to) =>
+      supabase
+        .from("transactions_spending")
+        .select("jar, amount")
+        .eq("user_id", userId)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllPages((from, to) =>
+      supabase
+        .from("transactions_revenue")
+        .select("amount, rate, crypto_quantity")
+        .eq("user_id", userId)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+  ]);
+  return totalsFromRows(spendings ?? [], revenues ?? []);
+}
+
 export function fetchTotals(forceRefresh = false): Promise<TotalsResponse> {
   return shared("mjars:cache:totals", () => fetchTotalsImpl(forceRefresh));
 }
@@ -492,52 +563,35 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
     if (cached) return cached;
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return emptyTotals();
 
   const now = new Date();
   const firstOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
 
-  // Récupérer les paramètres des jarres
-  const { data: jarRows } = await supabase
-    .from("jar_settings")
-    .select("jar_key, percent, initial_balance")
-    .eq("user_id", user.id);
-
-  // Dépenses depuis le début (pour le net global) — on group par jar côté JS.
-  // Lecture paginée : Supabase tronque à 1000 lignes par requête, sans erreur.
-  const spendings = await fetchAllPages((from, to) =>
+  // Les lectures partent ENSEMBLE : enchaînées, chacune ajoutait un aller-retour (2 s en 3G).
+  // Paramètres des jarres ; totaux (dépenses par jarre, total des revenus) calculés par la base ; transferts entre jarres
+  // (ni revenu ni dépense : ils déplacent du solde d'une jarre à l'autre) ; déficits effacés (« repartir de zéro » :
+  // ajoutés au solde, comptés comme dépense pardonnée).
+  const [{ data: jarRows }, dbTotals, transferRows, adjustmentRows] = await Promise.all([
     supabase
-      .from("transactions_spending")
-      .select("jar, amount")
-      .eq("user_id", user.id)
-      .order("id", { ascending: true })
-      .range(from, to)
-  );
-
-  // Revenus depuis le début
-  const revenues = await fetchAllPages((from, to) =>
-    supabase
-      .from("transactions_revenue")
-      .select("amount, rate, crypto_quantity")
-      .eq("user_id", user.id)
-      .order("id", { ascending: true })
-      .range(from, to)
-  );
-
-  // Transferts entre jarres : ils déplacent du solde d'une jarre à l'autre (ni revenu ni dépense)
-  const transferDelta = transferDeltas(await readTransferRows(user.id));
-  // Déficits effacés (« repartir de zéro ») : ajoutés au solde, comptés comme dépense pardonnée pour les alertes
-  const settledByJar = adjustmentTotals(await readAdjustmentRows(user.id));
+      .from("jar_settings")
+      .select("jar_key, percent, initial_balance")
+      .eq("user_id", user.id),
+    readTotalsFromDb(),
+    readTransferRows(user.id),
+    readAdjustmentRows(user.id),
+  ]);
+  // Repli : sans la fonction SQL (supabase/jar_totals.sql pas encore exécuté), on lit toutes les lignes comme avant
+  const totals = dbTotals ?? await readTotalsFromRows(user.id);
+  const transferDelta = transferDeltas(transferRows);
+  const settledByJar = adjustmentTotals(adjustmentRows);
 
   const JAR_KEYS: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
   const DEFAULT_PCT: Record<JarKey, number> = { NEC: 55, FFA: 10, LTSS: 10, PLAY: 10, EDUC: 10, GIFT: 5 };
 
-  // Calcul du total des revenus
-  const totalRevenues = (revenues ?? []).reduce((sum, r) => {
-    const amount = r.amount != null ? Number(r.amount) : (Number(r.crypto_quantity ?? 0) * Number(r.rate ?? 0));
-    return sum + amount;
-  }, 0);
+  // Total des revenus
+  const totalRevenues = totals.revenueTotal;
 
   // Paramètres jarres
   const jarPcts: Record<JarKey, number> = { ...DEFAULT_PCT };
@@ -550,12 +604,7 @@ async function fetchTotalsImpl(forceRefresh: boolean): Promise<TotalsResponse> {
   });
 
   // Totaux dépenses par jarre
-  const spendingByJar: Record<JarKey, number> = { NEC: 0, FFA: 0, LTSS: 0, PLAY: 0, EDUC: 0, GIFT: 0 };
-  (spendings ?? []).forEach(s => {
-    if (JAR_KEYS.includes(s.jar as JarKey)) {
-      spendingByJar[s.jar as JarKey] += Number(s.amount);
-    }
-  });
+  const spendingByJar = totals.spending;
 
   const split = { ...jarPcts };
   const jarsResult = {} as TotalsResponse["jars"];
@@ -616,7 +665,7 @@ async function readAdjustmentRows(userId: string): Promise<Array<{ jar: string; 
 
 /** Déficits effacés, du plus récent au plus ancien. null = table absente (SQL à exécuter). */
 export async function fetchJarAdjustments(): Promise<JarAdjustment[] | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
   const { data, error } = await supabase
     .from("jar_adjustments")
@@ -641,7 +690,7 @@ export async function fetchJarAdjustments(): Promise<JarAdjustment[] | null> {
 
 /** Efface le déficit d'une jarre : ajoute `amount` à son solde (l'historique des dépenses n'est pas touché). */
 export async function addJarAdjustment(input: { jar: JarKey; amount: number; note?: string }): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("jar_adjustments").insert({
     user_id: user.id,
@@ -655,7 +704,7 @@ export async function addJarAdjustment(input: { jar: JarKey; amount: number; not
 }
 
 export async function deleteJarAdjustment(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("jar_adjustments").delete().eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
@@ -665,7 +714,7 @@ export async function deleteJarAdjustment(id: string): Promise<{ ok: boolean; er
 
 /** Transferts de l'utilisateur, du plus récent au plus ancien. null = table absente (SQL à exécuter). */
 export async function fetchJarTransfers(): Promise<JarTransfer[] | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
   const { data, error } = await supabase
     .from("jar_transfers")
@@ -690,7 +739,7 @@ export async function fetchJarTransfers(): Promise<JarTransfer[] | null> {
 }
 
 export async function addJarTransfer(input: { from: JarKey; to: JarKey; amount: number; note?: string }): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("jar_transfers").insert({
     user_id: user.id,
@@ -705,7 +754,7 @@ export async function addJarTransfer(input: { from: JarKey; to: JarKey; amount: 
 }
 
 export async function deleteJarTransfer(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("jar_transfers").delete().eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
@@ -717,7 +766,7 @@ export async function deleteJarTransfer(id: string): Promise<{ ok: boolean; erro
 
 /** Virements de l'utilisateur, du plus récent au plus ancien. null = table absente (SQL à exécuter). */
 export async function fetchAccountTransfers(): Promise<AccountTransfer[] | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
   try {
     const data = await fetchAllPages((from, to) =>
@@ -752,7 +801,7 @@ export async function addAccountTransfer(input: {
   from: string; to: string; amount: number; date?: string; note?: string;
   original?: { amount: number; currency: string; rate: number };
 }): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("account_transfers").insert({
     user_id: user.id,
@@ -768,7 +817,7 @@ export async function addAccountTransfer(input: {
 }
 
 export async function deleteAccountTransfer(id: string): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("account_transfers").delete().eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: error.message };
@@ -785,7 +834,7 @@ function emptyTotals(): TotalsResponse {
 // ── Tags ───────────────────────────────────────────────────────────────────────
 
 export async function fetchTagsFromSheet(): Promise<import("./tagsUtils").Tag[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -807,7 +856,7 @@ export async function fetchTagsFromSheet(): Promise<import("./tagsUtils").Tag[]>
 }
 
 export async function saveTags(tags: import("./tagsUtils").Tag[]): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return;
 
   // Upsert complet : on remet tout
@@ -828,7 +877,7 @@ export async function saveTags(tags: import("./tagsUtils").Tag[]): Promise<void>
 // ── Comptes ────────────────────────────────────────────────────────────────────
 
 export async function getAccounts(): Promise<Account[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -842,7 +891,7 @@ export async function getAccounts(): Promise<Account[]> {
 }
 
 export async function setAccounts(accounts: Account[]): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const rows = accounts.map(a => ({
@@ -858,7 +907,7 @@ export async function setAccounts(accounts: Account[]): Promise<{ ok: boolean; e
 }
 
 export async function getRevenueAccounts(): Promise<RevenueAccount[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
 
   const { data, error } = await supabase
@@ -872,7 +921,7 @@ export async function getRevenueAccounts(): Promise<RevenueAccount[]> {
 }
 
 export async function setRevenueAccounts(accounts: RevenueAccount[]): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const rows = accounts.map(a => ({
@@ -891,7 +940,7 @@ export async function setRevenueAccounts(accounts: RevenueAccount[]): Promise<{ 
 // ── Paramètres des jarres ──────────────────────────────────────────────────────
 
 export async function fetchJarSettings(): Promise<Array<{key: JarKey; percent: number; initialBalance: number}> | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return null;
   const { data, error } = await supabase
     .from("jar_settings")
@@ -908,7 +957,7 @@ export async function fetchJarSettings(): Promise<Array<{key: JarKey; percent: n
 export async function saveJarSettings(
   settings: Array<{key: JarKey; percent: number; initialBalance: number}>
 ): Promise<{ok: boolean; error?: string}> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const rows = settings.map(s => ({
     user_id:         user.id,
@@ -966,7 +1015,7 @@ async function fetchAnalyticsImpl(forceRefresh: boolean): Promise<AnalyticsRespo
     if (cached) return cached;
   }
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return emptyAnalytics();
 
   // 12 derniers mois
@@ -1086,7 +1135,17 @@ export async function fetchNetWorth(_forceRefresh = false): Promise<NetWorthResp
 const COLMAPPING_CACHE_KEY = "mjars:colmappings:all";
 const COLMAPPING_CACHE_TTL = 60 * 60 * 1000; // 1h
 
-export async function fetchColumnMappings(): Promise<Record<string, unknown>> {
+let columnMappingsInFlight: Promise<Record<string, unknown>> | null = null;
+
+/** Une seule requête à la fois : au démarrage, une trentaine d'appels simultanés (réglages, langue, devise…) en lançaient autant. */
+export function fetchColumnMappings(): Promise<Record<string, unknown>> {
+  if (!columnMappingsInFlight) {
+    columnMappingsInFlight = readColumnMappings().finally(() => { columnMappingsInFlight = null; });
+  }
+  return columnMappingsInFlight;
+}
+
+async function readColumnMappings(): Promise<Record<string, unknown>> {
   try {
     const raw = localStorage.getItem(COLMAPPING_CACHE_KEY);
     if (raw) {
@@ -1095,7 +1154,7 @@ export async function fetchColumnMappings(): Promise<Record<string, unknown>> {
     }
   } catch {}
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return {};
 
   const { data, error } = await supabase
@@ -1124,7 +1183,7 @@ export async function saveColumnMappingToSheet(mappingKey: string, mapping: unkn
     }
   } catch {}
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return;
 
   supabase.from("column_mappings").upsert(
@@ -1138,7 +1197,7 @@ export async function saveColumnMappingToSheet(mappingKey: string, mapping: unkn
 // ── Auto-tag rules ─────────────────────────────────────────────────────────────
 
 export async function fetchAutoTagRules(): Promise<AutoTagRule[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return loadCachedRules();
 
   const { data, error } = await supabase
@@ -1164,7 +1223,7 @@ export async function fetchAutoTagRules(): Promise<AutoTagRule[]> {
 export async function saveAutoTagRulesToSheet(rules: AutoTagRule[]): Promise<void> {
   saveCachedRules(rules);
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return;
 
   // Les règles écrites à la main dans les Réglages (origin = manual) ne sont ni remplacées ni supprimées par l'import.
@@ -1226,7 +1285,7 @@ function readCachedEntryRules(): EntryRule[] {
 
 /** Toutes les règles de l'utilisateur. Hors ligne ou erreur : la dernière copie locale. */
 export async function fetchEntryRules(): Promise<EntryRule[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return readCachedEntryRules();
   const read = (cols: string) => fetchAllPages((from, to) =>
     supabase.from("auto_tag_rules").select(cols).eq("user_id", user.id).order("pattern", { ascending: true }).range(from, to));
@@ -1248,7 +1307,7 @@ export async function fetchEntryRules(): Promise<EntryRule[]> {
 
 /** Crée ou remplace une règle (clé : le mot-clé). */
 export async function saveEntryRule(rule: EntryRule): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const row = ruleToRow(rule);
   let { error } = await supabase.from("auto_tag_rules")
@@ -1264,7 +1323,7 @@ export async function saveEntryRule(rule: EntryRule): Promise<{ ok: boolean; err
 }
 
 export async function deleteEntryRule(keyword: string): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
   const { error } = await supabase.from("auto_tag_rules").delete().eq("user_id", user.id).eq("pattern", keyword);
   if (error) return { ok: false, error: error.message };
@@ -1282,7 +1341,7 @@ export async function sendFeedback(input: {
   email?: string;
   lang?: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { ok: false, error: t("err.notLoggedIn") };
 
   const { error } = await supabase.from("feedback").insert({
@@ -1315,7 +1374,7 @@ export interface SpendingLite {
 }
 
 export async function fetchSpendingsSince(fromISO: string): Promise<SpendingLite[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
 
   const data = await fetchAllPages((rangeFrom, rangeTo) =>
@@ -1342,7 +1401,7 @@ export async function fetchSpendingsSince(fromISO: string): Promise<SpendingLite
 
 /** Dépenses complètes (mêmes champs que searchSpendings) depuis une date, lues en entier par pages. */
 export async function fetchSpendingRowsSince(fromISO: string): Promise<SearchSpendingResult[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
   const data = await fetchAllPages((from, to) =>
     supabase
@@ -1368,7 +1427,7 @@ export async function fetchSpendingRowsSince(fromISO: string): Promise<SearchSpe
 
 /** Horodatages de saisie des dépenses depuis une date (pour le calcul du streak). */
 export async function fetchEntryTimestamps(sinceISO: string): Promise<string[]> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return [];
   const rows = await fetchAllPages((from, to) =>
     supabase
@@ -1438,7 +1497,7 @@ export function seedDefaultTagsIfNeeded(tags: Tag[]): Promise<Tag[] | null> {
 }
 
 async function seedDefaultTags(tags: Tag[]): Promise<Tag[] | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return null;
   const { data, error } = await supabase
     .from("column_mappings")
@@ -1474,7 +1533,7 @@ export function seedExceptionalTagIfNeeded(tags: Tag[]): Promise<Tag[] | null> {
 
 async function seedExceptionalTag(tags: Tag[]): Promise<Tag[] | null> {
   if (tags.length === 0) return null;
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return null;
 
   const { data, error } = await supabase
@@ -1592,7 +1651,7 @@ export async function saveDismissedSubscriptions(keys: string[]): Promise<void> 
  * Lecture « head » (aucune ligne ramenée). `null` : lecture impossible, l'étape reste à faire.
  */
 export async function fetchStartCounts(): Promise<{ accounts: number | null; revenues: number | null; spendings: number | null; manualRules: number | null }> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await currentUser();
   if (!user) return { accounts: null, revenues: null, spendings: null, manualRules: null };
   const count = async (table: string): Promise<number | null> => {
     try {

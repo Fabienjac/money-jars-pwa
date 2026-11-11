@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { inBounds, periodBounds } from "../src/historyPeriod.ts";
+import { historySince, inBounds, periodBounds } from "../src/historyPeriod.ts";
 
 const now = new Date(2026, 10, 8, 14, 30); // 8 novembre 2026, 14 h 30
 const day = (y: number, m: number, d: number, h = 0, mi = 0) => new Date(y, m - 1, d, h, mi);
@@ -42,4 +42,12 @@ test("période personnalisée : bornes incluses (jour de fin jusqu'à 23 h 59), 
 test("inBounds : sans bornes toujours vrai, date invalide jamais (avec bornes)", () => {
   assert.ok(inBounds(null, null));
   assert.ok(!inBounds(null, periodBounds("month", now)));
+});
+
+test("historique chargé par défaut : 12 mois glissants, comme le filtre « 1 an »", () => {
+  assert.equal(historySince(new Date(2026, 10, 11, 9, 0)), "2025-11-11");
+  assert.equal(historySince(new Date(2026, 0, 1)), "2025-01-01"); // début d'année
+  assert.equal(historySince(new Date(2026, 11, 31, 23, 59)), "2025-12-31"); // pas de décalage de fuseau
+  const d = periodBounds("year", now)!.start;
+  assert.equal(historySince(now), `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
 });
