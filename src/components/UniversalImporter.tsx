@@ -1,5 +1,6 @@
 // src/components/UniversalImporter.tsx - VERSION AVEC NOUVEAU MAPPING INVERSÉ
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { JarKey } from "../types";
 import { NewColumnMappingStep } from "./NewColumnMappingStep";
 import { TransactionEditor } from "./TransactionEditor";
@@ -113,6 +114,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [step, setStep] = useState<"selectType" | "upload" | "mapping" | "review">("selectType");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [dupFilter, setDupFilter] = useState<"all" | "new" | "dup">("all");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
   
@@ -694,7 +696,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   const availableTags = loadTags();
 
   // Track which card's tag-add dropdown is open (by transaction reference)
-  const [openTagDropdown, setOpenTagDropdown] = useState<Transaction | null>(null);
+  const [openTagDropdown, setOpenTagDropdown] = useState<number | null>(null);
 
   const toggleTransaction = (index: number) => {
     setTransactions(prev =>
@@ -725,6 +727,8 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   };
 
   const filteredTransactions = transactions.filter(t => {
+    if (dupFilter === "new" && t.isDuplicate) return false;
+    if (dupFilter === "dup" && !t.isDuplicate) return false;
     const desc = t.description != null ? String(t.description) : "";
     const date = t.date != null ? String(t.date) : "";
     return desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1281,7 +1285,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
   // Fonction pour rendre l'étape de révision
   function renderReviewStep() {
     const selectedCount = transactions.filter(t => t.selected).length;
-    const duplicateCount = transactions.filter(t => t.isDuplicate).length;
+    const newCount = transactions.filter(t => t.selected && !t.isDuplicate).length;
+    const duplicateCheckedCount = transactions.filter(t => t.selected && t.isDuplicate).length;
+    const duplicateExcludedCount = transactions.filter(t => t.isDuplicate && !t.selected).length;
     const unconvertedCount = transactions.filter(t => t.needsConversion).length;
 
     const jars: JarKey[] = ["NEC", "FFA", "LTSS", "PLAY", "EDUC", "GIFT"];
@@ -1328,6 +1334,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
         padding: "24px",
         boxShadow: "var(--shadow-md)",
         height: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        overflowX: "hidden",
         display: "flex",
         flexDirection: "column",
       }}>
@@ -1348,7 +1358,10 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               {tr("imp.review")}
             </h3>
             <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: "14px" }}>
-              {tr("imp.reviewCount", { sel: selectedCount, dup: duplicateCount })}
+              {tr("imp.reviewCount", { new: newCount, dup: duplicateExcludedCount })}
+              {duplicateCheckedCount > 0 && (
+                <span style={{ color: "#FF9500", fontWeight: 600 }}>{tr("imp.reviewDupChecked", { n: duplicateCheckedCount })}</span>
+              )}
               {unconvertedCount > 0 && (
                 <span style={{ color: "#FF3B30", fontWeight: 600 }}>{tr("imp.toConvert", { n: unconvertedCount })}</span>
               )}
@@ -1408,16 +1421,49 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
               whiteSpace: "nowrap",
             }}
           >
-            {transactions.filter(t => !t.needsConversion).every(t => t.selected) ? tr("imp.unselectAll") : tr("imp.selectAll")}
+            {(() => {
+              const visible = filteredTransactions.filter(t => !t.needsConversion);
+              return visible.length > 0 && visible.every(t => t.selected) ? tr("imp.unselectAll") : tr("imp.selectAll");
+            })()}
           </button>
+        </div>
+
+        {/* Filtre nouvelles / doublons */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "16px", flexWrap: "wrap" }}>
+          {([
+            ["all", tr("imp.filterAll"), transactions.length],
+            ["new", tr("imp.filterNew"), transactions.filter(t => !t.isDuplicate).length],
+            ["dup", tr("imp.filterDup"), transactions.filter(t => t.isDuplicate).length],
+          ] as const).map(([key, label, count]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setDupFilter(key)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: "20px",
+                border: dupFilter === key ? "1px solid rgba(0,122,255,0.6)" : "1px solid var(--border-color)",
+                background: dupFilter === key ? "rgba(0,122,255,0.15)" : "var(--bg-body)",
+                color: dupFilter === key ? "var(--jar-nec)" : "var(--text-main)",
+                fontSize: "13px",
+                fontWeight: "600",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {label} ({count})
+            </button>
+          ))}
         </div>
 
         {/* Liste des transactions */}
         <div style={{
           flex: 1,
           overflowY: "auto",
+          overflowX: "hidden",
           marginBottom: "16px",
           minHeight: 0,
+          minWidth: 0,
         }}
           onClick={() => setOpenTagDropdown(null)}
         >
@@ -1425,8 +1471,6 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             const currentTagIds = transaction.tags
               ? transaction.tags.split(",").map(s => s.trim()).filter(Boolean)
               : [];
-            const unselectedTags = availableTags.filter(t => !currentTagIds.includes(t.id));
-            const isTagDropdownOpen = openTagDropdown === transaction;
 
             return (
               <div
@@ -1434,6 +1478,9 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                 style={{
                   padding: "14px 16px",
                   marginBottom: "12px",
+                  minWidth: 0,
+                  boxSizing: "border-box",
+                  overflowWrap: "anywhere",
                   borderRadius: "12px",
                   border: transaction.needsConversion
                     ? "2px solid #FF3B30"
@@ -1455,7 +1502,7 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                     type="checkbox"
                     checked={!!transaction.selected}
                     disabled={!!transaction.needsConversion}
-                    onChange={() => toggleTransaction(index)}
+                    onChange={() => toggleTransaction(transactions.indexOf(transaction))}
                     onClick={(e) => e.stopPropagation()}
                     style={{
                       width: "20px",
@@ -1486,16 +1533,6 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                       ✨ Auto
                     </span>
                   )}
-                  {transaction.isDuplicate && (
-                    <span style={{
-                      fontSize: "11px",
-                      color: transaction.duplicateLevel === 1 ? "#FF3B30" : transaction.duplicateLevel === 2 ? "#FF9500" : "#FFCC00",
-                      fontWeight: "600",
-                      flex: 1,
-                    }}>
-                      {transaction.duplicateNote}
-                    </span>
-                  )}
                   <div style={{ marginLeft: "auto", textAlign: "right", flexShrink: 0 }}>
                     <span style={{
                       fontSize: "17px",
@@ -1516,6 +1553,18 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                     )}
                   </div>
                 </div>
+
+                {transaction.isDuplicate && transaction.duplicateNote && (
+                  <div style={{
+                    fontSize: "12px",
+                    lineHeight: 1.4,
+                    color: transaction.duplicateLevel === 1 ? "#FF3B30" : transaction.duplicateLevel === 2 ? "#FF9500" : "#CC9A00",
+                    fontWeight: "600",
+                    marginBottom: "10px",
+                  }}>
+                    {transaction.duplicateNote}
+                  </div>
+                )}
 
                 {transaction.needsConversion && (() => {
                   const realIdx = transactions.indexOf(transaction);
@@ -1631,68 +1680,16 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
                     );
                   })}
 
-                  {/* Add tag button + inline dropdown */}
-                  <div style={{ position: "relative", display: "inline-block" }}>
-                    <button
-                      style={addTagBtnStyle}
-                      onClick={e => {
-                        e.stopPropagation();
-                        setOpenTagDropdown(isTagDropdownOpen ? null : transaction);
-                      }}
-                    >
-                      + Tag
-                    </button>
-                    {isTagDropdownOpen && unselectedTags.length > 0 && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        style={{
-                          position: "absolute",
-                          top: "calc(100% + 4px)",
-                          left: 0,
-                          zIndex: 100,
-                          backgroundColor: "var(--bg-card)",
-                          border: "1px solid var(--border-color)",
-                          borderRadius: "10px",
-                          padding: "6px",
-                          boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                          minWidth: "160px",
-                        }}
-                      >
-                        {unselectedTags.map(tag => (
-                          <button
-                            key={tag.id}
-                            onClick={e => {
-                              e.stopPropagation();
-                              const newTags = [...currentTagIds, tag.id].join(",");
-                              updateTransactionField(transaction, "tags", newTags);
-                              setOpenTagDropdown(null);
-                            }}
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: "8px",
-                              border: "none",
-                              backgroundColor: "transparent",
-                              color: "var(--text-main)",
-                              fontSize: "13px",
-                              cursor: "pointer",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={e => {
-                              e.currentTarget.style.backgroundColor = "rgba(0,122,255,0.08)";
-                            }}
-                            onMouseLeave={e => {
-                              e.currentTarget.style.backgroundColor = "transparent";
-                            }}
-                          >
-                            {tag.emoji} {tag.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  {/* Bouton « + Tag » : ouvre la feuille de tags (voir fin du composant) */}
+                  <button
+                    style={addTagBtnStyle}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setOpenTagDropdown(transactions.indexOf(transaction));
+                    }}
+                  >
+                    + Tag
+                  </button>
                 </div>
               </div>
             );
@@ -1757,6 +1754,104 @@ export const UniversalImporter: React.FC<UniversalImporterProps> = ({
             }
           </button>
         </div>
+        {/* Feuille de tags (monte du bas, au-dessus de tout) */}
+        {openTagDropdown !== null && transactions[openTagDropdown] && (() => {
+          const tx = transactions[openTagDropdown];
+          const activeIds = tx.tags ? tx.tags.split(",").map(x => x.trim()).filter(Boolean) : [];
+          const toggleTag = (id: string) => {
+            const next = activeIds.includes(id) ? activeIds.filter(x => x !== id) : [...activeIds, id];
+            updateTransactionField(tx, "tags", next.length ? next.join(",") : undefined);
+          };
+          return createPortal(
+            <div
+              onClick={() => setOpenTagDropdown(null)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 20000,
+                background: "rgba(0,0,0,0.45)",
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                role="dialog"
+                aria-label={tr("imp.tagSheetTitle")}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxWidth: "520px",
+                  maxHeight: "75vh",
+                  display: "flex",
+                  flexDirection: "column",
+                  background: "var(--bg-card)",
+                  color: "var(--text-main)",
+                  borderRadius: "20px 20px 0 0",
+                  boxShadow: "0 -8px 32px rgba(0,0,0,0.25)",
+                  paddingBottom: "max(env(safe-area-inset-bottom, 0px), 12px)",
+                }}
+              >
+                <div style={{ width: 40, height: 4, borderRadius: 2, background: "var(--border-color)", margin: "10px auto 6px" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 20px 12px" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 17, fontWeight: 700 }}>{tr("imp.tagSheetTitle")}</div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {String(tx.description ?? "")}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenTagDropdown(null)}
+                    style={{
+                      padding: "10px 20px",
+                      borderRadius: 12,
+                      border: "none",
+                      background: "linear-gradient(135deg, #34C759 0%, #28a745 100%)",
+                      color: "white",
+                      fontSize: 15,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {tr("imp.tagSheetDone")}
+                  </button>
+                </div>
+                <div style={{ overflowY: "auto", padding: "0 12px 8px", borderTop: "1px solid var(--border-color)" }}>
+                  {availableTags.map(tag => {
+                    const active = activeIds.includes(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleTag(tag.id)}
+                        style={{
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                          padding: "14px 10px",
+                          border: "none",
+                          borderBottom: "1px solid var(--border-color)",
+                          background: "transparent",
+                          color: "var(--text-main)",
+                          fontSize: 16,
+                          textAlign: "left",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span style={{ fontSize: 22 }}>{tag.emoji}</span>
+                        <span style={{ flex: 1, fontWeight: active ? 700 : 500 }}>{tag.name}</span>
+                        <span style={{ color: "#34C759", fontSize: 20, fontWeight: 700, width: 20, textAlign: "center" }}>{active ? "✓" : ""}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>,
+            document.body
+          );
+        })()}
       </div>
     );
   }
